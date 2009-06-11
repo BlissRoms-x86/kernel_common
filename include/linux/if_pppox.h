@@ -43,6 +43,13 @@ struct pptp_opt {
 	u32 seq_sent, seq_recv;
 	int ppp_flags;
 };
+
+struct pppopns_opt {
+	__u16	local;
+	__u16	remote;
+	__u32	sequence;
+};
+
 #include <net/sock.h>
 
 struct pppox_sock {
@@ -53,6 +60,7 @@ struct pppox_sock {
 	union {
 		struct pppoe_opt pppoe;
 		struct pptp_opt  pptp;
+		struct pppopns_opt pns;
 	} proto;
 	__be16			num;
 };
