@@ -96,6 +96,7 @@ struct tpm_chip *tpmm_chip_alloc(struct device *dev,
 		return ERR_PTR(-ENOMEM);
 
 	mutex_init(&chip->tpm_mutex);
+	mutex_init(&chip->resume_mutex);
 	INIT_LIST_HEAD(&chip->list);
 
 	chip->ops = ops;
