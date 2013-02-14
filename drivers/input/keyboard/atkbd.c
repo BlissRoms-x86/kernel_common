@@ -767,8 +767,11 @@ getid_retry:
 			dev_warn(&ps2dev->serio->dev, "atkbd: SETLEDS failed");
 			if (getid_attempts_left <= 0)
 				return -1;
-			else
+			else {
+				ps2_drain(ps2dev, 6, 1);
+				ps2_command(ps2dev, NULL, ATKBD_CMD_ENABLE);
 				goto getid_retry;
+			}
 		}
 		atkbd->id = 0xabba;
 		return 0;
@@ -778,8 +781,11 @@ getid_retry:
 		dev_warn(&ps2dev->serio->dev, "bad keyboard id %d", param[0]);
 		if (getid_attempts_left <= 0)
 			return -1;
-		else
+		else {
+			ps2_drain(ps2dev, 6, 1);
+			ps2_command(ps2dev, NULL, ATKBD_CMD_ENABLE);
 			goto getid_retry;
+		}
 	}
 
 	atkbd->id = (param[0] << 8) | param[1];
