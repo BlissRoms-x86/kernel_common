@@ -604,6 +604,8 @@ static void verity_finish_io(struct dm_verity_io *io, int error)
 	struct dm_verity *v = io->v;
 	struct bio *bio = dm_bio_from_per_bio_data(io, v->ti->per_bio_data_size);
 
+	if (error)
+		verity_error(v, io, error);
 	bio->bi_end_io = io->orig_bi_end_io;
 	bio->bi_private = io->orig_bi_private;
 	bio->bi_error = error;
@@ -621,12 +623,6 @@ static void verity_work(struct work_struct *w)
 static void verity_end_io(struct bio *bio)
 {
 	struct dm_verity_io *io = bio->bi_private;
-
-	if (bio->bi_error) {
-		verity_error(io->v, io, bio->bi_error);
-		verity_finish_io(io, bio->bi_error);
-		return;
-	}
 
 	INIT_WORK(&io->work, verity_work);
 	queue_work(io->v->verify_wq, &io->work);
