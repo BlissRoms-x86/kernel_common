@@ -865,8 +865,8 @@ static inline void put_link(struct nameidata *nd)
 		path_put(&last->link);
 }
 
-int sysctl_protected_symlinks __read_mostly = 0;
-int sysctl_protected_hardlinks __read_mostly = 0;
+int sysctl_protected_symlinks __read_mostly = 1;
+int sysctl_protected_hardlinks __read_mostly = 1;
 
 /**
  * nameidata_set_temporary - Used by Chromium OS LSM to check
