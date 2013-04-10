@@ -587,6 +587,9 @@ void dpm_resume_noirq(pm_message_t state)
 	}
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
+	pm_dark_resume_check();
+	pr_debug("Dark resume of system: %s\n", pm_dark_resume_active() ?
+		 "true" : "false");
 	dpm_show_time(starttime, state, "noirq");
 	resume_device_irqs();
 	device_wakeup_disarm_wake_irqs();
@@ -848,9 +851,6 @@ void dpm_resume(pm_message_t state)
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
 	async_error = 0;
-	pm_dark_resume_check();
-	pr_debug("Dark resume of system: %s\n", pm_dark_resume_active() ?
-		 "true" : "false");
 
 	list_for_each_entry(dev, &dpm_suspended_list, power.entry) {
 		reinit_completion(&dev->power.completion);
