@@ -183,7 +183,7 @@ static bool check_cbmem(void)
 				    E820_RESERVED))
 			break;
 
-		pcbm = ioremap(scan_addr, remap_size);
+		pcbm = ioremap_cache(scan_addr, remap_size);
 		if (!pcbm) {
 			scan_addr += CBMEM_ALIGNMENT;
 			continue;
@@ -200,7 +200,7 @@ static bool check_cbmem(void)
 			if ((pcbm[i].magic == CBMEM_ENTRY_MAGIC) &&
 			    (pcbm[i].id == CBMEM_CONSOLE_ID)) {
 				/* Yes, map the log. */
-				cbmem_console = ioremap(pcbm[i].base,
+				cbmem_console = ioremap_cache(pcbm[i].base,
 							pcbm[i].size);
 				break;
 			}
