@@ -6974,6 +6974,13 @@ static __init int tracer_init_tracefs(void)
 	trace_create_file("saved_cmdlines_size", 0644, d_tracer,
 			  NULL, &tracing_saved_cmdlines_size_fops);
 
+	/* OJN: Provide the legacy name since ureadahead currently relies
+	 * on it. We'll fix userspace separately and this can be dropped
+	 * in the future.
+	 */
+	trace_create_file("tracing_enabled", 0644, d_tracer,
+			    &global_trace, &rb_simple_fops);
+
 	trace_enum_init();
 
 	trace_create_enum_file(d_tracer);
