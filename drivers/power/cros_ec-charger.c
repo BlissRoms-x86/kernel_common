@@ -44,10 +44,13 @@
 #define TSU6721_TYPE_U200_CHG		0x400000
 #define TSU6721_TYPE_NON_STD_CHG	0x040000
 
+/* VBUS_DEBOUNCED might show up together with other type */
+#define TSU6721_TYPE_VBUS_DEBOUNCED	0x020000
+
 #define CHARGING_MASK (TSU6721_TYPE_USB_HOST | TSU6721_TYPE_CHG12 | \
 		       TSU6721_TYPE_CDP | TSU6721_TYPE_DCP | \
 		       TSU6721_TYPE_APPLE_CHG | TSU6721_TYPE_U200_CHG | \
-		       TSU6721_TYPE_NON_STD_CHG)
+		       TSU6721_TYPE_NON_STD_CHG | TSU6721_TYPE_JIG_UART_ON)
 
 struct charger_data {
 	struct device *dev;
@@ -59,22 +62,49 @@ static enum power_supply_property cros_ec_charger_props[] = {
 	POWER_SUPPLY_PROP_ONLINE, /* charger is active or not */
 };
 
-static int cros_ec_charger_get_prop(struct power_supply *psy,
-					     enum power_supply_property psp,
-					     union power_supply_propval *val)
+static void update_psu_type(struct power_supply *psy,
+			    struct ec_response_power_info *ec_data)
+{
+	struct charger_data *charger_data = power_supply_get_drvdata(psy);
+
+	dev_dbg(charger_data->dev, "dev_type = 0x%06x cur_limit = %d\n",
+		ec_data->usb_dev_type & CHARGING_MASK,
+		ec_data->usb_current_limit);
+
+	switch (ec_data->usb_dev_type & CHARGING_MASK) {
+	case TSU6721_TYPE_USB_HOST:
+		charger_data->psy_desc.type = POWER_SUPPLY_TYPE_USB;
+		break;
+	case TSU6721_TYPE_CDP:
+		charger_data->psy_desc.type = POWER_SUPPLY_TYPE_USB_CDP;
+		break;
+	case TSU6721_TYPE_DCP:
+	case TSU6721_TYPE_APPLE_CHG:
+		charger_data->psy_desc.type = POWER_SUPPLY_TYPE_USB_DCP;
+		break;
+	case TSU6721_TYPE_CHG12:
+		charger_data->psy_desc.type = POWER_SUPPLY_TYPE_MAINS;
+		break;
+	case TSU6721_TYPE_U200_CHG:
+	default:
+		charger_data->psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
+		break;
+	}
+}
+
+static int get_ec_power_info(struct power_supply *psy,
+			     struct ec_response_power_info *ec_info)
 {
 	struct charger_data *charger_data = power_supply_get_drvdata(psy);
 	struct device *dev = charger_data->dev;
 	struct cros_ec_device *ec = dev_get_drvdata(dev->parent);
 	struct cros_ec_command *msg;
-	struct ec_response_power_info *ec_info;
 	int ret;
 
 	msg = kzalloc(sizeof(*msg) + sizeof(*ec_info), GFP_KERNEL);
 	if (!msg)
 		return -ENOMEM;
 
-	val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 	msg->version = 0;
 	msg->command = EC_CMD_POWER_INFO;
 	msg->insize = sizeof(*ec_info);
@@ -85,22 +115,44 @@ static int cros_ec_charger_get_prop(struct power_supply *psy,
 		goto error;
 	}
 
-	ec_info = (struct ec_response_power_info *)msg->data;
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_ONLINE:
-		val->intval = !!(ec_info->usb_dev_type & CHARGING_MASK);
-		ret = 0;
-		break;
-	default:
-		ret = -EINVAL;
-		break;
-	}
+	*ec_info = *((struct ec_response_power_info *)msg->data);
+	ret = 0;
 
 error:
 	kfree(msg);
 	return ret;
 }
+
+static void cros_ec_charger_power_changed(struct power_supply *psy)
+{
+	struct ec_response_power_info ec_info;
+
+	get_ec_power_info(psy, &ec_info);
+	update_psu_type(psy, &ec_info);
+}
+
+static int cros_ec_charger_get_prop(struct power_supply *psy,
+				    enum power_supply_property psp,
+				    union power_supply_propval *val)
+{
+	struct ec_response_power_info ec_info;
+	int ret = get_ec_power_info(psy, &ec_info);
+
+	if (ret)
+		return -EINVAL;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		val->intval = !!(ec_info.usb_dev_type & CHARGING_MASK);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static char *charger_supplied_to[] = {"cros-ec-charger"};
 
 static int cros_ec_charger_probe(struct platform_device *pd)
 {
@@ -109,6 +161,7 @@ static int cros_ec_charger_probe(struct platform_device *pd)
 	struct charger_data *charger_data;
 	struct device *dev = &pd->dev;
 	struct device_node *mfd_np, *charger_np;
+	struct power_supply_desc *psy_desc;
 	struct power_supply *psy;
 
 	if (!ec) {
@@ -138,23 +191,28 @@ static int cros_ec_charger_probe(struct platform_device *pd)
 
 	charger_data->dev = dev;
 
-	charger_data->psy_desc.name = "cros-ec-charger";
-	charger_data->psy_desc.type = POWER_SUPPLY_TYPE_MAINS;
-	charger_data->psy_desc.get_property = cros_ec_charger_get_prop;
-	charger_data->psy_desc.properties = cros_ec_charger_props;
-	charger_data->psy_desc.num_properties =
+	psy_desc = &charger_data->psy_desc;
+	psy_desc->name = "cros-ec-charger";
+	psy_desc->type = POWER_SUPPLY_TYPE_MAINS;
+	psy_desc->get_property = cros_ec_charger_get_prop;
+	psy_desc->properties = cros_ec_charger_props;
+	psy_desc->num_properties =
 		ARRAY_SIZE(cros_ec_charger_props);
+	psy_desc->external_power_changed = cros_ec_charger_power_changed;
 
+	psy_cfg.supplied_to = charger_supplied_to;
+	psy_cfg.num_supplicants = ARRAY_SIZE(charger_supplied_to);
 	psy_cfg.drv_data = charger_data;
 
 	platform_set_drvdata(pd, charger_data);
 
-	psy = power_supply_register(dev, &charger_data->psy_desc, &psy_cfg);
+	psy = power_supply_register(dev, psy_desc, &psy_cfg);
 	if (IS_ERR(psy)) {
 		dev_err(dev, "failed: power supply register\n");
 		return PTR_ERR(psy);
 	}
 	charger_data->charger = psy;
+	ec->charger = psy;
 
 	return 0;
 }
