@@ -541,9 +541,9 @@ static struct chromeos_laptop bolt = {
 		/* Touchscreen. */
 		{ .add = setup_atmel_1664s_ts, I2C_ADAPTER_DESIGNWARE_1 },
 		/* Touchpad. */
-		{. add = setup_atmel_224s_tp, I2C_ADAPTER_DESIGNWARE_0 },
+		{ .add = setup_atmel_224s_tp, I2C_ADAPTER_DESIGNWARE_0 },
 		/* Light Sensor. */
-		{. add = setup_isl29018_als, I2C_ADAPTER_DESIGNWARE_1 },
+		{ .add = setup_isl29018_als, I2C_ADAPTER_DESIGNWARE_1 },
 	},
 	.has_keyboard_backlight = true,
 };
