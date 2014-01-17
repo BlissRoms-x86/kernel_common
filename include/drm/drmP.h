@@ -999,6 +999,7 @@ extern void drm_put_dev(struct drm_device *dev);
 extern void drm_unplug_dev(struct drm_device *dev);
 extern unsigned int drm_debug;
 extern bool drm_atomic;
+extern bool drm_master_relax;
 
 				/* Debugfs support */
 #if defined(CONFIG_DEBUG_FS)
