@@ -393,6 +393,7 @@ int tpm_chip_register(struct tpm_chip *chip)
 	 * nasty defensive timeouts at the next boot.
 	 */
 	chip->shutdown_nb.notifier_call = tpm_shutdown_notify;
+	dev_info(&chip->dev, "registering reboot notifier [gentle shutdown]\n");
 	register_reboot_notifier(&chip->shutdown_nb);
 
 	chip->flags |= TPM_CHIP_FLAG_REGISTERED;
