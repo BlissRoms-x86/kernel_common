@@ -278,6 +278,9 @@ static irqreturn_t regmap_irq_thread(int irq, void *d)
 		}
 	}
 
+	if (chip->pre_irq && chip->pre_post_irq_data)
+		chip->pre_irq(chip->pre_post_irq_data);
+
 	/*
 	 * Read in the statuses, using a single bulk read if possible
 	 * in order to reduce the I/O overheads.
@@ -361,6 +364,9 @@ static irqreturn_t regmap_irq_thread(int irq, void *d)
 			handled = true;
 		}
 	}
+
+	if (chip->post_irq && chip->pre_post_irq_data)
+		chip->post_irq(chip->pre_post_irq_data);
 
 	if (chip->runtime_pm)
 		pm_runtime_put(map->dev);
