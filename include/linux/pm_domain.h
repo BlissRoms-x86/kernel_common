@@ -21,6 +21,12 @@
 
 #define GENPD_MAX_NUM_STATES	8 /* Number of possible low power states */
 
+/* PM domain state transition notifications */
+#define PM_GENPD_POWER_ON_PREPARE	0x01
+#define PM_GENPD_POST_POWER_ON		0x02
+#define PM_GENPD_POWER_OFF_PREPARE	0x03
+#define PM_GENPD_POST_POWER_OFF		0x04
+
 enum gpd_status {
 	GPD_STATE_ACTIVE = 0,	/* PM domain is active */
 	GPD_STATE_POWER_OFF,	/* PM domain is off */
@@ -97,6 +103,7 @@ struct gpd_timing_data {
 struct pm_domain_data {
 	struct list_head list_node;
 	struct device *dev;
+	struct blocking_notifier_head notify_chain_head;
 };
 
 struct generic_pm_domain_data {
@@ -131,6 +138,11 @@ extern void pm_genpd_init(struct generic_pm_domain *genpd,
 			  struct dev_power_governor *gov, bool is_off);
 
 extern struct dev_power_governor simple_qos_governor;
+extern int pm_genpd_register_notifier(struct device *dev,
+				      struct notifier_block *nb);
+extern void pm_genpd_unregister_notifier(struct device *dev,
+					struct notifier_block *nb);
+
 extern struct dev_power_governor pm_domain_always_on_gov;
 #else
 
@@ -167,6 +179,14 @@ static inline void pm_genpd_init(struct generic_pm_domain *genpd,
 				 struct dev_power_governor *gov, bool is_off)
 {
 }
+static inline int pm_genpd_register_notifier(struct device *dev,
+					     struct notifier_block *nb)
+{
+	return -ENOSYS;
+}
+static inline void pm_genpd_unregister_notifier(struct device *dev,
+						struct notifier_block *nb) {}
+
 #endif
 
 static inline int pm_genpd_add_device(struct generic_pm_domain *genpd,

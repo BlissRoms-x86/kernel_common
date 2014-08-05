@@ -27,6 +27,7 @@
 #include <linux/wait.h>
 #include <linux/timer.h>
 #include <linux/completion.h>
+#include <linux/notifier.h>
 
 /*
  * Callbacks for platform drivers to implement.
