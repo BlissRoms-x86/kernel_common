@@ -295,7 +295,8 @@ exit:
 
 static char const *seqname[] = {
 	"ERROR", "S5", "S3", "S0", "S5S3", "S3S0",
-	"S0S3", "S3S5", "STOP", "RUN", "PULSE", "TEST", "KONAMI",
+	"S0S3", "S3S5", "STOP", "RUN", "KONAMI",
+	"TAP", "PROGRAM",
 };
 
 static ssize_t sequence_show(struct device *dev,
@@ -390,6 +391,52 @@ exit:
 	return ret;
 }
 
+static ssize_t program_store(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	struct ec_params_lightbar *param;
+	struct cros_ec_dev *ec = container_of(
+			dev, struct cros_ec_dev, class_dev);
+	struct cros_ec_command *msg;
+	int bytes, ret;
+
+	if (count > EC_LB_PROG_LEN) {
+		dev_warn(dev, "Program is %u bytes, truncation will occur",
+			 (int) count);
+		bytes = EC_LB_PROG_LEN;
+	} else
+		bytes = count;
+
+	msg = alloc_lightbar_cmd_msg(ec);
+	if (!msg)
+		return -ENOMEM;
+
+	ret = lb_throttle();
+	if (ret)
+		goto exit;
+
+	dev_info(dev, "Copying %d byte program to EC", bytes);
+
+	param = (struct ec_params_lightbar *)msg->data;
+	param->cmd = LIGHTBAR_CMD_SET_PROGRAM;
+
+	param->set_program.size = bytes;
+	memcpy(param->set_program.data, buf, bytes);
+
+	ret = cros_ec_cmd_xfer(ec->ec_dev, msg);
+	if (ret < 0)
+		goto exit;
+	if (msg->result != EC_RES_SUCCESS) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = count;
+exit:
+	kfree(msg);
+	return ret;
+}
+
 /* Module initialization */
 
 static DEVICE_ATTR_RW(interval_msec);
@@ -397,12 +444,15 @@ static DEVICE_ATTR_RO(version);
 static DEVICE_ATTR_WO(brightness);
 static DEVICE_ATTR_WO(led_rgb);
 static DEVICE_ATTR_RW(sequence);
+static DEVICE_ATTR_WO(program);
+
 static struct attribute *__lb_cmds_attrs[] = {
 	&dev_attr_interval_msec.attr,
 	&dev_attr_version.attr,
 	&dev_attr_brightness.attr,
 	&dev_attr_led_rgb.attr,
 	&dev_attr_sequence.attr,
+	&dev_attr_program.attr,
 	NULL,
 };
 
