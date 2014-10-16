@@ -193,6 +193,12 @@ int cirrus_driver_load(struct drm_device *dev, unsigned long flags)
 
 	dev->mode_config.funcs = (void *)&cirrus_mode_funcs;
 
+	r = drm_vblank_init(dev, 1);
+	if (r) {
+		dev_err(&dev->pdev->dev, "Fatal error during vblank init: %d\n", r);
+		goto out;
+	}
+
 	return 0;
 out:
 	cirrus_driver_unload(dev);

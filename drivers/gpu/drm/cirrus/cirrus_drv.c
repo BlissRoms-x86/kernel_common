@@ -121,6 +121,7 @@ static int cirrus_pm_resume(struct device *dev)
 static const struct file_operations cirrus_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
+	.read = drm_read,
 	.release = drm_release,
 	.unlocked_ioctl = drm_ioctl,
 	.mmap = cirrus_mmap,
