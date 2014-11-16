@@ -61,7 +61,6 @@ static const int firmware_image_count = ARRAY_SIZE(firmware_images);
 static int cros_ec_pd_get_status(struct device *dev,
 				 struct cros_ec_dev *pd_dev,
 				 int port,
-				 uint32_t *result,
 				 struct ec_params_usb_pd_rw_hash_entry
 					*hash_entry)
 {
@@ -71,7 +70,7 @@ static int cros_ec_pd_get_status(struct device *dev,
 
 	msg = kzalloc(sizeof(*msg) + sizeof(*info_request), GFP_KERNEL);
 	if (!msg)
-		return -ENOMEM;
+		return -EC_RES_ERROR;
 
 	info_request = (struct ec_params_usb_pd_info_request *)msg->data;
 	info_request->port = port;
@@ -84,11 +83,13 @@ static int cros_ec_pd_get_status(struct device *dev,
 	if (ret < 0) {
 		dev_err(dev, "Unable to get device status (err:%d)\n", ret);
 		goto error;
+	} else if (msg->result) {
+		ret = -EECRESULT - msg->result;
+		goto error;
 	}
 
 	memcpy(hash_entry, msg->data, sizeof(*hash_entry));
-	*result = msg->result;
-	ret = 0;
+	ret = EC_RES_SUCCESS;
 error:
 	kfree(msg);
 	return ret;
@@ -126,9 +127,15 @@ static int cros_ec_pd_send_hash_entry(struct device *dev,
 	memcpy(hash_entry->dev_rw_hash, fw->hash, PD_RW_HASH_SIZE);
 
 	ret = cros_ec_cmd_xfer(pd_dev->ec_dev, msg);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(dev, "Unable to send device hash (err:%d)\n", ret);
-
+		goto error;
+	} else if ((msg->result)) {
+		ret = -EECRESULT - msg->result;
+		goto error;
+	}
+	ret = EC_RES_SUCCESS;
+error:
 	kfree(msg);
 	return ret;
 }
@@ -148,6 +155,7 @@ static int cros_ec_pd_send_fw_update_cmd(
 	uint8_t cmd,
 	uint32_t size)
 {
+	int ret;
 	struct ec_params_usb_pd_fw_update *pd_cmd =
 		(struct ec_params_usb_pd_fw_update *)msg->data;
 
@@ -155,7 +163,13 @@ static int cros_ec_pd_send_fw_update_cmd(
 	pd_cmd->size = size;
 	msg->outsize = pd_cmd->size + sizeof(*pd_cmd);
 
-	return cros_ec_cmd_xfer(pd_dev, msg);
+	ret = cros_ec_cmd_xfer(pd_dev, msg);
+	if (ret < 0)
+		return ret;
+	else if (msg->result)
+		return -EECRESULT - msg->result;
+	else
+		return EC_RES_SUCCESS;
 }
 
 
@@ -284,7 +298,6 @@ static void cros_ec_pd_update_check(struct work_struct *work)
 	const struct firmware *fw;
 	struct ec_params_usb_pd_rw_hash_entry hash_entry;
 	char *file;
-	uint32_t result;
 	int ret, port, i;
 	struct cros_ec_pd_update_data *drv_data =
 		container_of(to_delayed_work(work),
@@ -306,13 +319,12 @@ static void cros_ec_pd_update_check(struct work_struct *work)
 
 	/* Received notification, send command to check on PD status. */
 	for (port = 0; port < PD_MAX_PORTS; ++port) {
-		ret = cros_ec_pd_get_status(dev, pd_ec, port, &result,
-					    &hash_entry);
-		if (ret < 0) {
+		ret = cros_ec_pd_get_status(dev, pd_ec, port, &hash_entry);
+		if (ret > -EECRESULT && ret < 0) {
 			dev_err(dev, "Can't get device status (err:%d)\n",
 				ret);
 			return;
-		} else if (result == EC_RES_SUCCESS) {
+		} else if (ret == EC_RES_SUCCESS) {
 			if (hash_entry.dev_id == PD_DEVICE_TYPE_NONE)
 				i = PD_NO_IMAGE;
 			else
@@ -437,12 +449,10 @@ static umode_t cros_ec_pd_attrs_are_visible(struct kobject *kobj,
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct cros_ec_dev *ec = container_of(dev, struct cros_ec_dev,
 					      class_dev);
-	uint32_t result;
 	struct ec_params_usb_pd_rw_hash_entry hash_entry;
 
 	/* Check if a PD MCU is present */
-	if (cros_ec_pd_get_status(dev, ec, 0, &result, &hash_entry) == 0 &&
-	    result == EC_RES_SUCCESS) {
+	if (cros_ec_pd_get_status(dev, ec, 0, &hash_entry) == EC_RES_SUCCESS) {
 		/*
 		 * Save our ec pointer so we can conduct transactions.
 		 * TODO(shawnn): Find a better way to access the ec pointer.

@@ -41,6 +41,9 @@
 #define EC_MAX_REQUEST_OVERHEAD		1
 #define EC_MAX_RESPONSE_OVERHEAD	2
 
+/* ec_command return value for non-success result from EC */
+#define EECRESULT 1000
+
 /*
  * Command interface between EC and AP, for LPC, I2C and SPI interfaces.
  */
