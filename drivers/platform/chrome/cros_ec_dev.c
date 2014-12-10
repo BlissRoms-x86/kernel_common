@@ -227,7 +227,7 @@ static const struct mfd_cell cros_usb_pd_charger_devs[] = {
 	},
 };
 
-int cros_usb_pd_charger_idx;
+static int cros_usb_pd_charger_idx;
 
 static int cros_ec_usb_pd_charger_register(struct cros_ec_dev *ec)
 {
