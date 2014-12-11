@@ -597,30 +597,6 @@ static ssize_t dark_resume_active_store(struct device *dev,
 static DEVICE_ATTR(dark_resume_active, 0644,
 		   dark_resume_active_show, dark_resume_active_store);
 
-static ssize_t dark_resume_source_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	return dev->power.dark_resume && dev->power.dark_resume->is_source ?
-			sprintf(buf, "%s\n", _enabled) :
-			sprintf(buf, "%s\n", _disabled);
-}
-
-static ssize_t dark_resume_source_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t n)
-{
-	if (sysfs_streq(_enabled, buf) && dev->power.dark_resume)
-		dev_dark_resume_set_source(dev, true);
-	else if (sysfs_streq(_disabled, buf) && dev->power.dark_resume)
-		dev_dark_resume_set_source(dev, false);
-	else
-		return -EINVAL;
-	return n;
-}
-
-static DEVICE_ATTR(dark_resume_source, 0644,
-		   dark_resume_source_show, dark_resume_source_store);
-
 #endif /* CONFIG_PM_SLEEP */
 
 #ifdef CONFIG_PM_ADVANCED_DEBUG
@@ -726,17 +702,6 @@ static struct attribute *wakeup_attrs[] = {
 static struct attribute_group pm_wakeup_attr_group = {
 	.name	= power_group_name,
 	.attrs	= wakeup_attrs,
-};
-
-static struct attribute *dark_resume_source_attrs[] = {
-#ifdef CONFIG_PM_SLEEP
-	&dev_attr_dark_resume_source.attr,
-#endif
-	NULL,
-};
-static struct attribute_group pm_dark_resume_source_attr_group = {
-	.name	= power_group_name,
-	.attrs	= dark_resume_source_attrs,
 };
 
 static struct attribute *dark_resume_consumer_attrs[] = {
@@ -881,16 +846,6 @@ void dpm_sysfs_remove(struct device *dev)
 	rpm_sysfs_remove(dev);
 	sysfs_unmerge_group(&dev->kobj, &pm_wakeup_attr_group);
 	sysfs_remove_group(&dev->kobj, &pm_attr_group);
-}
-
-void dark_resume_source_sysfs_add(struct device *dev)
-{
-	sysfs_merge_group(&dev->kobj, &pm_dark_resume_source_attr_group);
-}
-
-void dark_resume_source_sysfs_remove(struct device *dev)
-{
-	sysfs_unmerge_group(&dev->kobj, &pm_dark_resume_source_attr_group);
 }
 
 void dark_resume_consumer_sysfs_add(struct device *dev)

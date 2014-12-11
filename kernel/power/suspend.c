@@ -249,7 +249,7 @@ static int suspend_test(int level)
 {
 #ifdef CONFIG_PM_DEBUG
 	if (pm_test_level == level) {
-		pm_dark_resume_clear_state_for_pm_test();
+		pm_dark_resume_set_enabled(false);
 		printk(KERN_INFO "suspend debug: Waiting for %d second(s).\n",
 				pm_test_delay);
 		mdelay(pm_test_delay * 1000);
