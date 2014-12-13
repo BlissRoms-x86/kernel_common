@@ -269,6 +269,9 @@ void *cirrus_gem_prime_vmap(struct drm_gem_object *obj);
 void cirrus_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr);
 int cirrus_gem_prime_pin(struct drm_gem_object *obj);
 
+int cirrus_gem_prime_mmap(struct drm_gem_object *obj,
+			  struct vm_area_struct *vma);
+
 extern int cirrus_bpp;
 
 #endif				/* __CIRRUS_DRV_H__ */
