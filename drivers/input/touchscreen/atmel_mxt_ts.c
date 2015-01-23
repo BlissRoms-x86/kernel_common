@@ -476,6 +476,12 @@ struct mxt_data {
 	/* for auto-calibration in suspend */
 	struct completion auto_cal_completion;
 
+	/*
+	 * Protects from concurrent firmware/config updates and
+	 * suspending/resuming.
+	 */
+	struct mutex fw_mutex;
+
 	/* firmware file name */
 	char *fw_file;
 
@@ -1426,9 +1432,6 @@ static int mxt_enter_bl(struct mxt_data *data)
 	struct device *dev = &client->dev;
 	int ret;
 
-	if (mxt_in_bootloader(data))
-		return 0;
-
 	disable_irq(data->irq);
 
 	if (data->input_dev) {
@@ -1475,8 +1478,6 @@ static void mxt_exit_bl(struct mxt_data *data)
 	struct device *dev = &client->dev;
 	int error;
 
-	if (!mxt_in_bootloader(data))
-		return;
 	init_completion(&data->bl_completion);
 
 	/* Wait for reset */
@@ -2268,22 +2269,16 @@ free_objects:
 	return ret;
 }
 
-static int mxt_load_config(struct mxt_data *data, const char *fn)
+static int mxt_load_config(struct mxt_data *data, const struct firmware *fw)
 {
-	struct i2c_client *client = data->client;
-	struct device *dev = &client->dev;
-	const struct firmware *fw = NULL;
+	struct device *dev = &data->client->dev;
 	int ret, ret2;
 	char *cfg_copy = NULL;
 	char *running;
 
-	ret = request_firmware(&fw, fn, dev);
-	if (ret) {
-		dev_err(dev, "Unable to open config file %s, %d\n", fn, ret);
+	ret = mutex_lock_interruptible(&data->fw_mutex);
+	if (ret)
 		return ret;
-	}
-
-	dev_info(dev, "Using config file %s (size = %zu)\n", fn, fw->size);
 
 	/* Make a mutable, '\0'-terminated copy of the config file */
 	cfg_copy = kmalloc(fw->size + 1, GFP_KERNEL);
@@ -2353,7 +2348,7 @@ register_input_dev:
 free_cfg_copy:
 	kfree(cfg_copy);
 err_alloc_copy:
-	release_firmware(fw);
+	mutex_unlock(&data->fw_mutex);
 	return ret;
 }
 
@@ -2664,37 +2659,49 @@ static ssize_t mxt_update_config_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-	struct mxt_data *data = dev_get_drvdata(dev);
-	ssize_t ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mxt_data *data = i2c_get_clientdata(client);
+	const struct firmware *fw;
+	int error;
 
-	ret = mxt_load_config(data, data->config_file);
-	if (ret)
-		dev_err(dev, "The config update failed (%zd)\n", ret);
+	error = request_firmware(&fw, data->config_file, dev);
+	if (error) {
+		dev_err(dev, "Unable to open config file %s, %d\n",
+			data->config_file, error);
+		return error;
+	}
+
+	dev_info(dev, "Using config file %s (size = %zu)\n",
+		 data->config_file, fw->size);
+
+	error = mxt_load_config(data, fw);
+	if (error)
+		dev_err(dev, "The config update failed (%d)\n", error);
 	else
 		dev_dbg(dev, "The config update succeeded\n");
 
-	return ret ?: count;
+	release_firmware(fw);
+	return error ?: count;
 }
 
-static int mxt_load_fw(struct device *dev, const char *fn)
+static int mxt_load_fw(struct mxt_data *data, const struct firmware *fw)
 {
-	struct mxt_data *data = dev_get_drvdata(dev);
 	struct i2c_client *client = data->client;
-	const struct firmware *fw = NULL;
+	struct device *dev = &client->dev;
 	unsigned int frame_size;
 	unsigned int pos = 0;
 	int ret;
 
-	ret = request_firmware(&fw, fn, dev);
-	if (ret) {
-		dev_err(dev, "Unable to open firmware %s\n", fn);
+	ret = mutex_lock_interruptible(&data->fw_mutex);
+	if (ret)
 		return ret;
-	}
 
-	ret = mxt_enter_bl(data);
-	if (ret) {
-		dev_err(dev, "Failed to enter bootloader, %d.\n", ret);
-		goto out;
+	if (!mxt_in_bootloader(data)) {
+		ret = mxt_enter_bl(data);
+		if (ret) {
+			dev_err(dev, "Failed to enter bootloader, %d.\n", ret);
+			goto out;
+		}
 	}
 
 	ret = mxt_check_bootloader(data, MXT_WAITING_BOOTLOAD_CMD);
@@ -2704,6 +2711,7 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 	}
 
 	init_completion(&data->bl_completion);
+
 	/* Unlock bootloader */
 	ret = mxt_unlock_bootloader(client);
 	if (ret) {
@@ -2748,30 +2756,39 @@ static int mxt_load_fw(struct device *dev, const char *fn)
 
 	/* Device exits bl mode to app mode only if successful */
 	mxt_exit_bl(data);
-out:
-	release_firmware(fw);
 
+out:
+	mutex_unlock(&data->fw_mutex);
 	return ret;
 }
 
 static ssize_t mxt_update_fw_store(struct device *dev,
-					struct device_attribute *attr,
-					const char *buf, size_t count)
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
 {
-	struct mxt_data *data = dev_get_drvdata(dev);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mxt_data *data = i2c_get_clientdata(client);
+	const struct firmware *fw;
 	char *envp[] = {"ERROR=1", NULL};
 	int error;
 
-	error = mxt_load_fw(dev, data->fw_file);
+	error = request_firmware(&fw, data->fw_file, dev);
+	if (error) {
+		dev_err(dev, "Unable to open firmware %s: %d\n",
+			data->fw_file, error);
+		return error;
+	}
+
+	error = mxt_load_fw(data, fw);
 	if (error) {
 		dev_err(dev, "The firmware update failed(%d)\n", error);
 		kobject_uevent_env(&dev->kobj, KOBJ_CHANGE, envp);
-		count = error;
 	} else {
 		dev_dbg(dev, "The firmware update succeeded\n");
 	}
 
-	return count;
+	release_firmware(fw);
+	return error ?: count;
 }
 
 static ssize_t mxt_suspend_acq_interval_ms_show(struct device *dev,
@@ -3692,6 +3709,8 @@ static int mxt_probe(struct i2c_client *client,
 	data->pdata = pdata;
 	data->irq = client->irq;
 
+	mutex_init(&data->fw_mutex);
+
 	init_completion(&data->bl_completion);
 	init_completion(&data->auto_cal_completion);
 
@@ -3877,7 +3896,7 @@ static int __maybe_unused mxt_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mxt_data *data = i2c_get_clientdata(client);
-	struct input_dev *input_dev = data->input_dev;
+	struct input_dev *input_dev;
 	const u8 T7_config_idle[3] = {
 			data->suspend_acq_interval,
 			data->suspend_acq_interval,
@@ -3887,6 +3906,29 @@ static int __maybe_unused mxt_suspend(struct device *dev)
 	int ret;
 
 	/*
+	 * fw_mutex protects, as part of firmware/config update procedures,
+	 * device transitions to and form bootloader mode and also
+	 * teardown and [re-]creation of input device.
+	 */
+	ret = mutex_lock_interruptible(&data->fw_mutex);
+	if (ret)
+		return ret;
+
+	if (mxt_in_bootloader(data))
+		goto out;
+
+	/*
+	 * Even if device is not in bootloader mode we may not have
+	 * input device created (no memory or something else). While
+	 * we might do something smart with the power in such case, is
+	 * should be not common occurrence so let's treat it the same
+	 * as when device is in bootloader mode and just exit.
+	 */
+	input_dev = data->input_dev;
+	if (!input_dev)
+		goto out;
+
+	/*
 	 * Note that holding mutex here is not strictly necessary
 	 * if inhibit/uninhibit/open/close can only be invoked by
 	 * userspace activity (as they currently are) and not from
@@ -3894,15 +3936,10 @@ static int __maybe_unused mxt_suspend(struct device *dev)
 	 * system suspend transition. But to be protected against
 	 * possible future changes we are taking the mutex anyway.
 	 */
-	ret = mutex_lock_interruptible(&input_dev->mutex);
-	if (ret)
-		return ret;
+	mutex_lock(&input_dev->mutex);
 
 	if (input_dev->inhibited)
-		goto out;
-
-	if (mxt_in_bootloader(data))
-		goto out;
+		goto out_unlock_input;
 
 	disable_irq(data->irq);
 
@@ -3960,8 +3997,10 @@ static int __maybe_unused mxt_suspend(struct device *dev)
 		mxt_stop(data);
 	}
 
-out:
+out_unlock_input:
 	mutex_unlock(&input_dev->mutex);
+out:
+	mutex_unlock(&data->fw_mutex);
 	return 0;
 }
 
@@ -3972,13 +4011,21 @@ static int __maybe_unused mxt_resume(struct device *dev)
 	struct input_dev *input_dev = data->input_dev;
 	int ret = 0;
 
-	mutex_lock(&input_dev->mutex);
-
-	if (input_dev->inhibited)
-		goto out;
+	ret = mutex_lock_interruptible(&data->fw_mutex);
+	if (ret)
+		return ret;
 
 	if (mxt_in_bootloader(data))
 		goto out;
+
+	input_dev = data->input_dev;
+	if (!input_dev)
+		goto out;
+
+	mutex_lock(&input_dev->mutex);
+
+	if (input_dev->inhibited)
+		goto out_unlock_input;
 
 	/* Process any pending message so that CHG line can be de-asserted */
 	ret = mxt_handle_messages(data, false);
@@ -4000,8 +4047,10 @@ static int __maybe_unused mxt_resume(struct device *dev)
 		data->irq_wake = false;
 	}
 
-out:
+out_unlock_input:
 	mutex_unlock(&input_dev->mutex);
+out:
+	mutex_unlock(&data->fw_mutex);
 	return 0;
 }
 
