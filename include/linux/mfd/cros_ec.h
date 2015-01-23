@@ -112,6 +112,10 @@ struct cros_ec_command {
  *     should check msg.result for the EC's result code.
  * @pkt_xfer: send packet to EC and get response
  * @lock: one transaction at a time
+ * @event_notifier: interrupt event notifier for transport devices.
+ * @event_data: data associated with the last event.
+ * @event event_type: type of MKBP event as defined by EC_MKBP_EVENT_ constants.
+ * @event_size: size in bytes of the event data.
  */
 struct cros_ec_device {
 
@@ -141,6 +145,12 @@ struct cros_ec_device {
 			struct cros_ec_command *msg);
 	struct power_supply *charger;
 	struct mutex lock;
+	bool mkbp_event_supported;
+	struct blocking_notifier_head event_notifier;
+
+	u8 *event_data;
+	u8 event_type;
+	int event_size;
 };
 
 /* struct cros_ec_platform - ChromeOS EC platform information
