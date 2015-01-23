@@ -246,11 +246,11 @@ static int get_ec_usb_pd_power_info(struct port_data *port)
 	port->psy_desc.type = port->psy_type;
 
 	dev_dbg(dev, "Port %d: Charging voltage: %dmV\n",
-		port->port_number, resp.voltage_now);
-	port->psy_voltage_now = resp.voltage_now;
+		port->port_number, resp.meas.voltage_now);
+	port->psy_voltage_now = resp.meas.voltage_now;
 	dev_dbg(dev, "Port %d: Max input current: %dmA\n",
-		port->port_number, resp.current_max);
-	port->psy_current_max = resp.current_max;
+		port->port_number, resp.meas.current_max);
+	port->psy_current_max = resp.meas.current_max;
 	dev_dbg(dev, "Port %d: Max input power: %dmW\n",
 		port->port_number, resp.max_power);
 	port->psy_power_max = resp.max_power;
