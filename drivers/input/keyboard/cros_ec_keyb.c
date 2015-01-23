@@ -165,7 +165,7 @@ static int cros_ec_keyb_get_state(struct cros_ec_keyb *ckdev, uint8_t *kb_state)
 	msg->insize = ckdev->cols;
 	msg->outsize = 0;
 
-	ret = cros_ec_cmd_xfer(ckdev->ec, msg);
+	ret = cros_ec_cmd_xfer_status(ckdev->ec, msg);
 	if (ret < 0) {
 		dev_err(ckdev->dev, "Error transferring EC message %d\n", ret);
 		goto exit;

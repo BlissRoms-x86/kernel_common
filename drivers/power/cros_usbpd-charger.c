@@ -96,8 +96,8 @@ int ec_command(struct charger_data *charger, int command,
 	if (outsize)
 		memcpy(msg->data, outdata, outsize);
 
-	ret = cros_ec_cmd_xfer(ec_device, msg);
-	if (!ret && insize)
+	ret = cros_ec_cmd_xfer_status(ec_device, msg);
+	if (ret > 0 && insize)
 		memcpy(indata, msg->data, insize);
 
 	kfree(msg);

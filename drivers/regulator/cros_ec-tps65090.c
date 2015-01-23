@@ -67,7 +67,7 @@ static int ec_tps65090_fet_is_enabled(struct regulator_dev *rdev)
 	msg->command = EC_CMD_LDO_GET;
 	msg->outsize = sizeof(*ec_data);
 	msg->insize = sizeof(*ec_info);
-	ret = ec->cmd_xfer(ec, msg);
+	ret = cros_ec_cmd_xfer_status(ec, msg);
 	if (ret < 0)
 		return ret;
 
@@ -95,7 +95,7 @@ static int ec_tps65090_fet_enable(struct regulator_dev *rdev)
 	msg->version = 0;
 	msg->command = EC_CMD_LDO_SET;
 	msg->outsize = sizeof(struct ec_params_ldo_set);
-	ret = ec->cmd_xfer(ec, msg);
+	ret = cros_ec_cmd_xfer_status(ec, msg);
 	kfree(msg);
 	return ret;
 }
@@ -118,7 +118,7 @@ static int ec_tps65090_fet_disable(struct regulator_dev *rdev)
 	msg->version = 0;
 	msg->command = EC_CMD_LDO_SET;
 	msg->outsize = sizeof(struct ec_params_ldo_set);
-	ret = ec->cmd_xfer(ec, msg);
+	ret = cros_ec_cmd_xfer_status(ec, msg);
 	kfree(msg);
 	return ret;
 }

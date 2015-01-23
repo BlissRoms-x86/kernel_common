@@ -116,7 +116,7 @@ static int get_ec_power_info(struct power_supply *psy,
 	msg->version = 0;
 	msg->command = EC_CMD_POWER_INFO;
 	msg->insize = sizeof(*ec_info);
-	ret = cros_ec_cmd_xfer(ec, msg);
+	ret = cros_ec_cmd_xfer_status(ec, msg);
 	if (ret < 0) {
 		dev_err(dev, "Unable to query EC power info (err:%d)\n",
 			ret);

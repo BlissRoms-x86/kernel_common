@@ -101,14 +101,9 @@ static int cros_ec_pd_command(struct device *dev,
 	if (outsize)
 		memcpy(msg->data, outdata, outsize);
 
-	ret = cros_ec_cmd_xfer(pd_dev->ec_dev, msg);
-	if (ret < 0) {
-		dev_err(dev, "Command xfer error (err:%d)\n", ret);
+	ret = cros_ec_cmd_xfer_status(pd_dev->ec_dev, msg);
+	if (ret < 0)
 		goto error;
-	} else if (msg->result) {
-		ret = -EECRESULT - msg->result;
-		goto error;
-	}
 
 	if (insize)
 		memcpy(indata, msg->data, insize);
