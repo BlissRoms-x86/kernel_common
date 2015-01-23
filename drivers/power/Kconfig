@@ -315,6 +315,7 @@ config CHARGER_CROS_EC
 config CHARGER_CROS_USB_PD
 	tristate "Chrome OS EC based USB PD charger"
 	depends on MFD_CROS_EC
+	select RTC_LIB
 	default n
 	help
 	  Say Y here to enable Chrome OS EC based USB PD charger
