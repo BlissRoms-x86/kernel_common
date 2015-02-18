@@ -589,7 +589,7 @@ static int cros_usb_pd_charger_probe(struct platform_device *pd)
 		psy_cfg.supplied_to = charger_supplied_to;
 		psy_cfg.num_supplicants = ARRAY_SIZE(charger_supplied_to);
 
-		psy = power_supply_register(dev, psy_desc, &psy_cfg);
+		psy = power_supply_register_no_ws(dev, psy_desc, &psy_cfg);
 		if (IS_ERR(psy)) {
 			dev_err(dev, "Failed to register power supply\n");
 			continue;
