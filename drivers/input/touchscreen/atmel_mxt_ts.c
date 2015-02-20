@@ -1265,6 +1265,8 @@ static void mxt_input_touchevent_T100(struct mxt_data *data, u8 *message)
 		pressure = 0;
 	} else {
 		distance = DISTANCE_ACTIVE_TOUCH;
+		if (pressure == 0 && is_hovering_supported(data))
+			pressure = 1;
 	}
 
 	dev_dbg(dev,
