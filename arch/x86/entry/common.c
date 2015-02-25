@@ -377,6 +377,14 @@ __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 		nr = syscall_trace_enter(regs);
 	}
 
+#ifdef CONFIG_ALT_SYSCALL
+	if (likely(nr <= ti->ia32_nr_syscalls)) {
+		regs->ax = ti->ia32_sys_call_table[nr](
+			(unsigned int)regs->bx, (unsigned int)regs->cx,
+			(unsigned int)regs->dx, (unsigned int)regs->si,
+			(unsigned int)regs->di, (unsigned int)regs->bp);
+	}
+#else
 	if (likely(nr < IA32_NR_syscalls)) {
 		/*
 		 * It's possible that a 32-bit syscall implementation
@@ -389,6 +397,7 @@ __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 			(unsigned int)regs->dx, (unsigned int)regs->si,
 			(unsigned int)regs->di, (unsigned int)regs->bp);
 	}
+#endif
 
 	syscall_return_slowpath(regs);
 }
