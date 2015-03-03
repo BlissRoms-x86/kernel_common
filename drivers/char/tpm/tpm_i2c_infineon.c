@@ -107,11 +107,10 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 		.len = len,
 		.buf = buffer
 	};
-	struct i2c_msg msgs[] = {msg1, msg2};
 
 	int rc = 0;
 	int count;
-	int adapterlimit = len;
+	unsigned int adapterlimit = len;
 
 	/* Lock the adapter for the duration of the whole sequence. */
 	if (!tpm_dev.client->adapter->algo->master_xfer)
@@ -137,18 +136,19 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 		 * retrieving the data
 		 */
 		for (count = 0; count < MAX_COUNT; count++) {
+			unsigned int msglen = msg2.len =
+					min_t(unsigned int, adapterlimit, len);
 			usleep_range(SLEEP_DURATION_LOW, SLEEP_DURATION_HI);
-			msg2.len = min(adapterlimit, len);
 			rc = __i2c_transfer(tpm_dev.client->adapter, &msg2, 1);
 			if (rc > 0) {
 				/* Since len is unsigned, make doubly sure we
 				 * do not underflow it.
 				 */
-				if (msg2.len > len)
+				if (msglen > len)
 					len = 0;
 				else
-					len -= msg2.len;
-				msg2.buf += msg2.len;
+					len -= msglen;
+				msg2.buf += msglen;
 				break;
 			}
 			/* If the I2C adapter rejected the request,
@@ -156,7 +156,7 @@ static int iic_tpm_read(u8 addr, u8 *buffer, size_t len)
 			 */
 			if (rc == -EINVAL) {
 				adapterlimit = (adapterlimit + 1) / 2;
-				adapterlimit = max(adapterlimit, 32);
+				adapterlimit = max(adapterlimit, 32U);
 			}
 		}
 		if (rc <= 0)
