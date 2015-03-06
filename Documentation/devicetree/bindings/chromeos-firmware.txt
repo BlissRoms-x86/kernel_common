@@ -13,10 +13,8 @@ Required properties:
 
 Optional properties:
 
-  - chromeos-vbc-blk : If nonvolatile-context-storage is "disk", kernel should
-    look for the block device used for storing vboot context in this property.
-    It is a 4-tuple of block device phandle, LBA of the block storing vboot
-    context, byte offset in the block, and size of vboot context in bytes.
+  - recovery-switch : Describe the recovery switch GPIO of the system.
+  - developer-switch : Describe the developer switch GPIO of the system.
 
 Example:
 
@@ -25,5 +23,17 @@ firmware {
 		write-protect-gpio = <&gpd1 6 0 0x10000 0>;
 		nonvolatile-context-storage = "disk";
 		chromeos-vbc-blk = <&mshc_0 0 0 16>;
+	};
+};
+
+Example:
+
+firmware {
+	chromeos {
+		pinctrl-0 = <&fw_pins>;
+		pinctrl-names = "default";
+		write-protect-gpio = <&qcom_pinmux 17 1>;
+		recovery-switch = <&qcom_pinmux 16 1>;
+		developer-switch = <&qcom_pinmux 15 1>;
 	};
 };
