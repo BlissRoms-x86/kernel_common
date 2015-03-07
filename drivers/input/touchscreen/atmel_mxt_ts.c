@@ -1286,6 +1286,7 @@ static void mxt_input_touchevent_T100(struct mxt_data *data, u8 *message)
 		x, y, area, pressure, touch_major, vector1, vector2);
 
 
+	data->current_id[id] = status & TOUCH_STATUS_DETECT;
 	if (touch_type != TOUCH_STATUS_TYPE_STYLUS) {
 		if (status & TOUCH_STATUS_DETECT) {
 			if (event & TOUCH_STATUS_EVENT_MOVE ||
@@ -1293,8 +1294,6 @@ static void mxt_input_touchevent_T100(struct mxt_data *data, u8 *message)
 					event & TOUCH_STATUS_EVENT_UNSUP ||
 					event == 0x00) {
 				input_mt_slot(input_dev, id);
-				data->current_id[id] =
-						status & TOUCH_STATUS_DETECT;
 				input_mt_report_slot_state(
 					input_dev, MT_TOOL_FINGER, true);
 				input_report_abs(input_dev,
