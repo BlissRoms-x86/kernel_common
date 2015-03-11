@@ -206,4 +206,6 @@ source "drivers/mux/Kconfig"
 
 source "drivers/mux/Kconfig"
 
+source "drivers/tee/Kconfig"
+
 endmenu
