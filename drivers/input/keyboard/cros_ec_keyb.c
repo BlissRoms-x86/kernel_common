@@ -32,6 +32,7 @@
 #include <linux/input/matrix_keypad.h>
 #include <linux/mfd/cros_ec.h>
 #include <linux/mfd/cros_ec_commands.h>
+#include <linux/mfd/cros_ec_dev.h>
 
 /*
  * @rows: Number of rows in the keypad
