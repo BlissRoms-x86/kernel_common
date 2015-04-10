@@ -569,7 +569,6 @@ static int rmi_event(struct hid_device *hdev, struct hid_field *field,
 	return 0;
 }
 
-#ifdef CONFIG_PM
 static int rmi_set_sleep_mode(struct hid_device *hdev, int sleep_mode)
 {
 	struct rmi_data *data = hid_get_drvdata(hdev);
@@ -588,6 +587,7 @@ static int rmi_set_sleep_mode(struct hid_device *hdev, int sleep_mode)
 	return 0;
 }
 
+#ifdef CONFIG_PM
 static int rmi_suspend(struct hid_device *hdev, pm_message_t message)
 {
 	struct rmi_data *data = hid_get_drvdata(hdev);
@@ -601,11 +601,12 @@ static int rmi_suspend(struct hid_device *hdev, pm_message_t message)
 	else
 		memcpy(data->f11_ctrl_regs, buf, RMI_F11_CTRL_REG_COUNT);
 
+	mutex_lock(&data->input->mutex);
+	if (!device_may_wakeup(hdev->dev.parent) && !data->input->inhibited)
+		ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
 
-	if (!device_may_wakeup(hdev->dev.parent))
-		return rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
-
-	return 0;
+	mutex_unlock(&data->input->mutex);
+	return ret;
 }
 
 static int rmi_post_reset(struct hid_device *hdev)
@@ -627,14 +628,14 @@ static int rmi_post_reset(struct hid_device *hdev)
 				"can not write F11 control registers after reset\n");
 	}
 
-	if (!device_may_wakeup(hdev->dev.parent)) {
+	mutex_lock(&data->input->mutex);
+	if (!device_may_wakeup(hdev->dev.parent) && !data->input->inhibited) {
 		ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_NORMAL);
-		if (ret) {
+		if (ret)
 			hid_err(hdev, "can not write sleep mode\n");
-			return ret;
-		}
 	}
 
+	mutex_unlock(&data->input->mutex);
 	return ret;
 }
 
@@ -1173,6 +1174,20 @@ static int rmi_populate(struct hid_device *hdev)
 	return 0;
 }
 
+static int rmi_inhibit(struct input_dev *input)
+{
+	struct hid_device *hdev = input_get_drvdata(input);
+
+	return rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
+}
+
+static int rmi_uninhibit(struct input_dev *input)
+{
+	struct hid_device *hdev = input_get_drvdata(input);
+
+	return rmi_set_sleep_mode(hdev, RMI_SLEEP_NORMAL);
+}
+
 static int rmi_input_configured(struct hid_device *hdev, struct hid_input *hi)
 {
 	struct rmi_data *data = hid_get_drvdata(hdev);
@@ -1181,6 +1196,9 @@ static int rmi_input_configured(struct hid_device *hdev, struct hid_input *hi)
 	int res_x, res_y, i;
 
 	data->input = input;
+
+	input->inhibit = rmi_inhibit;
+	input->uninhibit = rmi_uninhibit;
 
 	hid_dbg(hdev, "Opening low level driver\n");
 	ret = hid_hw_open(hdev);
