@@ -39,13 +39,6 @@ void cirrus_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
 	ttm_bo_kunmap(&cirrusbo->dma_buf_vmap);
 }
 
-struct drm_gem_object *cirrus_gem_prime_import_sg_table(struct drm_device *dev,
-							size_t size,
-							struct sg_table *sg)
-{
-	return NULL;
-}
-
 int cirrus_gem_prime_pin(struct drm_gem_object *obj)
 {
 	struct cirrus_bo *cirrusbo = gem_to_cirrus_bo(obj);

@@ -152,7 +152,6 @@ static struct drm_driver driver = {
 	.gem_prime_import = drm_gem_prime_import,
 	.gem_prime_pin = cirrus_gem_prime_pin,
 	.gem_prime_get_sg_table = cirrus_gem_prime_get_sg_table,
-	.gem_prime_import_sg_table = cirrus_gem_prime_import_sg_table,
 	.gem_prime_vmap = cirrus_gem_prime_vmap,
 	.gem_prime_vunmap = cirrus_gem_prime_vunmap,
 };
