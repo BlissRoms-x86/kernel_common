@@ -4,7 +4,8 @@ obj-$(CONFIG_CHROMEOS_OF_FIRMWARE) += chromeos_arm.o
 obj-$(CONFIG_CHROMEOS_LAPTOP)	+= chromeos_laptop.o
 obj-$(CONFIG_CHROMEOS_PSTORE)	+= chromeos_pstore.o
 cros_ec_ctl-objs		:= cros_ec_dev.o cros_ec_sysfs.o \
-				   cros_ec_lightbar.o cros_ec_vbc.o
+				   cros_ec_lightbar.o cros_ec_vbc.o \
+				   cros_ec_debugfs.o
 obj-$(CONFIG_CROS_EC_CHARDEV)   += cros_ec_ctl.o
 cros_ec_lpcs-y		+= cros_ec_lpc.o cros_ec_lpc_reg.o
 cros_ec_lpcs-$(CONFIG_CROS_EC_LPC_MEC)	+= cros_ec_lpc_mec.o
