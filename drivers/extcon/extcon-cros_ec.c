@@ -14,16 +14,17 @@
  *
  */
 
+#include <asm/unaligned.h>
 #include <linux/extcon.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
 #include <linux/mfd/cros_ec.h>
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
+#include <linux/notifier.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <linux/workqueue.h>
 
 #define CROS_EC_USB_POLLING_DELAY msecs_to_jiffies(1000)
 
@@ -39,7 +40,7 @@ struct cros_ec_extcon_info {
 
 	struct cros_ec_device *ec;
 
-	struct delayed_work poll_work;
+	struct notifier_block notifier;
 
 	unsigned int role;
 };
@@ -167,24 +168,17 @@ static const char *cros_ec_usb_role_string(unsigned int role)
 		(DATA_ROLE_DFP == role ? "DFP" : "UFP");
 }
 
-static void extcon_cros_ec_detect_cable(struct work_struct *work)
+static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 {
-	struct cros_ec_extcon_info *info;
-	struct device *dev;
-	struct cros_ec_device *ec;
+	struct device *dev = info->dev;
+	struct cros_ec_device *ec = info->ec;
 	int err;
 	unsigned int role;
-
-	info = container_of(to_delayed_work(work),
-			    struct cros_ec_extcon_info,
-			    poll_work);
-	dev = info->dev;
-	ec = info->ec;
 
 	err = cros_ec_usb_get_role(dev, ec, 0, &role);
 	if (err) {
 		dev_err(dev, "failed getting role err = %d\n", err);
-		goto resched;
+		return;
 	}
 
 	if (info->role != role) {
@@ -204,9 +198,33 @@ static void extcon_cros_ec_detect_cable(struct work_struct *work)
 		extcon_set_cable_state_(info->edev, EXTCON_USB,
 					device_connected);
 	}
+}
 
-resched:
-	schedule_delayed_work(&info->poll_work, CROS_EC_USB_POLLING_DELAY);
+static int extcon_cros_ec_event(struct notifier_block *nb,
+	unsigned long queued_during_suspend, void *_notify)
+{
+	struct cros_ec_extcon_info *info;
+	struct device *dev;
+	struct cros_ec_device *ec;
+	u32 host_event;
+
+	info = container_of(nb, struct cros_ec_extcon_info, notifier);
+	dev = info->dev;
+	ec = info->ec;
+
+	if (ec->event_type != EC_MKBP_EVENT_HOST_EVENT)
+		return NOTIFY_DONE;
+	if (ec->event_size != sizeof(u32)) {
+		dev_warn(dev, "Invalid host event size\n");
+		return NOTIFY_DONE;
+	}
+	host_event = get_unaligned_le32(ec->event_data);
+	if (!(host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)))
+		return NOTIFY_DONE;
+
+	extcon_cros_ec_detect_cable(info);
+
+	return NOTIFY_OK;
 }
 
 static int extcon_cros_ec_probe(struct platform_device *pdev)
@@ -252,12 +270,15 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, info);
 
-	/* Poll for data role state periodically */
-	INIT_DELAYED_WORK(&info->poll_work,
-			  extcon_cros_ec_detect_cable);
+	/* Get PD events from the EC */
+	info->notifier.notifier_call = extcon_cros_ec_event;
+	ret = blocking_notifier_chain_register(&info->ec->event_notifier,
+					       &info->notifier);
+	if (ret < 0)
+		dev_warn(dev, "failed to register notifier\n");
 
 	/* Perform initial detection */
-	extcon_cros_ec_detect_cable(&info->poll_work.work);
+	extcon_cros_ec_detect_cable(info);
 
 	return 0;
 }
@@ -267,7 +288,8 @@ static int extcon_cros_ec_remove(struct platform_device *pdev)
 {
 	struct cros_ec_extcon_info *info = platform_get_drvdata(pdev);
 
-	cancel_delayed_work_sync(&info->poll_work);
+	blocking_notifier_chain_unregister(&info->ec->event_notifier,
+					   &info->notifier);
 
 	return 0;
 }
