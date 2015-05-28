@@ -607,9 +607,18 @@ static void cpufreq_interactive_boost(struct cpufreq_interactive_tunables *tunab
 		struct cpufreq_interactive_tunables *this_tunable;
 
 		pcpu = &per_cpu(cpuinfo, i);
+		if (!down_read_trylock(&pcpu->enable_sem))
+			continue;
+		if (!pcpu->governor_enabled) {
+			up_read(&pcpu->enable_sem);
+			continue;
+		}
+
 		if (tunables) {
-			if (tunables != pcpu->policy->governor_data)
+			if (tunables != pcpu->policy->governor_data) {
+				up_read(&pcpu->enable_sem);
 				continue;
+			}
 		}
 		this_tunable = pcpu->policy->governor_data;
 		this_tunable->boosted = true;
@@ -623,6 +632,8 @@ static void cpufreq_interactive_boost(struct cpufreq_interactive_tunables *tunab
 			anyboost = 1;
 		}
 		spin_unlock_irqrestore(&pcpu->target_freq_lock, flags[1]);
+
+		up_read(&pcpu->enable_sem);
 	}
 
 	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags[0]);
