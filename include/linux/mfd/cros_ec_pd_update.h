@@ -49,6 +49,7 @@ struct cros_ec_pd_update_data {
 
 	struct delayed_work work;
 	struct workqueue_struct *workqueue;
+	struct notifier_block notifier;
 
 	int num_ports;
 	int force_update;

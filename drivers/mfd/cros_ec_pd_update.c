@@ -16,6 +16,7 @@
  * related to auto-updating its firmware.
  */
 
+#include <asm/unaligned.h>
 #include <linux/acpi.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -25,6 +26,8 @@
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/mfd/cros_ec_pd_update.h>
 #include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
 
 /* Store our PD device pointer so we can send update-related commands. */
 static struct cros_ec_dev *pd_ec;
@@ -673,22 +676,21 @@ done:
 }
 
 /**
- * acpi_cros_ec_pd_notify - Called upon receiving an ACPI event (typically
+ * cros_ec_pd_notify - Called upon receiving a PD MCU event (typically
  * due to PD device insertion). Queue a delayed task to check if a PD
  * device FW update is necessary.
  */
-static void acpi_cros_ec_pd_notify(struct acpi_device *acpi_device, u32 event)
+static void cros_ec_pd_notify(struct device *dev, u32 event)
 {
 	struct cros_ec_pd_update_data *drv_data =
 		(struct cros_ec_pd_update_data *)
-		dev_get_drvdata(&acpi_device->dev);
+		dev_get_drvdata(dev);
 
 	if (drv_data)
 		queue_delayed_work(drv_data->workqueue, &drv_data->work,
 				   PD_UPDATE_CHECK_DELAY);
 	else
-		dev_warn(&acpi_device->dev,
-			"ACPI notification skipped due to missing drv_data\n");
+		dev_warn(dev, "PD notification skipped due to missing drv_data\n");
 }
 
 static ssize_t disable_firmware_update(struct device *dev,
@@ -727,19 +729,19 @@ static struct attribute *pd_attrs[] = {
 
 ATTRIBUTE_GROUPS(pd);
 
-static int acpi_cros_ec_pd_add(struct acpi_device *acpi_device)
+static int cros_ec_pd_add(struct device *dev)
 {
 	struct cros_ec_pd_update_data *drv_data;
 	int ret, i;
 
 	drv_data =
-		devm_kzalloc(&acpi_device->dev, sizeof(*drv_data), GFP_KERNEL);
+		devm_kzalloc(dev, sizeof(*drv_data), GFP_KERNEL);
 	if (!drv_data) {
 		ret = -ENOMEM;
 		goto fail;
 	}
 
-	drv_data->dev = &acpi_device->dev;
+	drv_data->dev = dev;
 	INIT_DELAYED_WORK(&drv_data->work, cros_ec_pd_update_check);
 	drv_data->workqueue =
 		create_singlethread_workqueue("cros_ec_pd_update");
@@ -751,11 +753,10 @@ static int acpi_cros_ec_pd_add(struct acpi_device *acpi_device)
 		goto fail;
 	}
 	drv_data->force_update = 1;
-	dev_set_drvdata(&acpi_device->dev, drv_data);
-	ret = sysfs_create_groups(&acpi_device->dev.kobj, pd_groups);
+	dev_set_drvdata(dev, drv_data);
+	ret = sysfs_create_groups(&dev->kobj, pd_groups);
 	if (ret) {
-		dev_err(&acpi_device->dev, "failed to create sysfs attributes: %d\n",
-			ret);
+		dev_err(dev, "failed to create sysfs attributes: %d\n", ret);
 		goto fail;
 	}
 
@@ -775,13 +776,13 @@ static int acpi_cros_ec_pd_add(struct acpi_device *acpi_device)
 
 fail:
 	if (drv_data) {
-		dev_set_drvdata(&acpi_device->dev, NULL);
-		devm_kfree(&acpi_device->dev, drv_data);
+		dev_set_drvdata(dev, NULL);
+		devm_kfree(dev, drv_data);
 	}
 	return ret;
 }
 
-static int acpi_cros_ec_pd_resume(struct device *dev)
+static int cros_ec_pd_resume(struct device *dev)
 {
 	struct cros_ec_pd_update_data *drv_data =
 		(struct cros_ec_pd_update_data *)dev_get_drvdata(dev);
@@ -794,18 +795,18 @@ static int acpi_cros_ec_pd_resume(struct device *dev)
 	return 0;
 }
 
-static int acpi_cros_ec_pd_remove(struct acpi_device *acpi_device)
+static int cros_ec_pd_remove(struct device *dev)
 {
 	struct cros_ec_pd_update_data *drv_data =
 		(struct cros_ec_pd_update_data *)
-		dev_get_drvdata(&acpi_device->dev);
+		dev_get_drvdata(dev);
 
 	if (drv_data)
 		flush_delayed_work(&drv_data->work);
 	return 0;
 }
 
-static int acpi_cros_ec_pd_suspend(struct device *dev)
+static int cros_ec_pd_suspend(struct device *dev)
 {
 	struct cros_ec_pd_update_data *drv_data =
 		(struct cros_ec_pd_update_data *)dev_get_drvdata(dev);
@@ -880,19 +881,31 @@ struct attribute_group cros_ec_pd_attr_group = {
 	.is_visible = cros_ec_pd_attrs_are_visible,
 };
 
-/**
- * TODO(shawnn): Find an alternative notification method for devices which
- * don't use ACPI.
- */
+static SIMPLE_DEV_PM_OPS(cros_ec_pd_pm,
+	cros_ec_pd_suspend, cros_ec_pd_resume);
+
+#ifdef CONFIG_ACPI
+static void acpi_cros_ec_pd_notify(struct acpi_device *acpi_device, u32 event)
+{
+	cros_ec_pd_notify(&acpi_device->dev, event);
+}
+
+static int acpi_cros_ec_pd_add(struct acpi_device *acpi_device)
+{
+	return cros_ec_pd_add(&acpi_device->dev);
+}
+
+static int acpi_cros_ec_pd_remove(struct acpi_device *acpi_device)
+{
+	return cros_ec_pd_remove(&acpi_device->dev);
+}
+
 static const struct acpi_device_id pd_device_ids[] = {
 	{ "GOOG0003", 0 },
 	{ }
 };
 
 MODULE_DEVICE_TABLE(acpi, pd_device_ids);
-
-static SIMPLE_DEV_PM_OPS(acpi_cros_ec_pd_pm,
-	acpi_cros_ec_pd_suspend, acpi_cros_ec_pd_resume);
 
 static struct acpi_driver acpi_cros_ec_pd_driver = {
 	.name = "cros_ec_pd_update",
@@ -903,10 +916,93 @@ static struct acpi_driver acpi_cros_ec_pd_driver = {
 		.remove = acpi_cros_ec_pd_remove,
 		.notify = acpi_cros_ec_pd_notify,
 	},
-	.drv.pm = &acpi_cros_ec_pd_pm,
+	.drv.pm = &cros_ec_pd_pm,
 };
 
 module_acpi_driver(acpi_cros_ec_pd_driver);
+#else /* CONFIG_ACPI */
+static int _ec_pd_notify(struct notifier_block *nb,
+	unsigned long queued_during_suspend, void *_notify)
+{
+	struct cros_ec_pd_update_data *drv_data;
+	struct device *dev;
+	struct cros_ec_device *ec;
+	u32 host_event;
+
+	drv_data = container_of(nb, struct cros_ec_pd_update_data, notifier);
+	dev = drv_data->dev;
+	ec = dev_get_drvdata(dev->parent);
+
+	if (ec->event_type != EC_MKBP_EVENT_HOST_EVENT)
+		return NOTIFY_DONE;
+	if (ec->event_size != sizeof(u32)) {
+		dev_warn(dev, "Invalid host event size\n");
+		return NOTIFY_DONE;
+	}
+	host_event = get_unaligned_le32(ec->event_raw_data+1);
+	if (!(host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)))
+		return NOTIFY_DONE;
+
+	cros_ec_pd_notify(dev, host_event);
+
+	return NOTIFY_OK;
+}
+
+static int plat_cros_ec_pd_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct cros_ec_device *ec = dev_get_drvdata(dev->parent);
+	struct cros_ec_pd_update_data *drv_data =
+		(struct cros_ec_pd_update_data *)dev_get_drvdata(dev);
+	int ret;
+
+	ret = cros_ec_pd_add(dev);
+	if (ret < 0)
+		return ret;
+
+	drv_data = (struct cros_ec_pd_update_data *)dev_get_drvdata(dev);
+	/* Get PD events from the EC */
+	drv_data->notifier.notifier_call = _ec_pd_notify;
+	ret = blocking_notifier_chain_register(&ec->event_notifier,
+					       &drv_data->notifier);
+	if (ret < 0)
+		dev_warn(dev, "failed to register notifier\n");
+
+	return 0;
+}
+
+static int plat_cros_ec_pd_remove(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct cros_ec_device *ec = dev_get_drvdata(dev->parent);
+	struct cros_ec_pd_update_data *drv_data =
+		(struct cros_ec_pd_update_data *)dev_get_drvdata(dev);
+
+	blocking_notifier_chain_unregister(&ec->event_notifier,
+					   &drv_data->notifier);
+
+	return cros_ec_pd_remove(dev);
+}
+
+static const struct of_device_id cros_ec_pd_of_match[] = {
+	{ .compatible = "google,cros-ec-pd-update" },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, cros_ec_pd_of_match);
+
+static struct platform_driver cros_ec_pd_driver = {
+	.driver = {
+		.name  = "cros-ec-pd-update",
+		.of_match_table = of_match_ptr(cros_ec_pd_of_match),
+		.pm = &cros_ec_pd_pm,
+	},
+	.remove  = plat_cros_ec_pd_remove,
+	.probe   = plat_cros_ec_pd_probe,
+};
+
+module_platform_driver(cros_ec_pd_driver);
+
+#endif /* CONFIG_ACPI */
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("ChromeOS power device FW update driver");
