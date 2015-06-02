@@ -761,6 +761,11 @@ struct v4l2_event32 {
 	__u32				type;
 	union {
 		compat_s64		value64;
+		struct v4l2_event_vsync		vsync;
+		struct v4l2_event_ctrl		ctrl;
+		struct v4l2_event_frame_sync	frame_sync;
+		struct v4l2_event_src_change	src_change;
+		struct v4l2_event_motion_det	motion_det;
 		__u8			data[64];
 	} u;
 	__u32				pending;
@@ -773,9 +778,25 @@ struct v4l2_event32 {
 static int put_v4l2_event32(struct v4l2_event *kp, struct v4l2_event32 __user *up)
 {
 	if (!access_ok(VERIFY_WRITE, up, sizeof(struct v4l2_event32)) ||
-		put_user(kp->type, &up->type) ||
-		copy_to_user(&up->u, &kp->u, sizeof(kp->u)) ||
-		put_user(kp->pending, &up->pending) ||
+		put_user(kp->type, &up->type))
+			return -EFAULT;
+	/* We can simply memcpy the union because there are no paddings between
+	 * the members of the structs that belong to the union. */
+	if (kp->type == V4L2_EVENT_VSYNC ||
+			kp->type == V4L2_EVENT_EOS ||
+			kp->type == V4L2_EVENT_CTRL ||
+			kp->type == V4L2_EVENT_FRAME_SYNC ||
+			kp->type == V4L2_EVENT_SOURCE_CHANGE ||
+			kp->type == V4L2_EVENT_MOTION_DET ||
+			kp->type >= V4L2_EVENT_PRIVATE_START) {
+		if (copy_to_user(&up->u, &kp->u, sizeof(kp->u)))
+			return -EFAULT;
+	} else {
+		pr_info("compat_ioctl32: unexpected VIDIOC_DQEVENT type %d\n",
+			kp->type);
+		return -EINVAL;
+	}
+	if (put_user(kp->pending, &up->pending) ||
 		put_user(kp->sequence, &up->sequence) ||
 		compat_put_timespec(&kp->timestamp, &up->timestamp) ||
 		put_user(kp->id, &up->id) ||
