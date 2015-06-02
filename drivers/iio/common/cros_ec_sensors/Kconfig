@@ -1,0 +1,12 @@
+#
+# Chrome OS Embedded Controller managed sensors library
+#
+config IIO_CROS_EC_SENSORS
+	tristate "ChromeOS EC Sensors"
+	depends on SYSFS && MFD_CROS_EC
+	select IIO_TRIGGERED_BUFFER
+	help
+	  Say yes here to build support for ChromeOS EC Sensors.
+	  This driver is used to access sensors attached to the
+	  ChromeOS Embedded Controller.
+
