@@ -14,7 +14,6 @@
  *
  */
 
-#include <asm/unaligned.h>
 #include <linux/extcon.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
@@ -212,19 +211,13 @@ static int extcon_cros_ec_event(struct notifier_block *nb,
 	dev = info->dev;
 	ec = info->ec;
 
-	if (ec->event_type != EC_MKBP_EVENT_HOST_EVENT)
-		return NOTIFY_DONE;
-	if (ec->event_size != sizeof(u32)) {
-		dev_warn(dev, "Invalid host event size\n");
+	host_event = cros_ec_get_host_event(ec);
+	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
+		extcon_cros_ec_detect_cable(info);
+		return NOTIFY_OK;
+	} else {
 		return NOTIFY_DONE;
 	}
-	host_event = get_unaligned_le32(ec->event_data);
-	if (!(host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)))
-		return NOTIFY_DONE;
-
-	extcon_cros_ec_detect_cable(info);
-
-	return NOTIFY_OK;
 }
 
 static int extcon_cros_ec_probe(struct platform_device *pdev)

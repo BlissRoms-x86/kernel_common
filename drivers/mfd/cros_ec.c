@@ -24,6 +24,8 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/cros_ec.h>
 
+#include <asm/unaligned.h>
+
 #define CROS_EC_DEV_EC_INDEX 0
 #define CROS_EC_DEV_PD_INDEX 1
 
@@ -35,10 +37,10 @@ static struct cros_ec_platform ec_p = {
 static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 {
 	struct cros_ec_command *msg;
-	u8 *event_raw_data;
+	struct ec_response_get_next_event *event;
 	int ret;
 
-	msg = kzalloc(sizeof(*msg) + ec_dev->max_response, GFP_KERNEL);
+	msg = kzalloc(sizeof(*msg) + sizeof(*event), GFP_KERNEL);
 	if (!msg)
 		return -ENOMEM;
 
@@ -46,38 +48,58 @@ static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 	msg->command = EC_CMD_GET_NEXT_EVENT;
 	msg->insize = ec_dev->max_response;
 
-	event_raw_data = (u8 *)msg->data;
+	event = (struct ec_response_get_next_event *)msg->data;
 
 	ret = cros_ec_cmd_xfer(ec_dev, msg);
 	if (ret > 0) {
 		ec_dev->event_size = ret - 1;
-		ec_dev->event_type = event_raw_data[0];
-		memcpy(ec_dev->event_data, event_raw_data + 1, ret - 1);
+		ec_dev->event_data = *event;
 	}
 	return ret;
 }
 
 static int cros_ec_get_keyboard_state_event(struct cros_ec_device *ec_dev)
 {
+	union ec_response_get_next_data *data;
 	struct cros_ec_command *msg;
 	int ret;
 
-	msg = kzalloc(sizeof(*msg) + ec_dev->max_response - 1, GFP_KERNEL);
+	msg = kzalloc(sizeof(*msg) + sizeof(*data), GFP_KERNEL);
 	if (!msg)
 		return -ENOMEM;
 
 	msg->version = 0;
 	msg->command = EC_CMD_MKBP_STATE;
-	msg->insize = ec_dev->max_response - 1;
+	msg->insize = sizeof(ec_dev->event_data.data);
 
-	ec_dev->event_type = EC_MKBP_EVENT_KEY_MATRIX;
+	data = (union ec_response_get_next_data *)msg->data;
+
+	ec_dev->event_data.event_type = EC_MKBP_EVENT_KEY_MATRIX;
 
 	ret = cros_ec_cmd_xfer(ec_dev, msg);
 	if (ret > 0)
-		memcpy(ec_dev->event_data, msg->data, ret);
+		ec_dev->event_data.data = *data;
+
 	ec_dev->event_size = ret;
 	return ret;
 }
+
+u32 cros_ec_get_host_event(struct cros_ec_device *ec_dev)
+{
+	u32 host_event;
+	
+	BUG_ON(!ec_dev->mkbp_event_supported);
+	if (ec_dev->event_data.event_type != EC_MKBP_EVENT_HOST_EVENT)
+		return 0;
+	if (ec_dev->event_size != sizeof(host_event)) {
+		dev_warn(ec_dev->dev, "Invalid host event size\n");
+		return 0;
+	}
+	
+	host_event = get_unaligned_le32(&ec_dev->event_data.data.host_event);
+	return host_event;
+}
+EXPORT_SYMBOL(cros_ec_get_host_event);
 
 static irqreturn_t ec_irq_thread(int irq, void *data)
 {
@@ -132,10 +154,6 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 
 	ec_dev->dout = devm_kzalloc(dev, ec_dev->dout_size, GFP_KERNEL);
 	if (!ec_dev->dout)
-		return -ENOMEM;
-	ec_dev->event_data = devm_kzalloc(dev, ec_dev->max_response - 1,
-					  GFP_KERNEL);
-	if (!ec_dev->event_data)
 		return -ENOMEM;
 
 	mutex_init(&ec_dev->lock);

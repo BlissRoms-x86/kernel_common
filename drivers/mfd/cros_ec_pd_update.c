@@ -16,7 +16,6 @@
  * related to auto-updating its firmware.
  */
 
-#include <asm/unaligned.h>
 #include <linux/acpi.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -968,19 +967,13 @@ static int _ec_pd_notify(struct notifier_block *nb,
 	dev = drv_data->dev;
 	ec = dev_get_drvdata(dev->parent);
 
-	if (ec->event_type != EC_MKBP_EVENT_HOST_EVENT)
-		return NOTIFY_DONE;
-	if (ec->event_size != sizeof(u32)) {
-		dev_warn(dev, "Invalid host event size\n");
+	host_event = cros_ec_get_host_event(ec);
+	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
+		cros_ec_pd_notify(dev, host_event);
+		return NOTIFY_OK;
+	} else {
 		return NOTIFY_DONE;
 	}
-	host_event = get_unaligned_le32(ec->event_raw_data+1);
-	if (!(host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)))
-		return NOTIFY_DONE;
-
-	cros_ec_pd_notify(dev, host_event);
-
-	return NOTIFY_OK;
 }
 
 static int plat_cros_ec_pd_probe(struct platform_device *pdev)

@@ -173,11 +173,10 @@ static void cros_ec_keyb_close(struct input_dev *dev)
 static int cros_ec_keyb_work(struct notifier_block *nb,
 			     unsigned long queued_during_suspend, void *_notify)
 {
-	int ret;
 	struct cros_ec_keyb *ckdev = container_of(nb, struct cros_ec_keyb,
 						  notifier);
 
-	if (ckdev->ec->event_type != EC_MKBP_EVENT_KEY_MATRIX)
+	if (ckdev->ec->event_data.event_type != EC_MKBP_EVENT_KEY_MATRIX)
 		return NOTIFY_DONE;
 	/*
 	 * If EC is not the wake source, discard key state changes during
@@ -190,7 +189,8 @@ static int cros_ec_keyb_work(struct notifier_block *nb,
 			"Discarded incomplete key matrix event.\n");
 		return NOTIFY_OK;
 	}
-	cros_ec_keyb_process(ckdev, ckdev->ec->event_data, ret);
+	cros_ec_keyb_process(ckdev, ckdev->ec->event_data.data.key_matrix,
+			     ckdev->ec->event_size);
 	return NOTIFY_OK;
 }
 
