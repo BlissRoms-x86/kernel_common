@@ -187,5 +187,6 @@ struct usbdevfs_streams {
 #define USBDEVFS_DISCONNECT_CLAIM  _IOR('U', 27, struct usbdevfs_disconnect_claim)
 #define USBDEVFS_ALLOC_STREAMS     _IOR('U', 28, struct usbdevfs_streams)
 #define USBDEVFS_FREE_STREAMS      _IOR('U', 29, struct usbdevfs_streams)
+#define USBDEVFS_DROP_PRIVILEGES   _IO('U', 30)
 
 #endif /* _UAPI_LINUX_USBDEVICE_FS_H */
