@@ -1,0 +1,11 @@
+config DRM_GM12U320
+	tristate "Grain Media GM12U320 based mini projectors"
+	depends on DRM
+	depends on USB_SUPPORT
+	depends on USB_ARCH_HAS_HCD
+	select USB
+	select DRM_KMS_HELPER
+	help
+	  This is a KMS driver for Grain Media GM12U320 based usb mini video
+	  projectors, such as the Acer C120.
+	  Say M/Y to add support for these devices via drm/kms interfaces.
