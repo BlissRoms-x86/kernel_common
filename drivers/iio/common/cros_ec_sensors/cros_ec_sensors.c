@@ -1,7 +1,7 @@
 /*
- * cros_ec_accel - Driver for Chrome OS Embedded Controller accelerometer
+ * cros_ec_sensors - Driver for Chrome OS Embedded Controller sensors.
  *
- * Copyright (C) 2014 Google, Inc
+ * Copyright (C) 2015 Google, Inc
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -32,17 +32,12 @@
 #include <linux/sysfs.h>
 #include <linux/platform_device.h>
 
+#include "cros_ec_sensors_core.h"
+
 static char *cros_ec_loc[] = {
 	"base",		/* MOTIONSENSE_LOC_BASE */
 	"lid",		/* MOTIONSENSE_LOC_LID */
 	"unknown",
-};
-
-enum {
-	X,
-	Y,
-	Z,
-	MAX_AXIS,
 };
 
 /* ADC counts per 1G. */
@@ -61,12 +56,14 @@ enum accel_data_format {
  */
 #define CALIB_SCALE_SCALAR 1024
 
-typedef int (*read_ec_accel_data_t)(struct iio_dev *indio_dev,
+typedef int (*read_ec_sensors_data_t)(struct iio_dev *indio_dev,
 		long unsigned int scan_mask, s16 *data,
 		enum accel_data_format ret_format);
-/* State data for ec_accel iio driver. */
-struct cros_ec_accel_state {
-	struct cros_ec_device *ec;
+
+/* State data for ec_sensors iio driver. */
+struct cros_ec_sensors_state {
+	/* Shared by all sensors */
+	struct cros_ec_sensors_core_state core;
 
 	/* Number of sensors (accel + gyro) */
 	unsigned sensor_num;
@@ -97,22 +94,8 @@ struct cros_ec_accel_state {
 	 */
 	u8 *samples;
 
-	/*
-	 *  Location to store command and response to the EC.
-	 */
-	struct mutex cmd_lock;
-
-	/*
-	 * Statically allocated command structure that holds parameters
-	 * and response. Response is dynamically allocated, to match the number
-	 * of sensors.
-	 */
-	struct cros_ec_command *msg;
-	struct ec_params_motion_sense param;
-	struct ec_response_motion_sense *resp;
-
 	/* Pointer to function used for accessing sensors values. */
-	read_ec_accel_data_t read_ec_accel_data;
+	read_ec_sensors_data_t read_ec_sensors_data;
 };
 
 /*
@@ -122,7 +105,7 @@ struct cros_ec_accel_state {
  * @idx: sensor index
  * @return host command sensor number
  */
-static int idx_to_sensor_num(struct cros_ec_accel_state *st,
+static int idx_to_sensor_num(struct cros_ec_sensors_state *st,
 			     unsigned idx)
 {
 	if (idx < st->lid_angle_idx)
@@ -138,7 +121,7 @@ static int idx_to_sensor_num(struct cros_ec_accel_state *st,
  * @idx: sensor index (should be element of enum sensor_index)
  * @return address to read at.
  */
-static unsigned idx_to_reg(struct cros_ec_accel_state *st,
+static unsigned idx_to_reg(struct cros_ec_sensors_state *st,
 			   unsigned idx)
 {
 	if (idx == st->lid_angle_idx)
@@ -165,7 +148,7 @@ static unsigned idx_to_reg(struct cros_ec_accel_state *st,
  * The processed value can be calculated as:
  * processed = (raw * calib_scale/CALIB_SCALE_SCALAR) + calib_offset.
  */
-static s16 apply_calibration(struct cros_ec_accel_state *st,
+static s16 apply_calibration(struct cros_ec_sensors_state *st,
 			     s16 data, unsigned sensor_id)
 {
 	return (data * st->calib[sensor_id].scale / CALIB_SCALE_SCALAR) +
@@ -195,12 +178,13 @@ static int ec_cmd_read_u16(struct cros_ec_device *ec, unsigned int offset,
  * @st Pointer to state information for device.
  * @return 8-bit status if ok, -ve on error
  */
-static int read_ec_until_not_busy(struct cros_ec_accel_state *st)
+static int read_ec_until_not_busy(struct cros_ec_sensors_state *st)
 {
+	struct cros_ec_device *ec = st->core.ec;
 	u8 status;
 	int attempts = 0;
 
-	ec_cmd_read_u8(st->ec, EC_MEMMAP_ACC_STATUS, &status);
+	ec_cmd_read_u8(ec, EC_MEMMAP_ACC_STATUS, &status);
 	while (status & EC_MEMMAP_ACC_STATUS_BUSY_BIT) {
 		/* Give up after enough attempts, return error. */
 		if (attempts++ >= 50)
@@ -210,14 +194,14 @@ static int read_ec_until_not_busy(struct cros_ec_accel_state *st)
 		if (attempts % 5 == 0)
 			msleep(25);
 
-		ec_cmd_read_u8(st->ec, EC_MEMMAP_ACC_STATUS, &status);
+		ec_cmd_read_u8(ec, EC_MEMMAP_ACC_STATUS, &status);
 	}
 
 	return status;
 }
 
 /*
- * read_ec_accel_data_unsafe - read acceleration data from EC shared memory.
+ * read_ec_sensors_data_unsafe - read acceleration data from EC shared memory.
  *
  * @st Pointer to state information for device.
  * @scan_mask Bitmap of the sensor indices to scan.
@@ -227,11 +211,11 @@ static int read_ec_until_not_busy(struct cros_ec_accel_state *st)
  * Note this is the unsafe function for reading the EC data. It does not
  * guarantee that the EC will not modify the data as it is being read in.
  */
-static void read_ec_accel_data_unsafe(struct iio_dev *indio_dev,
+static void read_ec_sensors_data_unsafe(struct iio_dev *indio_dev,
 			 long unsigned int scan_mask, s16 *data,
 			 enum accel_data_format ret_format)
 {
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	unsigned i = 0;
 
 	/*
@@ -239,7 +223,7 @@ static void read_ec_accel_data_unsafe(struct iio_dev *indio_dev,
 	 * bytes.
 	 */
 	for_each_set_bit(i, &scan_mask, indio_dev->masklength) {
-		ec_cmd_read_u16(st->ec, idx_to_reg(st, i), data);
+		ec_cmd_read_u16(st->core.ec, idx_to_reg(st, i), data);
 
 		/* Calibrate the data if desired. */
 		if (ret_format == CALIBRATED)
@@ -250,7 +234,7 @@ static void read_ec_accel_data_unsafe(struct iio_dev *indio_dev,
 }
 
 /*
- * read_ec_accel_data - read acceleration data from EC shared memory.
+ * read_ec_sensors_data - read acceleration data from EC shared memory.
  *
  * @st Pointer to state information for device.
  * @scan_mask Bitmap of the sensor indices to scan.
@@ -261,11 +245,11 @@ static void read_ec_accel_data_unsafe(struct iio_dev *indio_dev,
  * Note: this is the safe function for reading the EC data. It guarantees
  * that the data sampled was not modified by the EC while being read.
  */
-static int read_ec_accel_data_lpc(struct iio_dev *indio_dev,
+static int read_ec_sensors_data_lpc(struct iio_dev *indio_dev,
 			      long unsigned int scan_mask, s16 *data,
 			      enum accel_data_format ret_format)
 {
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	u8 samp_id = 0xff, status = 0;
 	int attempts = 0;
 
@@ -293,61 +277,30 @@ static int read_ec_accel_data_lpc(struct iio_dev *indio_dev,
 		samp_id = status & EC_MEMMAP_ACC_STATUS_SAMPLE_ID_MASK;
 
 		/* Read all EC data, format it, and store it into data. */
-		read_ec_accel_data_unsafe(indio_dev, scan_mask, data,
+		read_ec_sensors_data_unsafe(indio_dev, scan_mask, data,
 					  ret_format);
 
 		/* Read status byte. */
-		ec_cmd_read_u8(st->ec, EC_MEMMAP_ACC_STATUS, &status);
+		ec_cmd_read_u8(st->core.ec, EC_MEMMAP_ACC_STATUS, &status);
 	}
 
 	return 0;
 }
 
-/*
- * send_motion_host_cmd - send motion sense host command
- *
- * @st Pointer to state information for device.
- * @resp Pointer to motion sense host command response struct.
- * @extra_resp_size request more data after the usual response structure.
- * @return 0 if ok, -ve on error.
- *
- * Note, when called, the sub-command is assumed to be set in param->cmd.
- */
-static int send_motion_host_cmd(struct cros_ec_accel_state *st,
-				struct ec_response_motion_sense *resp,
-				int extra_resp_size)
-{
-	st->msg->insize = extra_resp_size +
-		sizeof(struct ec_response_motion_sense);
-
-	memcpy(st->msg->data, &st->param, sizeof(st->param));
-
-	/* Send host command. */
-	if (cros_ec_cmd_xfer_status(st->ec, st->msg) <= 0)
-		return -EIO;
-
-	if (st->resp != (struct ec_response_motion_sense *)st->msg->data)
-		memcpy(st->resp, st->msg->data, extra_resp_size +
-		       sizeof(struct ec_response_motion_sense));
-
-	return 0;
-}
-
-static int read_ec_accel_data_cmd(struct iio_dev *indio_dev,
+static int read_ec_sensors_data_cmd(struct iio_dev *indio_dev,
 			      long unsigned int scan_mask, s16 *data,
 			      enum accel_data_format ret_format)
 {
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	int ret, sensor_num;
 	unsigned i = 0;
 
 	/*
 	 * read all sensor data through a command.
 	 */
-	st->param.cmd = MOTIONSENSE_CMD_DUMP;
-	st->param.dump.max_sensor_count = st->sensor_num;
-	ret = send_motion_host_cmd(st, st->resp, st->sensor_num *
-			sizeof(struct ec_response_motion_sensor_data));
+	st->core.param.cmd = MOTIONSENSE_CMD_DUMP;
+	st->core.param.dump.max_sensor_count = st->sensor_num;
+	ret = send_motion_host_cmd(&st->core);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to read sensor data\n");
 		return ret;
@@ -358,7 +311,7 @@ static int read_ec_accel_data_cmd(struct iio_dev *indio_dev,
 		if (sensor_num == UNKNOWN_SENSOR_NUM)
 			*data = 0;
 		else
-			*data = st->resp->dump.sensor[
+			*data = st->core.resp->dump.sensor[
 				sensor_num].data[i % MAX_AXIS];
 		/* Calibrate the data if desired. */
 		if (ret_format == CALIBRATED)
@@ -370,25 +323,26 @@ static int read_ec_accel_data_cmd(struct iio_dev *indio_dev,
 }
 
 
-static int ec_accel_read(struct iio_dev *indio_dev,
+static int ec_sensors_read(struct iio_dev *indio_dev,
 			  struct iio_chan_spec const *chan,
 			  int *val, int *val2, long mask)
 {
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	s16 data = 0;
 	int ret = IIO_VAL_INT;
 	int sensor_num = idx_to_sensor_num(st, chan->scan_index);
-	mutex_lock(&st->cmd_lock);
+
+	mutex_lock(&st->core.cmd_lock);
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (st->read_ec_accel_data(indio_dev, (1 << chan->scan_index),
+		if (st->read_ec_sensors_data(indio_dev, (1 << chan->scan_index),
 					&data, RAW) < 0)
 			ret = -EIO;
 		*val = (s16)data;
 		break;
 	case IIO_CHAN_INFO_PROCESSED:
-		if (st->read_ec_accel_data(indio_dev, (1 << chan->scan_index),
+		if (st->read_ec_sensors_data(indio_dev, (1 << chan->scan_index),
 					&data, CALIBRATED) < 0)
 			ret = -EIO;
 		*val = (s16)data;
@@ -408,75 +362,80 @@ static int ec_accel_read(struct iio_dev *indio_dev,
 			dev_err(&indio_dev->dev,
 				"offset only for angle - not %d - channel\n",
 				chan->scan_index);
-			return -EIO;
+			ret = -EIO;
 		}
 
-		st->param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
-		st->param.kb_wake_angle.data = EC_MOTION_SENSE_NO_VALUE;
+		st->core.param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
+		st->core.param.kb_wake_angle.data =
+			EC_MOTION_SENSE_NO_VALUE;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
-			return -EIO;
+		if (send_motion_host_cmd(&st->core))
+			ret = -EIO;
 		else
-			*val = st->resp->kb_wake_angle.ret;
+			*val = st->core.resp->kb_wake_angle.ret;
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
-		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
-		st->param.ec_rate.data = EC_MOTION_SENSE_NO_VALUE;
+		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
+		st->core.param.ec_rate.data =
+			EC_MOTION_SENSE_NO_VALUE;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
-			return -EIO;
+		if (send_motion_host_cmd(&st->core))
+			ret = -EIO;
 		else
-			*val = st->resp->ec_rate.ret;
+			*val = st->core.resp->ec_rate.ret;
 		break;
 	case IIO_CHAN_INFO_PEAK_SCALE:
 		if (sensor_num == UNKNOWN_SENSOR_NUM) {
 			dev_err(&indio_dev->dev,
 				"peak scale: index must not channel angle\n");
-			return -EIO;
+			ret = -EIO;
 		}
 
-		st->param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
-		st->param.sensor_range.data = EC_MOTION_SENSE_NO_VALUE;
-		st->param.sensor_range.sensor_num = sensor_num;
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
+		st->core.param.sensor_range.data =
+			EC_MOTION_SENSE_NO_VALUE;
+		st->core.param.sensor_range.sensor_num = sensor_num;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
-			return -EIO;
+		if (send_motion_host_cmd(&st->core))
+			ret = -EIO;
 		else
-			*val = st->resp->sensor_range.ret;
+			*val = st->core.resp->sensor_range.ret;
 
 		break;
 	case IIO_CHAN_INFO_FREQUENCY:
 		if (sensor_num == UNKNOWN_SENSOR_NUM) {
 			dev_err(&indio_dev->dev,
 				"frequency: index must not channel angle\n");
-			return -EIO;
+			ret = -EIO;
 		}
 
-		st->param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
-		st->param.sensor_odr.data = EC_MOTION_SENSE_NO_VALUE;
-		st->param.sensor_range.sensor_num = sensor_num;
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
+		st->core.param.sensor_odr.data =
+			EC_MOTION_SENSE_NO_VALUE;
+		st->core.param.sensor_range.sensor_num = sensor_num;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
+		if (send_motion_host_cmd(&st->core))
 			ret = -EIO;
 		else
-			*val = st->resp->sensor_odr.ret;
+			*val = st->core.resp->sensor_odr.ret;
 
 		break;
 	default:
 		ret = -EINVAL;
 		break;
 	}
-	mutex_unlock(&st->cmd_lock);
+	mutex_unlock(&st->core.cmd_lock);
 	return ret;
 }
 
-static int ec_accel_write(struct iio_dev *indio_dev,
+static int ec_sensors_write(struct iio_dev *indio_dev,
 			       struct iio_chan_spec const *chan,
 			       int val, int val2, long mask)
 {
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	int ret = 0, sensor_num = idx_to_sensor_num(st, chan->scan_index);
-	mutex_lock(&st->cmd_lock);
+
+	mutex_lock(&st->core.cmd_lock);
 
 	switch (mask) {
 	case IIO_CHAN_INFO_CALIBSCALE:
@@ -495,18 +454,18 @@ static int ec_accel_write(struct iio_dev *indio_dev,
 		}
 
 
-		st->param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
-		st->param.kb_wake_angle.data = val;
+		st->core.param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
+		st->core.param.kb_wake_angle.data = val;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
+		if (send_motion_host_cmd(&st->core))
 			return -EIO;
 
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
-		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
-		st->param.ec_rate.data = val;
+		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
+		st->core.param.ec_rate.data = val;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
+		if (send_motion_host_cmd(&st->core))
 			return -EIO;
 
 		break;
@@ -518,14 +477,14 @@ static int ec_accel_write(struct iio_dev *indio_dev,
 			return -EIO;
 		}
 
-		st->param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
-		st->param.sensor_range.data = val;
-		st->param.sensor_range.sensor_num = sensor_num;
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
+		st->core.param.sensor_range.data = val;
+		st->core.param.sensor_range.sensor_num = sensor_num;
 
 		/* Always roundup, so caller gets at least what it asks for. */
-		st->param.sensor_range.roundup = 1;
+		st->core.param.sensor_range.roundup = 1;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
+		if (send_motion_host_cmd(&st->core))
 			return -EIO;
 
 		break;
@@ -536,14 +495,14 @@ static int ec_accel_write(struct iio_dev *indio_dev,
 			return -EIO;
 		}
 
-		st->param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
-		st->param.sensor_odr.data = val;
-		st->param.sensor_range.sensor_num = sensor_num;
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
+		st->core.param.sensor_odr.data = val;
+		st->core.param.sensor_range.sensor_num = sensor_num;
 
 		/* Always roundup, so caller gets at least what it asks for. */
-		st->param.sensor_odr.roundup = 1;
+		st->core.param.sensor_odr.roundup = 1;
 
-		if (send_motion_host_cmd(st, st->resp, 0))
+		if (send_motion_host_cmd(&st->core))
 			ret = -EIO;
 
 		break;
@@ -552,13 +511,13 @@ static int ec_accel_write(struct iio_dev *indio_dev,
 		break;
 	}
 
-	mutex_unlock(&st->cmd_lock);
+	mutex_unlock(&st->core.cmd_lock);
 	return ret;
 }
 
-static const struct iio_info ec_accel_info = {
-	.read_raw = &ec_accel_read,
-	.write_raw = &ec_accel_write,
+static const struct iio_info ec_sensors_info = {
+	.read_raw = &ec_sensors_read,
+	.write_raw = &ec_sensors_write,
 	.driver_module = THIS_MODULE,
 };
 
@@ -577,9 +536,9 @@ static irqreturn_t accel_capture(int irq, void *p)
 {
 	struct iio_poll_func *pf = p;
 	struct iio_dev *indio_dev = pf->indio_dev;
-	struct cros_ec_accel_state *st = iio_priv(indio_dev);
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 
-	mutex_lock(&st->cmd_lock);
+	mutex_lock(&st->core.cmd_lock);
 	/* Clear capture data. */
 	memset(st->samples, 0, indio_dev->scan_bytes);
 
@@ -587,7 +546,7 @@ static irqreturn_t accel_capture(int irq, void *p)
 	 * Read data based on which channels are enabled in scan mask. Note
 	 * that on a capture we are always reading the calibrated data.
 	 */
-	st->read_ec_accel_data(indio_dev, *(indio_dev->active_scan_mask),
+	st->read_ec_sensors_data(indio_dev, *(indio_dev->active_scan_mask),
 			   (s16 *)st->samples, CALIBRATED);
 
 	/* Store the timestamp last 8 bytes of data. */
@@ -604,27 +563,18 @@ static irqreturn_t accel_capture(int irq, void *p)
 	 * next one.
 	 */
 	iio_trigger_notify_done(indio_dev->trig);
-	mutex_unlock(&st->cmd_lock);
+	mutex_unlock(&st->core.cmd_lock);
 
 	return IRQ_HANDLED;
 }
 
-static const struct iio_buffer_setup_ops iio_simple_dummy_buffer_setup_ops = {
-	/* Generic function that attaches the pollfunc to the trigger. */
-	.postenable = &iio_triggered_buffer_postenable,
-
-	/* Generic function that detaches the pollfunc from the trigger. */
-	.predisable = &iio_triggered_buffer_predisable,
-};
-
-static int ec_accel_probe(struct platform_device *pdev)
+static int cros_ec_sensors_probe(struct platform_device *pdev)
 {
-	struct cros_ec_device *ec = dev_get_drvdata(pdev->dev.parent);
+	struct cros_ec_dev *ec = dev_get_drvdata(pdev->dev.parent);
 	struct iio_dev *indio_dev;
-	struct cros_ec_accel_state *state;
-	struct ec_response_motion_sense resp;
+	struct cros_ec_sensors_state *state;
 	struct iio_chan_spec *channel, *channels;
-	int ret, i, j, samples_size, idx, channel_num;
+	int ret, i, j, idx, samples_size, channel_num, mag_present = 0;
 
 	if (!ec) {
 		dev_warn(&pdev->dev, "No CROS EC device found.\n");
@@ -638,17 +588,18 @@ static int ec_accel_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, indio_dev);
 
 	state = iio_priv(indio_dev);
-	state->ec = ec;
-	mutex_init(&state->cmd_lock);
+	ret = cros_ec_sensors_core_init(pdev, &state->core);
+	if (ret)
+		return ret;
 
 	/* Check how many accel sensors */
-	state->param.cmd = MOTIONSENSE_CMD_DUMP;
-	state->param.dump.max_sensor_count = 0;
-	if ((send_motion_host_cmd(state, &resp, 0)) ||
-	    (resp.dump.sensor_count == 0))
+	state->core.param.cmd = MOTIONSENSE_CMD_DUMP;
+	state->core.param.dump.max_sensor_count = 0;
+	if ((send_motion_host_cmd(&state->core)) ||
+	    (state->core.resp->dump.sensor_count == 0))
 		return -ENODEV;
 
-	state->sensor_num = resp.dump.sensor_count;
+	state->sensor_num = state->core.resp->dump.sensor_count;
 	state->accel_num = 0;
 
 	channel_num = state->sensor_num * MAX_AXIS +
@@ -662,17 +613,18 @@ static int ec_accel_probe(struct platform_device *pdev)
 
 	/* For each retrieve type and location */
 	for (i = 0, idx = 0, channel = channels; i < state->sensor_num; i++) {
-		state->param.cmd = MOTIONSENSE_CMD_INFO;
-		state->param.sensor_odr.sensor_num = i;
-		if (send_motion_host_cmd(state, &resp, 0)) {
+		state->core.param.cmd = MOTIONSENSE_CMD_INFO;
+		state->core.param.sensor_odr.sensor_num = i;
+		if (send_motion_host_cmd(&state->core)) {
 			dev_warn(&pdev->dev,
 				 "Can not access sensor %d info\n", i);
-			return -EIO;
+			continue;
 		}
-		if (resp.info.type == MOTIONSENSE_TYPE_ACCEL)
+		if (state->core.resp->info.type ==
+				MOTIONSENSE_TYPE_ACCEL)
 			state->accel_num++;
 		for (j = X; j <= Z; j++, channel++, idx++) {
-			switch (resp.info.type) {
+			switch (state->core.resp->info.type) {
 			case MOTIONSENSE_TYPE_ACCEL:
 				channel->type = IIO_ACCEL;
 				break;
@@ -680,6 +632,7 @@ static int ec_accel_probe(struct platform_device *pdev)
 				channel->type = IIO_ANGL_VEL;
 				break;
 			case MOTIONSENSE_TYPE_MAG:
+				mag_present = 1;
 				channel->type = IIO_MAGN;
 				break;
 			default:
@@ -701,11 +654,12 @@ static int ec_accel_probe(struct platform_device *pdev)
 			channel->scan_type.storagebits = 16;
 			channel->scan_type.shift = 0;
 			channel->channel2 = IIO_MOD_X + j;
-			channel->extend_name =
-				cros_ec_loc[resp.info.location];
+			channel->extend_name = cros_ec_loc[
+				state->core.resp->info.location];
 			channel->scan_index = idx;
 		}
 	}
+
 	/* Hack to display the lid angle. Not all firmware has it. */
 	if (state->accel_num >= 2) {
 		state->lid_angle_idx = idx;
@@ -759,40 +713,19 @@ static int ec_accel_probe(struct platform_device *pdev)
 	if (state->samples == NULL)
 		return -ENOMEM;
 
-	if (ec->cmd_readmem != NULL) {
-		state->read_ec_accel_data = read_ec_accel_data_lpc;
-		state->msg = devm_kzalloc(&pdev->dev,
-				sizeof(struct cros_ec_command) +
-				sizeof(struct ec_params_motion_sense),
-				GFP_KERNEL);
-	} else {
-		state->read_ec_accel_data = read_ec_accel_data_cmd;
-		state->msg = devm_kzalloc(&pdev->dev,
-				sizeof(struct cros_ec_command) +
-				sizeof(struct ec_params_motion_sense) +
-				state->sensor_num *
-				sizeof(struct ec_response_motion_sensor_data),
-				GFP_KERNEL);
-	}
-	if (state->msg == NULL)
-		return -ENOMEM;
-
-	state->resp = (struct ec_response_motion_sense *)state->msg->data;
-
-	/* Set up the host command structure. */
-	state->msg->version = 1;
-	state->msg->command = EC_CMD_MOTION_SENSE_CMD;
-	state->msg->outsize = sizeof(struct ec_params_motion_sense);
+	if ((state->core.ec->cmd_readmem != NULL) && !mag_present)
+		state->read_ec_sensors_data = read_ec_sensors_data_lpc;
+	else
+		state->read_ec_sensors_data = read_ec_sensors_data_cmd;
 
 	indio_dev->dev.parent = &pdev->dev;
-	indio_dev->info = &ec_accel_info;
-	indio_dev->name = "cros-ec-accel";
+	indio_dev->info = &ec_sensors_info;
+	indio_dev->name = "cros-ec-sensors";
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
 	ret = iio_triggered_buffer_setup(indio_dev, NULL,
-					 &accel_capture,
-					 &iio_simple_dummy_buffer_setup_ops);
-	if (ret)
+					 accel_capture, NULL);
+	if (ret < 0)
 		return ret;
 
 	ret = iio_device_register(indio_dev);
@@ -805,33 +738,32 @@ error_uninit_buffer:
 	return ret;
 }
 
-static int ec_accel_remove(struct platform_device *pdev)
+static int cros_ec_sensors_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
 
 	iio_device_unregister(indio_dev);
 	iio_triggered_buffer_cleanup(indio_dev);
-
 	return 0;
 }
 
-static const struct platform_device_id cros_ec_accel_ids[] = {
+static const struct platform_device_id cros_ec_sensors_ids[] = {
 	{
-		.name = "cros-ec-accel",
+		.name = "cros-ec-sensors",
 	},
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(platform, cros_ec_accel_ids);
+MODULE_DEVICE_TABLE(platform, cros_ec_sensors_ids);
 
-static struct platform_driver cros_ec_accel_platform_driver = {
+static struct platform_driver cros_ec_sensors_platform_driver = {
 	.driver = {
-		.name	= "cros-ec-accel",
+		.name	= "cros-ec-sensors",
 		.owner	= THIS_MODULE,
 	},
-	.probe		= ec_accel_probe,
-	.remove		= ec_accel_remove,
+	.probe		= cros_ec_sensors_probe,
+	.remove		= cros_ec_sensors_remove,
 };
-module_platform_driver(cros_ec_accel_platform_driver);
+module_platform_driver(cros_ec_sensors_platform_driver);
 
-MODULE_DESCRIPTION("ChromeOS EC accelerometer driver");
+MODULE_DESCRIPTION("ChromeOS EC sensor hub driver");
 MODULE_LICENSE("GPL");
