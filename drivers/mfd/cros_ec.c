@@ -29,7 +29,7 @@
 #define CROS_EC_DEV_EC_INDEX 0
 #define CROS_EC_DEV_PD_INDEX 1
 
-static struct cros_ec_platform ec_p = {
+static struct cros_ec_dev_platform ec_p = {
 	.ec_name = CROS_EC_DEV_NAME,
 	.cmd_offset = EC_CMD_PASSTHRU_OFFSET(CROS_EC_DEV_EC_INDEX),
 };
@@ -120,7 +120,7 @@ static irqreturn_t ec_irq_thread(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct cros_ec_platform pd_p = {
+static struct cros_ec_dev_platform pd_p = {
 	.ec_name = CROS_EC_DEV_PD_NAME,
 	.cmd_offset = EC_CMD_PASSTHRU_OFFSET(CROS_EC_DEV_PD_INDEX),
 };

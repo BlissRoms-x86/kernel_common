@@ -168,14 +168,14 @@ struct cros_ec_device {
 	int event_size;
 };
 
-/* struct cros_ec_platform - ChromeOS EC platform information
+/* struct cros_ec_dev_platform - ChromeOS EC platform information
  *
  * @ec_name: name of EC device (e.g. 'cros-ec', 'cros-pd', ...)
  * used in /dev/ and sysfs.
  * @cmd_offset: offset to apply for each command. Set when
  * registering a devicde behind another one.
  */
-struct cros_ec_platform {
+struct cros_ec_dev_platform {
 	const char *ec_name;
 	u16 cmd_offset;
 };
@@ -196,6 +196,16 @@ struct cros_ec_dev {
 	struct device *dev;
 	u16 cmd_offset;
 	u32 features[2];
+};
+
+/* struct cros_ec_sensor_platform - ChromeOS EC sensor platform information
+ *
+ * On top of cros_ec_devicem information cros_ec_sensors needs.
+ *
+ * @sensor_num: Id of the sensor, as reported by the EC.
+ */
+struct cros_ec_sensor_platform {
+	u8 sensor_num;
 };
 
 /**

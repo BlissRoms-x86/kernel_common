@@ -35,84 +35,60 @@
 #include "cros_ec_sensors_core.h"
 
 static char *cros_ec_loc[] = {
-	"base",		/* MOTIONSENSE_LOC_BASE */
-	"lid",		/* MOTIONSENSE_LOC_LID */
-	"unknown",
+	[MOTIONSENSE_LOC_BASE] = "base",
+	[MOTIONSENSE_LOC_LID] = "lid",
+	[MOTIONSENSE_LOC_MAX] = "unknown",
 };
 
-/* ADC counts per 1G. */
-#define ACCEL_G 1024
-#define UNKNOWN_SENSOR_NUM -1
+#define MAX_CHANNELS (MAX_AXIS + 1)
+#define SAMPLE_SIZE  (round_up(sizeof(s16) * MAX_AXIS, sizeof(s64)) + \
+		      sizeof(s64))
 
-enum accel_data_format {
-	RAW,
-	CALIBRATED,
-};
+/*
+ * EC returns sensor values using signed 16 bit registers
+ */
+#define SENSOR_BITS 16
 
 /*
  * Scalar to use for the calibration scale. Typically the calibration
- * scale is a float near 1.0, but to avoid floating point, we will multiply
+ * scale is a float near 1.0, but to avoid floating point, we will bit shift
  * the calibration scale by this scalar. Using a power of 2 is more efficient.
  */
-#define CALIB_SCALE_SCALAR 1024
+#define CALIB_SCALE_SCALAR 10
 
 typedef int (*read_ec_sensors_data_t)(struct iio_dev *indio_dev,
-		long unsigned int scan_mask, s16 *data,
-		enum accel_data_format ret_format);
+		unsigned long scan_mask, s16 *data);
 
 /* State data for ec_sensors iio driver. */
 struct cros_ec_sensors_state {
 	/* Shared by all sensors */
 	struct cros_ec_sensors_core_state core;
 
-	/* Number of sensors (accel + gyro) */
-	unsigned sensor_num;
-
-	/*
-	 * Number of accel sensors.
-	 * The EC presents the accel sensors values first,
-	 * then the gyros values.
-	 */
-	unsigned accel_num;
-
-	/* index of the channel used for reporting the lid angle */
-	unsigned lid_angle_idx;
+	/* Type of sensor */
+	enum motionsensor_type type;
+	enum motionsensor_location loc;
 
 	/*
 	 * Calibration parameters. Note that trigger captured data will always
 	 * provide the calibrated values.
 	 */
 	struct calib_data {
-		int scale;
-		int offset;
-	} *calib;
+		u16 scale;
+		s16 offset;
+	} calib[MAX_AXIS];
 
 	/*
 	 * Static array to hold data from a single capture. For each
 	 * channel we need 2 bytes, except for the timestamp. The timestamp
 	 * is always last and is always 8-byte aligned.
 	 */
-	u8 *samples;
+	u8 samples[SAMPLE_SIZE];
+
+	struct iio_chan_spec channels[MAX_CHANNELS];
 
 	/* Pointer to function used for accessing sensors values. */
 	read_ec_sensors_data_t read_ec_sensors_data;
 };
-
-/*
- * idx_to_sensor_num - convert sensor index into host command sensor number.
- *
- * @st: private data
- * @idx: sensor index
- * @return host command sensor number
- */
-static int idx_to_sensor_num(struct cros_ec_sensors_state *st,
-			     unsigned idx)
-{
-	if (idx < st->lid_angle_idx)
-		return idx / MAX_AXIS;
-	else
-		return UNKNOWN_SENSOR_NUM;
-}
 
 /*
  * idx_to_reg - convert sensor index into offset in shared memory region.
@@ -121,38 +97,17 @@ static int idx_to_sensor_num(struct cros_ec_sensors_state *st,
  * @idx: sensor index (should be element of enum sensor_index)
  * @return address to read at.
  */
-static unsigned idx_to_reg(struct cros_ec_sensors_state *st,
-			   unsigned idx)
+static unsigned idx_to_reg(struct cros_ec_sensors_state *st, unsigned idx)
 {
-	if (idx == st->lid_angle_idx)
-		return EC_MEMMAP_ACC_DATA;
 	/*
-	 * At this point, idx belongs to a valid sensor.
-	 * lid_angle channel is always the last channel.
+	 * When using LPC interface, only space for 2 Accel and one Gyro.
 	 */
-	if (idx_to_sensor_num(st, idx) < st->accel_num)
-		return EC_MEMMAP_ACC_DATA + sizeof(u16) * (idx + 1);
+	if (st->type == MOTIONSENSE_TYPE_ACCEL)
+		return EC_MEMMAP_ACC_DATA + sizeof(u16) *
+			(idx + st->core.param.info.sensor_num *
+			 MAX_AXIS);
 	else
-		return EC_MEMMAP_GYRO_DATA +
-			sizeof(u16) * (idx - st->accel_num * MAX_AXIS);
-}
-
-/*
- * apply_calibration - apply calibration to raw data from a sensor
- *
- * @st Pointer to state information for device.
- * @data Raw data to convert.
- * @sensor_id The sensor id that the data belongs to.
- * @return calibrated value
- *
- * The processed value can be calculated as:
- * processed = (raw * calib_scale/CALIB_SCALE_SCALAR) + calib_offset.
- */
-static s16 apply_calibration(struct cros_ec_sensors_state *st,
-			     s16 data, unsigned sensor_id)
-{
-	return (data * st->calib[sensor_id].scale / CALIB_SCALE_SCALAR) +
-		st->calib[sensor_id].offset;
+		return EC_MEMMAP_GYRO_DATA + sizeof(u16) * idx;
 }
 
 static int ec_cmd_read_u8(struct cros_ec_device *ec, unsigned int offset,
@@ -206,16 +161,15 @@ static int read_ec_until_not_busy(struct cros_ec_sensors_state *st)
  * @st Pointer to state information for device.
  * @scan_mask Bitmap of the sensor indices to scan.
  * @data Location to store data.
- * @ret_format Return data format (RAW or CALIBRATED)
  *
  * Note this is the unsafe function for reading the EC data. It does not
  * guarantee that the EC will not modify the data as it is being read in.
  */
 static void read_ec_sensors_data_unsafe(struct iio_dev *indio_dev,
-			 long unsigned int scan_mask, s16 *data,
-			 enum accel_data_format ret_format)
+			 unsigned long scan_mask, s16 *data)
 {
 	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	struct cros_ec_device *ec = st->core.ec;
 	unsigned i = 0;
 
 	/*
@@ -223,12 +177,7 @@ static void read_ec_sensors_data_unsafe(struct iio_dev *indio_dev,
 	 * bytes.
 	 */
 	for_each_set_bit(i, &scan_mask, indio_dev->masklength) {
-		ec_cmd_read_u16(st->core.ec, idx_to_reg(st, i), data);
-
-		/* Calibrate the data if desired. */
-		if (ret_format == CALIBRATED)
-			*data = apply_calibration(st, *data, i);
-
+		ec_cmd_read_u16(ec, idx_to_reg(st, i), data);
 		data++;
 	}
 }
@@ -239,17 +188,16 @@ static void read_ec_sensors_data_unsafe(struct iio_dev *indio_dev,
  * @st Pointer to state information for device.
  * @scan_mask Bitmap of the sensor indices to scan.
  * @data Location to store data.
- * @ret_format Return data format (RAW or CALIBRATED)
  * @return 0 if ok, -ve on error
  *
  * Note: this is the safe function for reading the EC data. It guarantees
  * that the data sampled was not modified by the EC while being read.
  */
 static int read_ec_sensors_data_lpc(struct iio_dev *indio_dev,
-			      long unsigned int scan_mask, s16 *data,
-			      enum accel_data_format ret_format)
+			      unsigned long scan_mask, s16 *data)
 {
 	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	struct cros_ec_device *ec = st->core.ec;
 	u8 samp_id = 0xff, status = 0;
 	int attempts = 0;
 
@@ -277,29 +225,26 @@ static int read_ec_sensors_data_lpc(struct iio_dev *indio_dev,
 		samp_id = status & EC_MEMMAP_ACC_STATUS_SAMPLE_ID_MASK;
 
 		/* Read all EC data, format it, and store it into data. */
-		read_ec_sensors_data_unsafe(indio_dev, scan_mask, data,
-					  ret_format);
+		read_ec_sensors_data_unsafe(indio_dev, scan_mask, data);
 
 		/* Read status byte. */
-		ec_cmd_read_u8(st->core.ec, EC_MEMMAP_ACC_STATUS, &status);
+		ec_cmd_read_u8(ec, EC_MEMMAP_ACC_STATUS, &status);
 	}
 
 	return 0;
 }
 
 static int read_ec_sensors_data_cmd(struct iio_dev *indio_dev,
-			      long unsigned int scan_mask, s16 *data,
-			      enum accel_data_format ret_format)
+			      unsigned long scan_mask, s16 *data)
 {
 	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
-	int ret, sensor_num;
+	int ret;
 	unsigned i = 0;
 
 	/*
 	 * read all sensor data through a command.
 	 */
-	st->core.param.cmd = MOTIONSENSE_CMD_DUMP;
-	st->core.param.dump.max_sensor_count = st->sensor_num;
+	st->core.param.cmd = MOTIONSENSE_CMD_DATA;
 	ret = send_motion_host_cmd(&st->core);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to read sensor data\n");
@@ -307,16 +252,7 @@ static int read_ec_sensors_data_cmd(struct iio_dev *indio_dev,
 	}
 
 	for_each_set_bit(i, &scan_mask, indio_dev->masklength) {
-		sensor_num = idx_to_sensor_num(st, i);
-		if (sensor_num == UNKNOWN_SENSOR_NUM)
-			*data = 0;
-		else
-			*data = st->core.resp->dump.sensor[
-				sensor_num].data[i % MAX_AXIS];
-		/* Calibrate the data if desired. */
-		if (ret_format == CALIBRATED)
-			*data = apply_calibration(st, *data, i);
-
+		*data = st->core.resp->data.data[i];
 		data++;
 	}
 	return 0;
@@ -329,50 +265,39 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 {
 	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
 	s16 data = 0;
+	s64 val64;
+	int i;
 	int ret = IIO_VAL_INT;
-	int sensor_num = idx_to_sensor_num(st, chan->scan_index);
+	int idx = chan->scan_index;
 
 	mutex_lock(&st->core.cmd_lock);
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (st->read_ec_sensors_data(indio_dev, (1 << chan->scan_index),
-					&data, RAW) < 0)
+		if (st->read_ec_sensors_data(indio_dev, 1 << idx, &data) < 0)
 			ret = -EIO;
 		*val = (s16)data;
-		break;
-	case IIO_CHAN_INFO_PROCESSED:
-		if (st->read_ec_sensors_data(indio_dev, (1 << chan->scan_index),
-					&data, CALIBRATED) < 0)
-			ret = -EIO;
-		*val = (s16)data;
-		break;
-	case IIO_CHAN_INFO_SCALE:
-		*val = ACCEL_G;
 		break;
 	case IIO_CHAN_INFO_CALIBSCALE:
-		*val = st->calib[chan->scan_index].scale;
+		*val = 1;
+		*val2 = st->calib[idx].scale;
+		ret = IIO_VAL_FRACTIONAL_LOG2;
 		break;
 	case IIO_CHAN_INFO_CALIBBIAS:
-		*val = st->calib[chan->scan_index].offset;
-		break;
-	case IIO_CHAN_INFO_OFFSET:
-		/* Only lid angle supports offset field. */
-		if (sensor_num != UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"offset only for angle - not %d - channel\n",
-				chan->scan_index);
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
+		st->core.param.sensor_offset.flags = 0;
+
+		if (send_motion_host_cmd(&st->core)) {
 			ret = -EIO;
+			break;
 		}
 
-		st->core.param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
-		st->core.param.kb_wake_angle.data =
-			EC_MOTION_SENSE_NO_VALUE;
+		/* Save values */
+		for (i = X; i < MAX_AXIS; i++)
+			st->calib[i + (idx / MAX_AXIS) * MAX_AXIS].offset =
+			     st->core.resp->sensor_offset.offset[i];
 
-		if (send_motion_host_cmd(&st->core))
-			ret = -EIO;
-		else
-			*val = st->core.resp->kb_wake_angle.ret;
+		*val = st->calib[idx].offset;
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
@@ -384,44 +309,56 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		else
 			*val = st->core.resp->ec_rate.ret;
 		break;
-	case IIO_CHAN_INFO_PEAK_SCALE:
-		if (sensor_num == UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"peak scale: index must not channel angle\n");
-			ret = -EIO;
-		}
-
+	case IIO_CHAN_INFO_SCALE:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
 		st->core.param.sensor_range.data =
 			EC_MOTION_SENSE_NO_VALUE;
-		st->core.param.sensor_range.sensor_num = sensor_num;
 
-		if (send_motion_host_cmd(&st->core))
+		if (send_motion_host_cmd(&st->core)) {
 			ret = -EIO;
-		else
-			*val = st->core.resp->sensor_range.ret;
-
+			break;
+		}
+		val64 = st->core.resp->sensor_range.ret;
+		switch (st->type) {
+		case MOTIONSENSE_TYPE_ACCEL:
+			/*
+			 * EC returns data in g, iio exepects m/s^2.
+			 * Do not use IIO_G_TO_M_S_2 to avoid precision loss.
+			 */
+			*val = (val64 * 980665) / 10;
+			*val2 = 10000 << (SENSOR_BITS - 1);
+			ret = IIO_VAL_FRACTIONAL;
+			break;
+		case MOTIONSENSE_TYPE_GYRO:
+			/* EC returns date in dps, iio expects rad/s.
+			 * Do not use IIO_DEGREE_TO_RAD to avoid precision
+			 * loss. Round to the nearest integer.
+			 */
+			*val = (val64 * 314159 + 9000000ULL) / 1000;
+			*val2 = 18000 << (SENSOR_BITS - 1);
+			ret = IIO_VAL_FRACTIONAL;
+			break;
+		case MOTIONSENSE_TYPE_MAG:
+			/* EC returns date in 16LSB / uT, iio expects Gauss */
+			*val = val64;
+			*val2 = 100 << (SENSOR_BITS - 1);
+			ret = IIO_VAL_FRACTIONAL;
+			break;
+		default:
+			ret = -EINVAL;
+		}
 		break;
 	case IIO_CHAN_INFO_FREQUENCY:
-		if (sensor_num == UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"frequency: index must not channel angle\n");
-			ret = -EIO;
-		}
-
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
 		st->core.param.sensor_odr.data =
 			EC_MOTION_SENSE_NO_VALUE;
-		st->core.param.sensor_range.sensor_num = sensor_num;
 
 		if (send_motion_host_cmd(&st->core))
 			ret = -EIO;
 		else
 			*val = st->core.resp->sensor_odr.ret;
-
 		break;
 	default:
-		ret = -EINVAL;
 		break;
 	}
 	mutex_unlock(&st->core.cmd_lock);
@@ -433,78 +370,58 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 			       int val, int val2, long mask)
 {
 	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
-	int ret = 0, sensor_num = idx_to_sensor_num(st, chan->scan_index);
+	int i;
+	int ret = 0;
+	int idx = chan->scan_index;
 
 	mutex_lock(&st->core.cmd_lock);
 
 	switch (mask) {
-	case IIO_CHAN_INFO_CALIBSCALE:
-		st->calib[chan->scan_index].scale = val;
-		break;
 	case IIO_CHAN_INFO_CALIBBIAS:
-		st->calib[chan->scan_index].offset = val;
-		break;
-	case IIO_CHAN_INFO_OFFSET:
-		/* Only lid angle supports offset field. */
-		if (sensor_num != UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"offset only for angle - not %d - channel\n",
-				chan->scan_index);
-			return -EIO;
-		}
+		st->calib[idx].offset = val;
+		/* Send to EC only when writing Z axis. */
+		if (idx % MAX_AXIS != Z)
+			break;
 
-
-		st->core.param.cmd = MOTIONSENSE_CMD_KB_WAKE_ANGLE;
-		st->core.param.kb_wake_angle.data = val;
+		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
+		st->core.param.sensor_offset.flags =
+			MOTION_SENSE_SET_OFFSET;
+		for (i = X; i < MAX_AXIS; i++)
+			st->core.param.sensor_offset.offset[i] =
+				st->calib[i + (idx / MAX_AXIS) *
+				MAX_AXIS].offset;
+		st->core.param.sensor_offset.temp =
+			EC_MOTION_SENSE_INVALID_CALIB_TEMP;
 
 		if (send_motion_host_cmd(&st->core))
-			return -EIO;
-
+			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
 		st->core.param.ec_rate.data = val;
 
 		if (send_motion_host_cmd(&st->core))
-			return -EIO;
-
+			ret = -EIO;
 		break;
-
-	case IIO_CHAN_INFO_PEAK_SCALE:
-		if (sensor_num == UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"peak scale: index must not channel angle\n");
-			return -EIO;
-		}
-
+	case IIO_CHAN_INFO_SCALE:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
 		st->core.param.sensor_range.data = val;
-		st->core.param.sensor_range.sensor_num = sensor_num;
 
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_range.roundup = 1;
 
 		if (send_motion_host_cmd(&st->core))
-			return -EIO;
-
+			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_FREQUENCY:
-		if (sensor_num == UNKNOWN_SENSOR_NUM) {
-			dev_err(&indio_dev->dev,
-				"frequency: index must not channel angle\n");
-			return -EIO;
-		}
-
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
 		st->core.param.sensor_odr.data = val;
-		st->core.param.sensor_range.sensor_num = sensor_num;
 
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_odr.roundup = 1;
 
 		if (send_motion_host_cmd(&st->core))
 			ret = -EIO;
-
 		break;
 	default:
 		ret = -EINVAL;
@@ -542,19 +459,15 @@ static irqreturn_t accel_capture(int irq, void *p)
 	/* Clear capture data. */
 	memset(st->samples, 0, indio_dev->scan_bytes);
 
-	/*
-	 * Read data based on which channels are enabled in scan mask. Note
-	 * that on a capture we are always reading the calibrated data.
-	 */
+	/* Read data based on which channels are enabled in scan mask. */
 	st->read_ec_sensors_data(indio_dev, *(indio_dev->active_scan_mask),
-			   (s16 *)st->samples, CALIBRATED);
+			   (s16 *)st->samples);
 
 	/* Store the timestamp last 8 bytes of data. */
 	if (indio_dev->scan_timestamp)
 		*(s64 *)&st->samples[round_down(indio_dev->scan_bytes -
 						sizeof(s64),
-				     sizeof(s64))] =
-			iio_get_time_ns();
+				     sizeof(s64))] = iio_get_time_ns();
 
 	iio_push_to_buffers(indio_dev, st->samples);
 
@@ -570,16 +483,20 @@ static irqreturn_t accel_capture(int irq, void *p)
 
 static int cros_ec_sensors_probe(struct platform_device *pdev)
 {
-	struct cros_ec_dev *ec = dev_get_drvdata(pdev->dev.parent);
+	struct device *dev = &pdev->dev;
+	struct cros_ec_dev *ec_dev = dev_get_drvdata(dev->parent);
+	struct cros_ec_device *ec_device;
+	struct cros_ec_sensor_platform *sensor_platform = dev_get_platdata(dev);
 	struct iio_dev *indio_dev;
 	struct cros_ec_sensors_state *state;
-	struct iio_chan_spec *channel, *channels;
-	int ret, i, j, idx, samples_size, channel_num, mag_present = 0;
+	struct iio_chan_spec *channel;
+	int ret, i;
 
-	if (!ec) {
+	if (!ec_dev || !ec_dev->ec_dev) {
 		dev_warn(&pdev->dev, "No CROS EC device found.\n");
 		return -EINVAL;
 	}
+	ec_device = ec_dev->ec_dev;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*state));
 	if (indio_dev == NULL)
@@ -592,140 +509,77 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	/* Check how many accel sensors */
-	state->core.param.cmd = MOTIONSENSE_CMD_DUMP;
-	state->core.param.dump.max_sensor_count = 0;
-	if ((send_motion_host_cmd(&state->core)) ||
-	    (state->core.resp->dump.sensor_count == 0))
-		return -ENODEV;
-
-	state->sensor_num = state->core.resp->dump.sensor_count;
-	state->accel_num = 0;
-
-	channel_num = state->sensor_num * MAX_AXIS +
-			1;  /* for the lid angle if needed */
-	channels = devm_kcalloc(&pdev->dev,
-			channel_num + 1,  /* for the timestamp */
-			sizeof(struct iio_chan_spec),
-			GFP_KERNEL);
-	if (channels == NULL)
-		return -ENOMEM;
-
-	/* For each retrieve type and location */
-	for (i = 0, idx = 0, channel = channels; i < state->sensor_num; i++) {
-		state->core.param.cmd = MOTIONSENSE_CMD_INFO;
-		state->core.param.sensor_odr.sensor_num = i;
-		if (send_motion_host_cmd(&state->core)) {
-			dev_warn(&pdev->dev,
-				 "Can not access sensor %d info\n", i);
-			continue;
-		}
-		if (state->core.resp->info.type ==
-				MOTIONSENSE_TYPE_ACCEL)
-			state->accel_num++;
-		for (j = X; j <= Z; j++, channel++, idx++) {
-			switch (state->core.resp->info.type) {
-			case MOTIONSENSE_TYPE_ACCEL:
-				channel->type = IIO_ACCEL;
-				break;
-			case MOTIONSENSE_TYPE_GYRO:
-				channel->type = IIO_ANGL_VEL;
-				break;
-			case MOTIONSENSE_TYPE_MAG:
-				mag_present = 1;
-				channel->type = IIO_MAGN;
-				break;
-			default:
-				dev_warn(&pdev->dev, "unknown\n");
-			}
-			channel->modified = 1;
-			channel->info_mask_separate =
-				BIT(IIO_CHAN_INFO_RAW) |
-				BIT(IIO_CHAN_INFO_PROCESSED) |
-				BIT(IIO_CHAN_INFO_CALIBSCALE) |
-				BIT(IIO_CHAN_INFO_CALIBBIAS);
-			channel->info_mask_shared_by_type =
-				BIT(IIO_CHAN_INFO_SCALE) |
-				BIT(IIO_CHAN_INFO_PEAK_SCALE) |
-				BIT(IIO_CHAN_INFO_FREQUENCY) |
-				BIT(IIO_CHAN_INFO_SAMP_FREQ);
-			channel->scan_type.sign = 's';
-			channel->scan_type.realbits = 16;
-			channel->scan_type.storagebits = 16;
-			channel->scan_type.shift = 0;
-			channel->channel2 = IIO_MOD_X + j;
-			channel->extend_name = cros_ec_loc[
-				state->core.resp->info.location];
-			channel->scan_index = idx;
-		}
+	state->core.param.cmd = MOTIONSENSE_CMD_INFO;
+	state->core.param.info.sensor_num =
+		sensor_platform->sensor_num;
+	if (send_motion_host_cmd(&state->core)) {
+		dev_warn(dev, "Can not access sensor %d info\n", i);
+		return -EIO;
 	}
-
-	/* Hack to display the lid angle. Not all firmware has it. */
-	if (state->accel_num >= 2) {
-		state->lid_angle_idx = idx;
-		channel->type = IIO_ANGL;
-		channel->channel = 0;
+	state->type = state->core.resp->info.type;
+	state->loc = state->core.resp->info.location;
+	for (channel = state->channels, i = X; i < MAX_AXIS; i++, channel++) {
+		switch (state->type) {
+		case MOTIONSENSE_TYPE_ACCEL:
+			/* Offset is in 1/1024 of a g */
+			state->calib[i].scale = 10;
+			channel->type = IIO_ACCEL;
+			break;
+		case MOTIONSENSE_TYPE_GYRO:
+			/* Offset is in 1/1024 of a g */
+			state->calib[i].scale = 10;
+			channel->type = IIO_ANGL_VEL;
+			break;
+		case MOTIONSENSE_TYPE_MAG:
+			channel->type = IIO_MAGN;
+			break;
+		default:
+			dev_warn(&pdev->dev, "unknown\n");
+		}
+		channel->modified = 1;
 		channel->info_mask_separate =
-			BIT(IIO_CHAN_INFO_PROCESSED) |
-			BIT(IIO_CHAN_INFO_OFFSET);
-		channel->scan_index = idx++;
+			BIT(IIO_CHAN_INFO_RAW) |
+			BIT(IIO_CHAN_INFO_CALIBBIAS);
+		channel->info_mask_shared_by_all =
+			BIT(IIO_CHAN_INFO_SCALE) |
+			BIT(IIO_CHAN_INFO_CALIBSCALE) |
+			BIT(IIO_CHAN_INFO_FREQUENCY) |
+			BIT(IIO_CHAN_INFO_SAMP_FREQ);
 		channel->scan_type.sign = 's';
-		channel->scan_type.realbits = 9;
-		channel->scan_type.storagebits = 16;
+		channel->scan_type.realbits = SENSOR_BITS;
+		channel->scan_type.storagebits = SENSOR_BITS;
 		channel->scan_type.shift = 0;
-		channel++;
-	} else {
-		/* No lid angle sensor */
-		state->lid_angle_idx = INT_MAX;
-		channel_num--;
+		channel->channel2 = IIO_MOD_X + i;
+		channel->scan_index = i;
+		state->calib[i].offset = 0;
 	}
 
 	/* Timestamp */
 	channel->type = IIO_TIMESTAMP;
 	channel->channel = -1;
-	channel->scan_index = idx++;
+	channel->scan_index = MAX_AXIS;
 	channel->scan_type.sign = 's';
 	channel->scan_type.realbits = 64;
 	channel->scan_type.storagebits = 64;
 
-	indio_dev->channels = channels;
-	indio_dev->num_channels = idx;
+	indio_dev->channels = state->channels;
+	indio_dev->num_channels = MAX_CHANNELS;
 
-	/* Set nominal calibration offset and scale. */
-	state->calib = devm_kcalloc(&pdev->dev, channel_num,
-			sizeof(struct calib_data), GFP_KERNEL);
-	if (state->calib == NULL)
-		return -ENOMEM;
-
-	for (i = 0; i < channel_num; i++) {
-		state->calib[i].offset = 0;
-		state->calib[i].scale = CALIB_SCALE_SCALAR;
-	}
-
-	/*
-	 * Samples:
-	 * We need 2 bytes per samples, and 8 bytes for the timestamp.
-	 * Moreover, the time stamp has to be aligned on 64 bit boundary.
-	 */
-	samples_size = round_up(sizeof(s16) * channel_num, sizeof(s64)) +
-		sizeof(s64);
-	state->samples = devm_kzalloc(&pdev->dev, samples_size, GFP_KERNEL);
-	if (state->samples == NULL)
-		return -ENOMEM;
-
-	if ((state->core.ec->cmd_readmem != NULL) && !mag_present)
+	/* There is only enough room for accel and gyro in the io space */
+	if ((state->core.ec->cmd_readmem != NULL) &&
+	    (state->type != MOTIONSENSE_TYPE_MAG))
 		state->read_ec_sensors_data = read_ec_sensors_data_lpc;
 	else
 		state->read_ec_sensors_data = read_ec_sensors_data_cmd;
 
 	indio_dev->dev.parent = &pdev->dev;
 	indio_dev->info = &ec_sensors_info;
-	indio_dev->name = "cros-ec-sensors";
+	indio_dev->name = pdev->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
 	ret = iio_triggered_buffer_setup(indio_dev, NULL,
 					 accel_capture, NULL);
-	if (ret < 0)
+	if (ret)
 		return ret;
 
 	ret = iio_device_register(indio_dev);
@@ -749,7 +603,13 @@ static int cros_ec_sensors_remove(struct platform_device *pdev)
 
 static const struct platform_device_id cros_ec_sensors_ids[] = {
 	{
-		.name = "cros-ec-sensors",
+		.name = "cros-ec-accel",
+	},
+	{
+		.name = "cros-ec-gyro",
+	},
+	{
+		.name = "cros-ec-mag",
 	},
 	{ /* sentinel */ }
 };
@@ -762,6 +622,7 @@ static struct platform_driver cros_ec_sensors_platform_driver = {
 	},
 	.probe		= cros_ec_sensors_probe,
 	.remove		= cros_ec_sensors_remove,
+	.id_table	= cros_ec_sensors_ids,
 };
 module_platform_driver(cros_ec_sensors_platform_driver);
 
