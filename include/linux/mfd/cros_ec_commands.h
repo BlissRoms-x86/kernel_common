@@ -443,6 +443,9 @@ enum host_event_code {
 	/* EC encountered a panic, triggering a reset */
 	EC_HOST_EVENT_PANIC = 24,
 
+	/* Keyboard fastboot combo has been pressed */
+	EC_HOST_EVENT_KEYBOARD_FASTBOOT = 25,
+
 	/*
 	 * The high bit of the event mask is not used as a host event code.  If
 	 * it reads back as set, then the entire event mask should be
@@ -948,7 +951,9 @@ enum ec_feature_code {
 	/* Support USB Power delivery (PD) commands */
 	EC_FEATURE_USB_PD = 22,
 	/* Control USB multiplexer, for audio through USB port for instance. */
-	EC_FEATURE_USB_MUX = 23
+	EC_FEATURE_USB_MUX = 23,
+	/* Motion Sensor code has an internal software FIFO */
+	EC_FEATURE_MOTION_SENSE_FIFO = 24,
 };
 
 #define EC_FEATURE_MASK_0(event_code) (1UL << (event_code % 32))
@@ -1641,7 +1646,13 @@ enum motionsense_command {
 
 	/*
 	 * EC Rate command is a setter/getter command for the EC sampling rate
-	 * of all motion sensors in milliseconds.
+	 * in milliseconds.
+	 * It is per sensor, the EC run sample task  at the minimum of all
+	 * sensors EC_RATE.
+	 * For sensors without hardware FIFO, EC_RATE should be equals to 1/ODR
+	 * to collect all the sensor samples.
+	 * For sensor with hardware FIFO, EC_RATE is used as the maximal delay
+	 * to process of all motion sensors in milliseconds.
 	 */
 	MOTIONSENSE_CMD_EC_RATE = 2,
 
@@ -1687,6 +1698,20 @@ enum motionsense_command {
 	 */
 	MOTIONSENSE_CMD_FIFO_READ = 9,
 
+	/*
+	 * Perform low level calibration.
+	 * On sensors that support it, ask to do offset calibration.
+	 */
+	MOTIONSENSE_CMD_PERFORM_CALIB = 10,
+
+	/*
+	 * Sensor Offset command is a setter/getter command for the offset
+	 * used for calibration.
+	 * The offsets can be calculated by the host, or via
+	 * PERFORM_CALIB command.
+	 */
+	MOTIONSENSE_CMD_SENSOR_OFFSET = 11,
+
 	/* Number of motionsense sub-commands. */
 	MOTIONSENSE_NUM_CMDS
 };
@@ -1719,18 +1744,26 @@ struct ec_response_motion_sensor_data {
 	/* sensor number the data comes from */
 	uint8_t sensor_num;
 	/* Each sensor is up to 3-axis. */
-	int16_t data[3];
+	union {
+		int16_t             data[3];
+		struct {
+			uint16_t    rsvd;
+			uint32_t    timestamp;
+		} __packed;
+	};
 } __packed;
 
 struct ec_response_motion_sense_fifo_info {
 	/* Size of the fifo */
-	uint32_t size;
+	uint16_t size;
 	/* Amount of space used in the fifo */
-	uint32_t count;
-	/* Lost events since the last fifo_info */
-	uint32_t lost;
+	uint16_t count;
 	/* TImestamp recorded in us */
 	uint32_t timestamp;
+	/* Total amount of vector lost */
+	uint16_t total_lost;
+	/* Lost events since the last fifo_info, per sensors */
+	uint16_t lost[0];
 } __packed;
 
 struct ec_response_motion_sense_fifo_data {
@@ -1757,6 +1790,12 @@ struct ec_response_motion_sense_fifo_data {
  */
 #define EC_MOTION_SENSE_NO_VALUE -1
 
+#define EC_MOTION_SENSE_INVALID_CALIB_TEMP 0x8000
+
+/* MOTIONSENSE_CMD_SENSOR_OFFSET subcommand flag */
+/* Set Calibration information */
+#define MOTION_SENSE_SET_OFFSET 1
+
 struct ec_params_motion_sense {
 	uint8_t cmd;
 	union {
@@ -1771,25 +1810,24 @@ struct ec_params_motion_sense {
 		} dump;
 
 		/*
-		 * Used for MOTIONSENSE_CMD_EC_RATE and
-		 * MOTIONSENSE_CMD_KB_WAKE_ANGLE.
+		 * Used for MOTIONSENSE_CMD_KB_WAKE_ANGLE.
 		 */
 		struct {
 			/* Data to set or EC_MOTION_SENSE_NO_VALUE to read.
-			 * ec_rate: polling rate in ms.
 			 * kb_wake_angle: angle to wakup AP.
 			 */
 			int16_t data;
-		} ec_rate, kb_wake_angle;
+		} kb_wake_angle;
 
-		/* Used for MOTIONSENSE_CMD_INFO, MOTIONSENSE_CMD_DATA. */
+		/* Used for MOTIONSENSE_CMD_INFO, MOTIONSENSE_CMD_DATA
+		 * and MOTIONSENSE_CMD_PERFORM_CALIB. */
 		struct {
 			uint8_t sensor_num;
-		} info, data, fifo_flush;
+		} info, data, fifo_flush, perform_calib;
 
 		/*
-		 * Used for MOTIONSENSE_CMD_SENSOR_ODR and
-		 * MOTIONSENSE_CMD_SENSOR_RANGE.
+		 * Used for MOTIONSENSE_CMD_EC_RATE, MOTIONSENSE_CMD_SENSOR_ODR
+		 * and MOTIONSENSE_CMD_SENSOR_RANGE.
 		 */
 		struct {
 			uint8_t sensor_num;
@@ -1801,9 +1839,41 @@ struct ec_params_motion_sense {
 
 			/* Data to set or EC_MOTION_SENSE_NO_VALUE to read. */
 			int32_t data;
-		} sensor_odr, sensor_range;
+		} ec_rate, sensor_odr, sensor_range;
+
+		/* Used for MOTIONSENSE_CMD_SENSOR_OFFSET */
+		struct {
+			uint8_t sensor_num;
+
+			/*
+			 * bit 0: If set (MOTION_SENSE_SET_OFFSET), set
+			 * the calibration information in the EC.
+			 * If unset, just retrieve calibration information.
+			 */
+			uint16_t flags;
+
+			/*
+			 * Temperature at calibration, in units of 0.01 C
+			 * 0x8000: invalid / unknown.
+			 * 0x0: 0C
+			 * 0x7fff: +327.67C
+			 */
+			int16_t temp;
+
+			/*
+			 * Offset for calibration.
+			 * Unit:
+			 * Accelerometer: 1/1024 g
+			 * Gyro:          1/1024 deg/s
+			 */
+			int16_t offset[3];
+		} __packed sensor_offset;
+
+		/* Used for MOTIONSENSE_CMD_FIFO_INFO */
 		struct {
 		} fifo_info;
+
+		/* Used for MOTIONSENSE_CMD_FIFO_READ */
 		struct {
 			/*
 			 * Number of expected vector to return.
@@ -1855,6 +1925,12 @@ struct ec_response_motion_sense {
 			/* Current value of the parameter queried. */
 			int32_t ret;
 		} ec_rate, sensor_odr, sensor_range, kb_wake_angle;
+
+		/* Used for MOTIONSENSE_CMD_SENSOR_OFFSET */
+		struct {
+			int16_t temp;
+			int16_t offset[3];
+		} sensor_offset, perform_calib;
 
 		struct ec_response_motion_sense_fifo_info fifo_info, fifo_flush;
 
@@ -3027,6 +3103,11 @@ struct ec_params_pd_status {
 #define PD_STATUS_HOST_EVENT      (1 << 0) /* Forward host event to AP */
 #define PD_STATUS_IN_RW           (1 << 1) /* Running RW image */
 #define PD_STATUS_JUMPED_TO_IMAGE (1 << 2) /* Current image was jumped to */
+#define PD_STATUS_TCPC_ALERT_0    (1 << 3) /* Alert active in port 0 TCPC */
+#define PD_STATUS_TCPC_ALERT_1    (1 << 4) /* Alert active in port 1 TCPC */
+#define PD_STATUS_EC_INT_ACTIVE  (PD_STATUS_TCPC_ALERT_0 | \
+				      PD_STATUS_TCPC_ALERT_1 | \
+				      PD_STATUS_HOST_EVENT)
 struct ec_response_pd_status {
 	uint32_t status;      /* PD MCU status */
 	uint32_t curr_lim_ma; /* input current limit */
@@ -3320,6 +3401,14 @@ struct ec_params_pd_write_log_entry {
 } __packed;
 
 #endif  /* !__ACPI__ */
+
+
+/*****************************************************************************/
+/*
+ * Blob commands are just opaque chunks of data, sent with proto v3.
+ * params is struct ec_host_request, response is struct ec_host_response.
+ */
+#define EC_CMD_BLOB 0x200
 
 /*****************************************************************************/
 /*
