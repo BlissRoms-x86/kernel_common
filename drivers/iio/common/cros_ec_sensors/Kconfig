@@ -10,3 +10,10 @@ config IIO_CROS_EC_SENSORS
 	  This driver is used to access sensors attached to the
 	  ChromeOS Embedded Controller.
 
+config IIO_CROS_EC_SENSORS_RING
+	tristate "ChromeOS EC Sensors Ring"
+	depends on IIO_CROS_EC_SENSORS
+	help
+	  Add support for handling sensor events FIFO produced by
+	  the sensor hub.
+

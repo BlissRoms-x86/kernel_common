@@ -260,14 +260,18 @@ static const struct mfd_cell cros_usb_pd_charger_devs[] = {
 	},
 };
 
-static int cros_ec_usb_pd_charger_register(struct cros_ec_dev *ec)
+static void cros_ec_usb_pd_charger_register(struct cros_ec_dev *ec)
 {
-	return mfd_add_devices(ec->dev, 0, cros_usb_pd_charger_devs,
-			       ARRAY_SIZE(cros_usb_pd_charger_devs),
-			       NULL, 0, NULL);
+	int ret;
+
+	ret = mfd_add_devices(ec->dev, 0, cros_usb_pd_charger_devs,
+			      ARRAY_SIZE(cros_usb_pd_charger_devs),
+			      NULL, 0, NULL);
+	if (ret)
+		dev_err(ec->dev, "failed to add usb-pd-charger device\n");
 }
 
-static int cros_ec_sensors_register(struct cros_ec_dev *ec)
+static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 {
 	/*
 	 * Issue a command to get the number of sensor reported.
@@ -284,7 +288,7 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 	msg = kzalloc(sizeof(struct cros_ec_command) +
 		      max(sizeof(*params), sizeof(*resp)), GFP_KERNEL);
 	if (msg == NULL)
-  		return -ENOMEM;
+  		return;
 
 	msg->version = 2;
 	msg->command = EC_CMD_MOTION_SENSE_CMD + ec->cmd_offset;
@@ -298,25 +302,22 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 	if (ret < 0 || msg->result != EC_RES_SUCCESS) {
 		dev_warn(ec->dev, "cannot get EC sensor information: %d/%d\n",
 			 ret, msg->result);
-		ret = -ENODEV;
 		goto error;
 	}
 
-	resp = (struct ec_response_motion_sense *)msg->data;
-
 	sensor_num = resp->dump.sensor_count;
-	/* Allocate one extra sensor for the lid angle if needed */
-	sensor_cells = kzalloc(sizeof(struct mfd_cell) * (sensor_num + 1),
+	/* Allocate 2 extra sensors in case lid angle or FIFO are needed */
+	sensor_cells = kzalloc(sizeof(struct mfd_cell) * (sensor_num + 2),
 			       GFP_KERNEL);
 	if (sensor_cells == NULL) {
-		ret = -ENOMEM;
+		dev_err(ec->dev, "failed to allocate mfd cells for sensors\n");
 		goto error;
 	}
 
 	sensor_platforms = kzalloc(sizeof(struct cros_ec_sensor_platform) *
 		  (sensor_num + 1), GFP_KERNEL);
 	if (sensor_platforms == NULL) {
-		ret = -ENOMEM;
+		dev_err(ec->dev, "failed to prepare sensor command.\n");
 		goto error_platforms;
 	}
 
@@ -331,11 +332,6 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 				 i, ret, msg->result);
 			continue;
 		}
-		if (resp->info.type >= MOTIONSENSE_TYPE_MAX) {
-			dev_warn(ec->dev, "Unknown sensor type: %d\n",
-				 resp->info.type);
-			goto end_sensor_register;
-		}
 		switch (resp->info.type) {
 		case MOTIONSENSE_TYPE_ACCEL:
 			sensor_cells[id].name = "cros-ec-accel";
@@ -348,8 +344,7 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 			break;
 		default:
 			dev_warn(ec->dev, "unknown type %d\n", resp->info.type);
-			ret = -EINVAL;
-			goto end_sensor_register;
+			continue;
 		}
 		sensor_platforms[id].sensor_num = i;
 		sensor_cells[id].id = sensor_type[resp->info.type];
@@ -361,7 +356,6 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 		id++;
 	}
 	if (sensor_type[MOTIONSENSE_TYPE_ACCEL] >= 2) {
-		id++;
 		sensor_platforms[id].sensor_num = sensor_num;
 
 		sensor_cells[id].name = "cros-ec-angle";
@@ -369,16 +363,23 @@ static int cros_ec_sensors_register(struct cros_ec_dev *ec)
 		sensor_cells[id].platform_data = &sensor_platforms[i];
 		sensor_cells[id].pdata_size =
 			sizeof(struct cros_ec_sensor_platform);
+		id++;
 	}
+	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE_FIFO)) {
+		sensor_cells[id].name = "cros-ec-ring";
+		id++;
+	}
+
 	ret = mfd_add_devices(ec->dev, 0, sensor_cells, id,
 			      NULL, 0, NULL);
-end_sensor_register:
+	if (ret)
+		dev_err(ec->dev, "failed to add EC sensors\n");
+
 	kfree(sensor_platforms);
 error_platforms:
 	kfree(sensor_cells);
 error:
 	kfree(msg);
-	return ret;
 }
 
 static int ec_device_probe(struct platform_device *pdev)
@@ -436,17 +437,13 @@ static int ec_device_probe(struct platform_device *pdev)
 	}
 
 	/* check whether this EC instance has the PD charge manager */
-	if (cros_ec_check_features(ec, EC_FEATURE_USB_PD)) {
-		retval = cros_ec_usb_pd_charger_register(ec);
-		if (retval)
-			dev_err(dev, "failed to add usb-pd-charger device\n");
-	}
+	if (cros_ec_check_features(ec, EC_FEATURE_USB_PD))
+		cros_ec_usb_pd_charger_register(ec);
+
 	/* check whether this EC is a sensor hub. */
-	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE)) {
-		retval = cros_ec_sensors_register(ec);
-		if (retval)
-			dev_err(dev, "failed to add sensor hub\n");
-	}
+	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE))
+		cros_ec_sensors_register(ec);
+
 	/* Take control of the lightbar from the EC. */
 	if (ec_has_lightbar(ec))
 		lb_manual_suspend_ctrl(ec, 1);
@@ -473,6 +470,7 @@ static int ec_device_remove(struct platform_device *pdev)
 	if (ec_has_lightbar(ec))
 		lb_manual_suspend_ctrl(ec, 0);
 
+	mfd_remove_devices(ec->dev);
 	cdev_del(&ec->cdev);
 	device_unregister(&ec->class_dev);
 	return 0;

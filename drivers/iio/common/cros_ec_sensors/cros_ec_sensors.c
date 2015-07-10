@@ -481,6 +481,30 @@ static irqreturn_t accel_capture(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_IIO_CROS_EC_SENSORS_RING
+static ssize_t cros_ec_sensors_flush(struct iio_dev *indio_dev,
+		uintptr_t private, const struct iio_chan_spec *chan,
+		const char *buf, size_t len)
+{
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	int ret = 0;
+	bool flush;
+
+	ret = strtobool(buf, &flush);
+	if (ret < 0)
+		return ret;
+	if (!flush)
+		return -EINVAL;
+
+	mutex_lock(&st->core.cmd_lock);
+	st->core.param.cmd = MOTIONSENSE_CMD_FIFO_FLUSH;
+	ret = send_motion_host_cmd(&st->core);
+	if (ret != 0)
+		dev_warn(&indio_dev->dev, "Unable to flush sensor\n");
+	mutex_unlock(&st->core.cmd_lock);
+	return ret ? ret : len;
+}
+#endif
 static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 		uintptr_t private, const struct iio_chan_spec *chan,
 		const char *buf, size_t len)
@@ -530,6 +554,13 @@ static ssize_t cros_ec_sensors_loc(struct iio_dev *indio_dev,
 }
 
 static const struct iio_chan_spec_ext_info cros_ec_sensors_ring_info[] = {
+#ifdef CONFIG_IIO_CROS_EC_SENSORS_RING
+	{
+		.name = "flush",
+		.shared = IIO_SHARED_BY_ALL,
+		.write = cros_ec_sensors_flush
+	},
+#endif
 	{
 		.name = "calibrate",
 		.shared = IIO_SHARED_BY_ALL,
