@@ -481,6 +481,74 @@ static irqreturn_t accel_capture(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
+static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
+		uintptr_t private, const struct iio_chan_spec *chan,
+		const char *buf, size_t len)
+{
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	int ret, i;
+	bool calibrate;
+	int idx = chan->scan_index;
+
+	ret = strtobool(buf, &calibrate);
+	if (ret < 0)
+		return ret;
+	if (!calibrate)
+		return -EINVAL;
+
+	mutex_lock(&st->core.cmd_lock);
+	st->core.param.cmd = MOTIONSENSE_CMD_PERFORM_CALIB;
+	ret = send_motion_host_cmd(&st->core);
+	if (ret != 0) {
+		dev_warn(&indio_dev->dev, "Unable to calibrate sensor\n");
+	} else {
+		/* Save values */
+		for (i = X; i < MAX_AXIS; i++)
+			st->calib[i + (idx / MAX_AXIS) * MAX_AXIS].offset =
+			     st->core.resp->perform_calib.offset[i];
+	}
+	mutex_unlock(&st->core.cmd_lock);
+	return ret ? ret : len;
+}
+
+static ssize_t cros_ec_sensors_id(struct iio_dev *indio_dev,
+		uintptr_t private, const struct iio_chan_spec *chan,
+		char *buf)
+{
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+
+	return sprintf(buf, "%d\n", st->core.param.info.sensor_num);
+}
+
+static ssize_t cros_ec_sensors_loc(struct iio_dev *indio_dev,
+		uintptr_t private, const struct iio_chan_spec *chan,
+		char *buf)
+{
+	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+
+	return sprintf(buf, "%s\n", cros_ec_loc[st->loc]);
+}
+
+static const struct iio_chan_spec_ext_info cros_ec_sensors_ring_info[] = {
+	{
+		.name = "calibrate",
+		.shared = IIO_SHARED_BY_ALL,
+		.write = cros_ec_sensors_calibrate
+	},
+	{
+		.name = "id",
+		.shared = IIO_SHARED_BY_ALL,
+		.read = cros_ec_sensors_id
+	},
+	{
+		.name = "location",
+		.shared = IIO_SHARED_BY_ALL,
+		.read = cros_ec_sensors_loc
+	},
+	{ },
+};
+
+
 static int cros_ec_sensors_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -551,6 +619,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 		channel->scan_type.shift = 0;
 		channel->channel2 = IIO_MOD_X + i;
 		channel->scan_index = i;
+		channel->ext_info = cros_ec_sensors_ring_info;
 		state->calib[i].offset = 0;
 	}
 
