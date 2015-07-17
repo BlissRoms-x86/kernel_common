@@ -49,13 +49,6 @@ static char *cros_ec_loc[] = {
  */
 #define SENSOR_BITS 16
 
-/*
- * Scalar to use for the calibration scale. Typically the calibration
- * scale is a float near 1.0, but to avoid floating point, we will bit shift
- * the calibration scale by this scalar. Using a power of 2 is more efficient.
- */
-#define CALIB_SCALE_SCALAR 10
-
 typedef int (*read_ec_sensors_data_t)(struct iio_dev *indio_dev,
 		unsigned long scan_mask, s16 *data);
 
@@ -277,11 +270,6 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		if (st->read_ec_sensors_data(indio_dev, 1 << idx, &data) < 0)
 			ret = -EIO;
 		*val = (s16)data;
-		break;
-	case IIO_CHAN_INFO_CALIBSCALE:
-		*val = 1;
-		*val2 = st->calib[idx].scale;
-		ret = IIO_VAL_FRACTIONAL_LOG2;
 		break;
 	case IIO_CHAN_INFO_CALIBBIAS:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
@@ -641,7 +629,6 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 			BIT(IIO_CHAN_INFO_CALIBBIAS);
 		channel->info_mask_shared_by_all =
 			BIT(IIO_CHAN_INFO_SCALE) |
-			BIT(IIO_CHAN_INFO_CALIBSCALE) |
 			BIT(IIO_CHAN_INFO_FREQUENCY) |
 			BIT(IIO_CHAN_INFO_SAMP_FREQ);
 		channel->scan_type.sign = 's';
