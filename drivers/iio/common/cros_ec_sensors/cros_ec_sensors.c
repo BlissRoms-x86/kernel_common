@@ -94,10 +94,11 @@ static unsigned idx_to_reg(struct cros_ec_sensors_state *st, unsigned idx)
 {
 	/*
 	 * When using LPC interface, only space for 2 Accel and one Gyro.
+	 * First halfword of MOTIONSENSE_TYPE_ACCEL is used by angle.
 	 */
 	if (st->type == MOTIONSENSE_TYPE_ACCEL)
 		return EC_MEMMAP_ACC_DATA + sizeof(u16) *
-			(idx + st->core.param.info.sensor_num *
+			(1 + idx + st->core.param.info.sensor_num *
 			 MAX_AXIS);
 	else
 		return EC_MEMMAP_GYRO_DATA + sizeof(u16) * idx;
