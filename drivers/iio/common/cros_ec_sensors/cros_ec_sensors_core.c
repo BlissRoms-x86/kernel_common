@@ -56,6 +56,7 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(cros_ec_sensors_core_init);
 
 /*
  * send_motion_host_cmd - send motion sense host command
@@ -80,3 +81,4 @@ int send_motion_host_cmd(struct cros_ec_sensors_core_state *state)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(send_motion_host_cmd);
