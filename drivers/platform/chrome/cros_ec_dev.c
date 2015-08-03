@@ -342,6 +342,12 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 		case MOTIONSENSE_TYPE_MAG:
 			sensor_cells[id].name = "cros-ec-mag";
 			break;
+		case MOTIONSENSE_TYPE_PROX:
+			sensor_cells[id].name = "cros-ec-prox";
+			break;
+		case MOTIONSENSE_TYPE_LIGHT:
+			sensor_cells[id].name = "cros-ec-light";
+			break;
 		default:
 			dev_warn(ec->dev, "unknown type %d\n", resp->info.type);
 			continue;
