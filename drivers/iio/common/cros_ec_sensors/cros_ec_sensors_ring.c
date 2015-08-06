@@ -410,12 +410,11 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, indio_dev);
 
-	state = iio_priv(indio_dev);
-	ret = cros_ec_sensors_core_init(pdev, &state->core);
+	ret = cros_ec_sensors_core_init(pdev, indio_dev, false);
 	if (ret)
 		return ret;
 
-
+	state = iio_priv(indio_dev);
 	/* Retrieve FIFO information */
 	state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INFO;
 	/* If it fails, just assume the FIFO is not supported.
@@ -439,9 +438,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	indio_dev->channels = cros_ec_ring_channels;
 	indio_dev->num_channels = ARRAY_SIZE(cros_ec_ring_channels);
 
-	indio_dev->dev.parent = &pdev->dev;
 	indio_dev->info = &ec_sensors_info;
-	indio_dev->name = pdev->name;
 
 	state->trig = devm_iio_trigger_alloc(&pdev->dev,
 			"%s-trigger%d", indio_dev->name, indio_dev->id);

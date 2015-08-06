@@ -23,6 +23,30 @@ enum {
 	MAX_AXIS,
 };
 
+/*
+ * EC returns sensor values using signed 16 bit registers
+ */
+#define CROS_EC_SENSOR_BITS 16
+
+/*
+ * 4 16 bit channels are allowed.
+ * Good enough for current sensors, thye use up to 3 16 bit vectors.
+ */
+#define SAMPLE_SIZE  (sizeof(s64) * 2)
+
+/*
+ * Function to read the sensor data.
+ *
+ * Data can be retrieve using the cros ec command protocol.
+ * Some machines also allow accessing some sensor data via
+ * IO space.
+ */
+typedef int (cros_ec_sensors_read_t)(struct iio_dev *indio_dev,
+		unsigned long scan_mask, s16 *data);
+
+cros_ec_sensors_read_t cros_ec_sensors_read_lpc;
+cros_ec_sensors_read_t cros_ec_sensors_read_cmd;
+
 /* State data for ec_sensors iio driver. */
 struct cros_ec_sensors_core_state {
 	struct cros_ec_device *ec;
@@ -39,11 +63,48 @@ struct cros_ec_sensors_core_state {
 	struct ec_params_motion_sense param;
 	struct ec_response_motion_sense *resp;
 
+	/* Type of sensor */
+	enum motionsensor_type type;
+	enum motionsensor_location loc;
+
+	/*
+	 * Calibration parameters. Note that trigger captured data will always
+	 * provide the calibrated values.
+	 */
+	struct calib_data {
+		s16 offset;
+	} calib[MAX_AXIS];
+
+	/*
+	 * Static array to hold data from a single capture. For each
+	 * channel we need 2 bytes, except for the timestamp. The timestamp
+	 * is always last and is always 8-byte aligned.
+	 */
+	u8 samples[SAMPLE_SIZE];
+
+	/* Pointer to function used for accessing sensors values. */
+	cros_ec_sensors_read_t *read_ec_sensors_data;
 };
 
 /* Basic initialization of the core structure. */
 int cros_ec_sensors_core_init(struct platform_device *pdev,
-			      struct cros_ec_sensors_core_state *state);
+			      struct iio_dev *indio_dev,
+			      bool physical_device);
+
+/*
+ * cros_ec_sensors_capture - the trigger handler function
+ *
+ * @irq: the interrupt number
+ * @p: private data - always a pointer to the poll func.
+ *
+ * On a trigger event occurring, if the pollfunc is attached then this
+ * handler is called as a threaded interrupt (and hence may sleep). It
+ * is responsible for grabbing data from the device and pushing it into
+ * the associated buffer.
+ */
+irqreturn_t cros_ec_sensors_capture(int irq, void *p);
+
+
 /*
  * send_motion_host_cmd - send motion sense host command
  *
@@ -53,6 +114,9 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
  * Note, when called, the sub-command is assumed to be set in param->cmd.
  */
 int send_motion_host_cmd(struct cros_ec_sensors_core_state *state);
+
+/* List of extended channel specification for all sensors */
+extern const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[];
 
 #endif  /* __CROS_EC_SENSORS_CORE_H */
 
