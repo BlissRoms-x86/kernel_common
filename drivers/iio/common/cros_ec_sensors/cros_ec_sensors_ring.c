@@ -516,4 +516,4 @@ static struct platform_driver cros_ec_ring_platform_driver = {
 module_platform_driver(cros_ec_ring_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC sensor hub ring driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

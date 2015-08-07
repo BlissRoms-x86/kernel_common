@@ -715,4 +715,4 @@ static struct platform_driver cros_ec_sensors_platform_driver = {
 module_platform_driver(cros_ec_sensors_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC sensor hub driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
