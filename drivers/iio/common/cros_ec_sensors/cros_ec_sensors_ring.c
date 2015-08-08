@@ -95,7 +95,7 @@ static const struct iio_info ec_sensors_info = {
 	.driver_module = THIS_MODULE,
 };
 
-static uint64_t cros_ec_get_time_ns(void)
+static s64 cros_ec_get_time_ns(void)
 {
 	struct timespec ts;
 
