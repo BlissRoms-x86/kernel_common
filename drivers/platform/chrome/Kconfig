@@ -13,9 +13,9 @@ menuconfig CHROME_PLATFORMS
 
 if CHROME_PLATFORMS
 
-config ARM_CHROMEOS_FIRMWARE
+config CHROMEOS_OF_FIRMWARE
 	bool "ChromeOS firmware interface driver"
-	depends on ARM
+	depends on OF && MFD_CROS_EC
 	select CHROMEOS
 	select CHROMEOS_VBC_EC
 	---help---

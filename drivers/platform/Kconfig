@@ -14,7 +14,7 @@ source "drivers/platform/chrome/Kconfig"
 
 config CHROMEOS
 	bool
-	depends on ARM_CHROMEOS_FIRMWARE || (NVRAM && ACPI_CHROMEOS)
+	depends on CHROMEOS_OF_FIRMWARE || (NVRAM && ACPI_CHROMEOS)
 
 	---help---
 	  Provides abstracted interfaces to the firmware features provided on
