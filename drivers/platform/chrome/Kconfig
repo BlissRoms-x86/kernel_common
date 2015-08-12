@@ -13,6 +13,16 @@ menuconfig CHROME_PLATFORMS
 
 if CHROME_PLATFORMS
 
+config ARM_CHROMEOS_FIRMWARE
+	bool "ChromeOS firmware interface driver"
+	depends on ARM
+	select CHROMEOS
+	select CHROMEOS_VBC_EC
+	---help---
+	  This driver provides an interface to ChromeOS firmware.
+
+	  Say Y here if you are building for a ChromeOS device.
+
 config CHROMEOS_LAPTOP
 	tristate "Chrome OS Laptop"
 	depends on I2C && DMI && X86
