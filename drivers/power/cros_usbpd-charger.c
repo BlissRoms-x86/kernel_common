@@ -73,6 +73,7 @@ struct charger_data {
 	struct port_data *ports[CROS_USB_PD_MAX_PORTS];
 	struct delayed_work log_work;
 	struct workqueue_struct *log_workqueue;
+	bool suspended;
 };
 
 #define EC_MAX_IN_SIZE EC_PROTO2_MAX_REQUEST_SIZE
@@ -526,6 +527,11 @@ static void cros_usb_pd_log_check(struct work_struct *work)
 	int entries = 0;
 	ktime_t now;
 
+	if (charger->suspended) {
+		dev_dbg(dev, "Suspended...bailing out\n");
+		return;
+	}
+
 	while (entries++ < CROS_USB_PD_MAX_LOG_ENTRIES) {
 		ret = ec_command(charger, EC_CMD_PD_GET_LOG_ENTRY,
 				 NULL, 0, (uint8_t *)&u, sizeof(u));
@@ -698,6 +704,8 @@ static int cros_usb_pd_charger_resume(struct device *dev)
 	if (!charger)
 		return 0;
 
+	charger->suspended = false;
+
 	dev_dbg(dev, "cros_usb_pd_charger_resume: updating power supplies\n");
 	for (i = 0; i < charger->num_registered_psy; i++) {
 		power_supply_changed(charger->ports[i]->psy);
@@ -713,6 +721,8 @@ static int cros_usb_pd_charger_resume(struct device *dev)
 static int cros_usb_pd_charger_suspend(struct device *dev)
 {
 	struct charger_data *charger = dev_get_drvdata(dev);
+
+	charger->suspended = true;
 
 	if (charger)
 		flush_delayed_work(&charger->log_work);
