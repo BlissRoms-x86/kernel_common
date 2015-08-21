@@ -93,8 +93,9 @@ static enum power_supply_property cros_usb_pd_charger_props[] = {
 	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
-int ec_command(struct charger_data *charger, int command,
-	       uint8_t *outdata, int outsize, uint8_t *indata, int insize)
+static int ec_command(struct charger_data *charger, int version, int command,
+		      uint8_t *outdata, int outsize, uint8_t *indata,
+		      int insize)
 {
 	struct cros_ec_device *ec_device = charger->ec_device;
 	struct cros_ec_dev *ec_dev = charger->ec_dev;
@@ -105,6 +106,7 @@ int ec_command(struct charger_data *charger, int command,
 	if (!msg)
 		return -ENOMEM;
 
+	msg->version = version;
 	msg->command = ec_dev->cmd_offset + command;
 	msg->outsize = outsize;
 	msg->insize = insize;
@@ -129,7 +131,7 @@ static int set_ec_usb_pd_override_ports(struct charger_data *charger,
 
 	req.override_port = port_num;
 
-	ret = ec_command(charger, EC_CMD_PD_CHARGE_PORT_OVERRIDE,
+	ret = ec_command(charger, 0, EC_CMD_PD_CHARGE_PORT_OVERRIDE,
 			 (uint8_t *)&req, sizeof(req),
 			 NULL, 0);
 	if (ret < 0) {
@@ -148,7 +150,7 @@ static int get_ec_num_ports(struct charger_data *charger, int *num_ports)
 	int ret;
 
 	*num_ports = 0;
-	ret = ec_command(charger, EC_CMD_USB_PD_PORTS,
+	ret = ec_command(charger, 0, EC_CMD_USB_PD_PORTS,
 			 NULL, 0, ec_inbuf, EC_MAX_IN_SIZE);
 	if (ret < 0) {
 		dev_err(dev, "Unable to query PD ports (err:0x%x)\n", ret);
@@ -170,7 +172,7 @@ static int get_ec_usb_pd_discovery_info(struct port_data *port)
 
 	req.port = port->port_number;
 
-	ret = ec_command(charger, EC_CMD_USB_PD_DISCOVERY,
+	ret = ec_command(charger, 0, EC_CMD_USB_PD_DISCOVERY,
 			 (uint8_t *)&req, sizeof(req),
 			 (uint8_t *)&resp, sizeof(resp));
 	if (ret < 0) {
@@ -198,7 +200,7 @@ static int get_ec_usb_pd_power_info(struct port_data *port)
 	int ret, last_psy_status, last_psy_type;
 
 	req.port = port->port_number;
-	ret = ec_command(charger, EC_CMD_USB_PD_POWER_INFO,
+	ret = ec_command(charger, 0, EC_CMD_USB_PD_POWER_INFO,
 			 (uint8_t *)&req, sizeof(req),
 			 (uint8_t *)&resp, sizeof(resp));
 	if (ret < 0) {
@@ -558,7 +560,7 @@ static void cros_usb_pd_log_check(struct work_struct *work)
 	}
 
 	while (entries++ < CROS_USB_PD_MAX_LOG_ENTRIES) {
-		ret = ec_command(charger, EC_CMD_PD_GET_LOG_ENTRY,
+		ret = ec_command(charger, 0, EC_CMD_PD_GET_LOG_ENTRY,
 				 NULL, 0, (uint8_t *)&u, sizeof(u));
 		now = ktime_get_real();
 		if (ret < 0) {
