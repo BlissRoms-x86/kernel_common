@@ -18,6 +18,7 @@
  * Power supply driver for ChromeOS EC based USB PD Charger.
  */
 
+#include <linux/fs.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mfd/cros_ec.h>
@@ -93,6 +94,10 @@ static enum power_supply_property cros_usb_pd_charger_props[] = {
 	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
+/* Current external voltage/current limit in mV/mA. Default to none. */
+static uint16_t ext_voltage_lim = EC_POWER_LIMIT_NONE;
+static uint16_t ext_current_lim = EC_POWER_LIMIT_NONE;
+
 static int ec_command(struct charger_data *charger, int version, int command,
 		      uint8_t *outdata, int outsize, uint8_t *indata,
 		      int insize)
@@ -102,7 +107,7 @@ static int ec_command(struct charger_data *charger, int version, int command,
 	struct cros_ec_command *msg;
 	int ret;
 
-	msg = kmalloc(sizeof(*msg) + max(insize, outsize), GFP_KERNEL);
+	msg = kzalloc(sizeof(*msg) + max(insize, outsize), GFP_KERNEL);
 	if (!msg)
 		return -ENOMEM;
 
@@ -786,6 +791,125 @@ static int cros_usb_pd_charger_suspend(struct device *dev)
 	return 0;
 }
 #endif
+
+static int set_ec_ext_power_limit(struct cros_ec_dev *ec,
+				  uint16_t current_lim, uint16_t voltage_lim)
+{
+	struct ec_params_external_power_limit_v1 *req;
+	struct cros_ec_command *msg;
+	int ret;
+
+	msg = kzalloc(sizeof(*msg) + sizeof(*req), GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
+
+	req = (struct ec_params_external_power_limit_v1 *)msg->data;
+
+	req->current_lim = current_lim;
+	req->voltage_lim = voltage_lim;
+
+	msg->version = 1;
+	msg->command = ec->cmd_offset + EC_CMD_EXTERNAL_POWER_LIMIT;
+	msg->outsize = sizeof(*req);
+
+	ret = cros_ec_cmd_xfer_status(ec->ec_dev, msg);
+	if (ret < 0) {
+		dev_warn(ec->dev,
+			 "External power limit command returned 0x%x\n",
+			 ret);
+		ret = -EINVAL;
+	} else {
+		ret = 0;
+	}
+
+	kfree(msg);
+	return ret;
+}
+
+static ssize_t get_ec_ext_current_lim(struct device *dev,
+				      struct device_attribute *attr,
+				      char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ext_current_lim);
+}
+
+static ssize_t set_ec_ext_current_lim(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	uint16_t tmp_val;
+	struct cros_ec_dev *ec = container_of(
+			dev, struct cros_ec_dev, class_dev);
+
+	if (kstrtou16(buf, 0, &tmp_val) < 0)
+		return -EINVAL;
+
+	ret = set_ec_ext_power_limit(ec, tmp_val, ext_voltage_lim);
+	if (ret < 0)
+		return ret;
+
+	ext_current_lim = tmp_val;
+	if (ext_current_lim == EC_POWER_LIMIT_NONE)
+		dev_info(ec->dev, "External current limit removed\n");
+	else
+		dev_info(ec->dev, "External current limit set to %dmA\n",
+			 ext_current_lim);
+
+	return count;
+}
+
+static ssize_t get_ec_ext_voltage_lim(struct device *dev,
+				      struct device_attribute *attr,
+				      char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ext_voltage_lim);
+}
+
+static ssize_t set_ec_ext_voltage_lim(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	uint16_t tmp_val;
+
+	struct cros_ec_dev *ec = container_of(
+			dev, struct cros_ec_dev, class_dev);
+
+	if (kstrtou16(buf, 0, &tmp_val) < 0)
+		return -EINVAL;
+
+	ret = set_ec_ext_power_limit(ec, ext_current_lim, tmp_val);
+	if (ret < 0)
+		return ret;
+
+	ext_voltage_lim = tmp_val;
+	if (ext_voltage_lim == EC_POWER_LIMIT_NONE)
+		dev_info(ec->dev, "External voltage limit removed\n");
+	else
+		dev_info(ec->dev, "External voltage limit set to %dmV\n",
+			 ext_voltage_lim);
+
+	return count;
+}
+
+static DEVICE_ATTR(ext_current_lim, S_IWUSR | S_IWGRP | S_IRUGO,
+		   get_ec_ext_current_lim,
+		   set_ec_ext_current_lim);
+static DEVICE_ATTR(ext_voltage_lim, S_IWUSR | S_IWGRP | S_IRUGO,
+		   get_ec_ext_voltage_lim,
+		   set_ec_ext_voltage_lim);
+
+static struct attribute *__ext_power_cmds_attrs[] = {
+	&dev_attr_ext_current_lim.attr,
+	&dev_attr_ext_voltage_lim.attr,
+	NULL,
+};
+
+struct attribute_group cros_usb_pd_charger_attr_group = {
+	.name = "usb-pd-charger",
+	.attrs = __ext_power_cmds_attrs,
+};
 
 static SIMPLE_DEV_PM_OPS(cros_usb_pd_charger_pm_ops,
 	cros_usb_pd_charger_suspend, cros_usb_pd_charger_resume);

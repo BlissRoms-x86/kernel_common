@@ -318,6 +318,7 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev);
 extern struct attribute_group cros_ec_attr_group;
 extern struct attribute_group cros_ec_lightbar_attr_group;
 extern struct attribute_group cros_ec_vbc_attr_group;
+extern struct attribute_group cros_usb_pd_charger_attr_group;
 
 /**
  * cros_ec_get_host_event - Return a mask of event set by the EC.

@@ -39,6 +39,9 @@ static const struct attribute_group *cros_ec_groups[] = {
 #ifdef CONFIG_CROS_EC_PD_UPDATE
 	&cros_ec_pd_attr_group,
 #endif
+#ifdef CONFIG_CHARGER_CROS_USB_PD
+	&cros_usb_pd_charger_attr_group,
+#endif
 	NULL,
 };
 
