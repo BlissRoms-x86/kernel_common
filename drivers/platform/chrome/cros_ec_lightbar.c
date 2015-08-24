@@ -481,14 +481,24 @@ static ssize_t program_store(struct device *dev, struct device_attribute *attr,
 	struct cros_ec_dev *ec = container_of(
 			dev, struct cros_ec_dev, class_dev);
 	struct cros_ec_command *msg;
-	int bytes, ret;
+	int extra_bytes, max_size, ret;
 
-	if (count > EC_LB_PROG_LEN) {
-		dev_warn(dev, "Program is %u bytes, truncation will occur",
-			 (int) count);
-		bytes = EC_LB_PROG_LEN;
-	} else
-		bytes = count;
+	/*
+	 * We might need to reject the program for size reasons. The EC
+	 * enforces a maximum program size, but we also don't want to try
+	 * and send a program that is too big for the protocol. In order
+	 * to ensure the latter, we also need to ensure we have extra bytes
+	 * to represent the rest of the packet.
+	 */
+	extra_bytes = sizeof(*param) - sizeof(param->set_program.data);
+	max_size = min(EC_LB_PROG_LEN, ec->ec_dev->max_request - extra_bytes);
+
+	if (count > max_size) {
+		dev_err(dev, "Program is %u bytes, too long to send (max: %u)",
+			(int) count,
+			max_size);
+		return -EINVAL;
+	}
 
 	msg = alloc_lightbar_cmd_msg(ec);
 	if (!msg)
@@ -498,13 +508,20 @@ static ssize_t program_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		goto exit;
 
-	dev_info(dev, "Copying %d byte program to EC", bytes);
+	dev_info(dev, "Copying %zu byte program to EC", count);
 
 	param = (struct ec_params_lightbar *)msg->data;
 	param->cmd = LIGHTBAR_CMD_SET_PROGRAM;
 
-	param->set_program.size = bytes;
-	memcpy(param->set_program.data, buf, bytes);
+	param->set_program.size = count;
+	memcpy(param->set_program.data, buf, count);
+
+	/*
+	 * We need to set the message size manually or else it will use
+	 * EC_LB_PROG_LEN. This might be too long, and the program
+	 * is unlikely to use all of the space.
+	 */
+	msg->outsize = count + extra_bytes;
 
 	ret = cros_ec_cmd_xfer(ec->ec_dev, msg);
 	if (ret < 0)
