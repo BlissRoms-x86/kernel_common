@@ -73,6 +73,7 @@ struct charger_data {
 	struct port_data *ports[CROS_USB_PD_MAX_PORTS];
 	struct delayed_work log_work;
 	struct workqueue_struct *log_workqueue;
+	struct notifier_block notifier;
 	bool suspended;
 };
 
@@ -550,6 +551,27 @@ static void cros_usb_pd_log_check(struct work_struct *work)
 		CROS_USB_PD_LOG_UPDATE_DELAY);
 }
 
+static int cros_usb_pd_ec_event(struct notifier_block *nb,
+	unsigned long queued_during_suspend, void *_notify)
+{
+	struct charger_data *charger;
+	struct device *dev;
+	struct cros_ec_device *ec_device;
+	u32 host_event;
+
+	charger = container_of(nb, struct charger_data, notifier);
+	dev = charger->dev;
+	ec_device = charger->ec_device;
+
+	host_event = cros_ec_get_host_event(ec_device);
+	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
+		cros_usb_pd_charger_power_changed(charger->ports[0]->psy);
+		return NOTIFY_OK;
+	} else {
+		return NOTIFY_DONE;
+	}
+}
+
 static char *charger_supplied_to[] = {"cros-usb_pd-charger"};
 
 static int cros_usb_pd_charger_probe(struct platform_device *pd)
@@ -644,6 +666,13 @@ static int cros_usb_pd_charger_probe(struct platform_device *pd)
 		dev_err(dev, "No power supplies registered\n");
 		goto fail;
 	}
+
+	/* Get PD events from the EC */
+	charger->notifier.notifier_call = cros_usb_pd_ec_event;
+	ret = blocking_notifier_chain_register(&ec_device->event_notifier,
+					       &charger->notifier);
+	if (ret < 0)
+		dev_warn(dev, "failed to register notifier\n");
 
 	/* Retrieve PD event logs periodically */
 	INIT_DELAYED_WORK(&charger->log_work, cros_usb_pd_log_check);
