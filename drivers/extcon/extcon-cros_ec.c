@@ -45,6 +45,7 @@ struct cros_ec_extcon_info {
 	bool wakelock_held;
 
 	unsigned int role;
+	unsigned int power_type;
 };
 
 /* List of detectable cables */
@@ -103,6 +104,39 @@ static int cros_ec_pd_command(struct device *dev,
 	kfree(msg);
 	return ret;
 }
+
+/**
+ * cros_ec_usb_get_power_type() - Get power type info about PD device attached to
+ * given port.
+ * @dev: PD device
+ * @ec_dev: pointer to cros_ec_device structure to talk to the physical device
+ * @port: Port # on device
+ * @power_type: Holds a value of usb_chg_type on command success
+ *
+ * Return: 0 on success, <0 on failure.
+ */
+static int cros_ec_usb_get_power_type(struct device *dev,
+				      struct cros_ec_device *ec_dev,
+				      unsigned int port,
+				      unsigned int *power_type)
+{
+	struct ec_params_usb_pd_power_info req;
+	struct ec_response_usb_pd_power_info resp;
+	int ret;
+
+	req.port = port;
+	ret = cros_ec_pd_command(dev, ec_dev, EC_CMD_USB_PD_POWER_INFO, 0,
+				 (uint8_t *)&req, sizeof(req),
+				 (uint8_t *)&resp, sizeof(resp));
+	if (ret < 0)
+		return ret;
+
+	*power_type = resp.type;
+
+	return ret;
+}
+
+
 
 /**
  * cros_ec_usb_get_role() - Get role info aboout possible PD device attached to a
@@ -170,12 +204,81 @@ static const char *cros_ec_usb_role_string(unsigned int role)
 		(DATA_ROLE_DFP == role ? "DFP" : "UFP");
 }
 
+static const char *cros_ec_usb_power_type_string(unsigned int type)
+{
+	switch (type) {
+	case USB_CHG_TYPE_NONE:
+		return "USB_CHG_TYPE_NONE";
+		break;
+	case USB_CHG_TYPE_PD:
+		return "USB_CHG_TYPE_PD";
+		break;
+	case USB_CHG_TYPE_PROPRIETARY:
+		return "USB_CHG_TYPE_PROPRIETARY";
+		break;
+	case USB_CHG_TYPE_C:
+		return "USB_CHG_TYPE_C";
+		break;
+	case USB_CHG_TYPE_BC12_DCP:
+		return "USB_CHG_TYPE_BC12_DCP";
+		break;
+	case USB_CHG_TYPE_BC12_CDP:
+		return "USB_CHG_TYPE_BC12_CDP";
+		break;
+	case USB_CHG_TYPE_BC12_SDP:
+		return "USB_CHG_TYPE_BC12_SDP";
+		break;
+	case USB_CHG_TYPE_OTHER:
+		return "USB_CHG_TYPE_OTHER";
+		break;
+	case USB_CHG_TYPE_VBUS:
+		return "USB_CHG_TYPE_VBUS";
+		break;
+	case USB_CHG_TYPE_UNKNOWN:
+		return "USB_CHG_TYPE_UNKNOWN";
+		break;
+	default:
+		return "USB_CHG_TYPE_UNKNOWN";
+	}
+}
+
+static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type)
+{
+	switch (type) {
+	 /* FIXME : Putting USB_CHG_TYPE_C in the "true" category will
+	  * break certain non PD USB ports which will not create a data
+	  * connection. This is a short term fix to make sure our Type-C
+	  * adapters, Guppy, Donnettes, etc, will be identified as Wall Warts.
+	  */
+	case USB_CHG_TYPE_C:
+	case USB_CHG_TYPE_PROPRIETARY:
+	case USB_CHG_TYPE_BC12_DCP:
+		return true;
+		break;
+	case USB_CHG_TYPE_PD:
+	case USB_CHG_TYPE_BC12_CDP:
+	case USB_CHG_TYPE_BC12_SDP:
+	case USB_CHG_TYPE_OTHER:
+	case USB_CHG_TYPE_VBUS:
+	case USB_CHG_TYPE_UNKNOWN:
+	case USB_CHG_TYPE_NONE:
+	default:
+		return false;
+	}
+}
+
 static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 {
 	struct device *dev = info->dev;
 	struct cros_ec_device *ec = info->ec;
 	int err;
-	unsigned int role;
+	unsigned int role, power_type;
+
+	err = cros_ec_usb_get_power_type(dev, ec, 0, &power_type);
+	if (err) {
+		dev_err(dev, "failed getting power type err = %d\n", err);
+		return;
+	}
 
 	err = cros_ec_usb_get_role(dev, ec, 0, &role);
 	if (err) {
@@ -183,18 +286,22 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		return;
 	}
 
-	if (info->role != role) {
+	if (info->role != role || info->power_type != power_type) {
 		bool host_connected = false, device_connected = false;
 
-		dev_dbg(dev, "role switch! role = %s\n",
+		dev_dbg(dev, "Type/Role switch! type = %s role = %s\n",
+			cros_ec_usb_power_type_string(power_type),
 			cros_ec_usb_role_string(role));
 		info->role = role;
+		info->power_type = power_type;
 
-		if (role == DATA_ROLE_UFP)
+		if (role == DATA_ROLE_UFP &&
+		    !cros_ec_usb_power_type_is_wall_wart(power_type))
 			device_connected = true;
 		else if (role == DATA_ROLE_DFP)
 			host_connected = true;
 
+		/* Set a wakelock if device is connected, otherwise release */
 		if (device_connected && !info->wakelock_held) {
 			wake_lock(&info->wakelock);
 			info->wakelock_held = true;
