@@ -316,14 +316,14 @@ static int get_ec_usb_pd_power_info(struct port_data *port)
 	return 0;
 }
 
-static int get_ec_port_status(struct port_data *port)
+static int get_ec_port_status(struct port_data *port, bool ratelimit)
 {
 	int ret;
 
-	if (time_is_after_jiffies(
-			port->last_update + CROS_USB_PD_CACHE_UPDATE_DELAY)) {
+	if (ratelimit &&
+	    time_is_after_jiffies(port->last_update +
+				  CROS_USB_PD_CACHE_UPDATE_DELAY))
 		return 0;
-	}
 
 	ret = get_ec_usb_pd_power_info(port);
 	if (ret < 0)
@@ -344,7 +344,7 @@ static void cros_usb_pd_charger_power_changed(struct power_supply *psy)
 
 	dev_dbg(dev, "cros_usb_pd_charger_power_changed\n");
 	for (i = 0; i < charger->num_registered_psy; i++) {
-		get_ec_port_status(charger->ports[i]);
+		get_ec_port_status(charger->ports[i], false);
 	}
 }
 
@@ -357,10 +357,20 @@ static int cros_usb_pd_charger_get_prop(struct power_supply *psy,
 	struct device *dev = charger->dev;
 	int ret;
 
-	ret = get_ec_port_status(port);
-	if (ret < 0) {
-		dev_err(dev, "Failed to get port status (err:0x%x)\n", ret);
-		return -EINVAL;
+
+	/* Only refresh ec_port_status for dynamic properties */
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
+		ret = get_ec_port_status(port, true);
+		if (ret < 0) {
+			dev_err(dev, "Failed to get port status (err:0x%x)\n",
+				ret);
+			return -EINVAL;
+		}
+		break;
 	}
 
 	switch (psp) {
