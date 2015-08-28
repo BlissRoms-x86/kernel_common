@@ -695,12 +695,14 @@ static int cros_usb_pd_charger_probe(struct platform_device *pd)
 		goto fail;
 	}
 
-	/* Get PD events from the EC */
-	charger->notifier.notifier_call = cros_usb_pd_ec_event;
-	ret = blocking_notifier_chain_register(&ec_device->event_notifier,
-					       &charger->notifier);
-	if (ret < 0)
-		dev_warn(dev, "failed to register notifier\n");
+	if (ec_device->mkbp_event_supported) {
+		/* Get PD events from the EC */
+		charger->notifier.notifier_call = cros_usb_pd_ec_event;
+		ret = blocking_notifier_chain_register(&ec_device->event_notifier,
+						       &charger->notifier);
+		if (ret < 0)
+			dev_warn(dev, "failed to register notifier\n");
+	}
 
 	/* Retrieve PD event logs periodically */
 	INIT_DELAYED_WORK(&charger->log_work, cros_usb_pd_log_check);
