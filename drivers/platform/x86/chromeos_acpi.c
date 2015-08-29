@@ -37,7 +37,7 @@
 #include <linux/platform_device.h>
 #include <linux/acpi.h>
 
-#include "../chromeos.h"
+#include "../chrome/chromeos.h"
 
 #define CHNV_DEBUG_RESET_FLAG	0x40	     /* flag for S3 reboot */
 #define CHNV_RECOVERY_FLAG	0x80	     /* flag for recovery reboot */

@@ -27,7 +27,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-#include "../chromeos.h"
+#include "chromeos.h"
 #include "elog.h"
 
 struct chromeos_arm_elog_panic_buffer {

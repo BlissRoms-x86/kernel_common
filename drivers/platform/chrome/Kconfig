@@ -13,6 +13,15 @@ menuconfig CHROME_PLATFORMS
 
 if CHROME_PLATFORMS
 
+config CHROMEOS
+	bool
+	depends on CHROMEOS_OF_FIRMWARE || (NVRAM && ACPI_CHROMEOS)
+
+	---help---
+	  Provides abstracted interfaces to the firmware features provided on
+	  ChromeOS devices. It depends on a lowlevel driver to implement the
+	  firmware interface on the platform.
+
 config CHROMEOS_OF_FIRMWARE
 	bool "ChromeOS firmware interface driver"
 	depends on OF && MFD_CROS_EC
