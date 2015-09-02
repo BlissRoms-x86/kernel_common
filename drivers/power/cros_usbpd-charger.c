@@ -371,6 +371,8 @@ static int cros_usb_pd_charger_get_prop(struct power_supply *psy,
 			return -EINVAL;
 		}
 		break;
+	default:
+		break;
 	}
 
 	switch (psp) {
