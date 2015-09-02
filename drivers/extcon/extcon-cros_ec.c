@@ -245,16 +245,16 @@ static const char *cros_ec_usb_power_type_string(unsigned int type)
 static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type)
 {
 	switch (type) {
-	 /* FIXME : Putting USB_CHG_TYPE_C in the "true" category will
-	  * break certain non PD USB ports which will not create a data
-	  * connection. This is a short term fix to make sure our Type-C
-	  * adapters, Guppy, Donnettes, etc, will be identified as Wall Warts.
-	  */
-	case USB_CHG_TYPE_C:
+	/* FIXME : Guppy, Donnettes, and other chargers will be miscategorized
+	 * because they identify with USB_CHG_TYPE_C, but we can't return true
+	 * here from that code because that breaks Suzy-Q and other kinds of
+	 * USB Type-C cables and peripherals.
+	 */
 	case USB_CHG_TYPE_PROPRIETARY:
 	case USB_CHG_TYPE_BC12_DCP:
 		return true;
 		break;
+	case USB_CHG_TYPE_C:
 	case USB_CHG_TYPE_PD:
 	case USB_CHG_TYPE_BC12_CDP:
 	case USB_CHG_TYPE_BC12_SDP:
