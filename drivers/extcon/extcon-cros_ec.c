@@ -24,15 +24,26 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/usb/class-dual-role.h>
 #include <linux/wakelock.h>
 
 #define CROS_EC_USB_POLLING_DELAY msecs_to_jiffies(1000)
 
-enum cros_ec_data_role {
-	DATA_ROLE_DISCONNECTED = 0,
-	DATA_ROLE_UFP = 1,
-	DATA_ROLE_DFP = 2
-};
+/*
+ * Timeout for a USB PD power swap execution
+ * 1000 ms for tSwapRecovery : maximum time after Hard Reset to settle
+ *  275 ms for tSrcTurnOn (VBUS going from 0V to 5V)
+ *  650 ms for tSafe0V (VBUS going to 0V)
+ *  500 ms of extra margin
+ */
+#define POWER_SWAP_TIMEOUT msecs_to_jiffies(2425)
+/*
+ * Timeout for USB PD data swap execution
+ *   30 ms for tSenderResponse
+ * 2x 1 ms for tReceive
+ *   some margin for events and AP/EC communication
+ */
+#define DATA_SWAP_TIMEOUT msecs_to_jiffies(150)
 
 struct cros_ec_extcon_info {
 	struct device *dev;
@@ -44,8 +55,12 @@ struct cros_ec_extcon_info {
 	struct wake_lock wakelock;
 	bool wakelock_held;
 
-	unsigned int role;
+	unsigned int dr; /* data role */
+	unsigned int pr; /* power role */
 	unsigned int power_type;
+	wait_queue_head_t role_wait;
+
+	struct dual_role_phy_instance *drp_inst;
 };
 
 /* List of detectable cables */
@@ -139,15 +154,15 @@ static int cros_ec_usb_get_power_type(struct device *dev,
 
 
 /**
- * cros_ec_usb_get_role() - Get role info aboout possible PD device attached to a
+ * cros_ec_usb_get_role() - Get role info about possible PD device attached to a
  * given port.
  * @dev: PD device
  * @ec_dev: pointer to cros_ec_device structure to talk to the physical device
  * @port: Port # on device
- * @role: Holds DATA_ROLE_DFP, DATA_ROLE_UFP, or DATA_ROLE_DISCONNECTED
- *	  on command success
+ * @role: data/power/vconn roles
  *
- * Return: 0 on success, <0 on failure.
+ *
+ * Return: >0 on success, 0 if no cable is connected, <0 on failure.
  */
 static int cros_ec_usb_get_role(struct device *dev,
 				struct cros_ec_device *ec_dev,
@@ -161,18 +176,15 @@ static int cros_ec_usb_get_role(struct device *dev,
 	pd_control.port = port;
 	pd_control.role = USB_PD_CTRL_ROLE_NO_CHANGE;
 	pd_control.mux = USB_PD_CTRL_MUX_NO_CHANGE;
+	pd_control.swap = USB_PD_CTRL_SWAP_NONE;
 	ret = cros_ec_pd_command(dev, ec_dev, EC_CMD_USB_PD_CONTROL, 1,
 				 (uint8_t *)&pd_control, sizeof(pd_control),
 				 (uint8_t *)&resp, sizeof(resp));
 	if (ret < 0)
 		return ret;
 
-	if (resp.enabled & (1 << 1))
-		*role = (resp.role & (1 << 1)) ? DATA_ROLE_DFP : DATA_ROLE_UFP;
-	else
-		*role = DATA_ROLE_DISCONNECTED;
-
-	return ret;
+	*role = resp.role;
+	return resp.enabled & (1 << 1);
 }
 
 /**
@@ -200,8 +212,8 @@ static int cros_ec_pd_get_num_ports(struct device *dev,
 
 static const char *cros_ec_usb_role_string(unsigned int role)
 {
-	return DATA_ROLE_DISCONNECTED == role ? "DISCONNECTED" :
-		(DATA_ROLE_DFP == role ? "DFP" : "UFP");
+	return DUAL_ROLE_PROP_DR_NONE == role ? "DISCONNECTED" :
+		(DUAL_ROLE_PROP_DR_HOST == role ? "DFP" : "UFP");
 }
 
 static const char *cros_ec_usb_power_type_string(unsigned int type)
@@ -271,8 +283,8 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 {
 	struct device *dev = info->dev;
 	struct cros_ec_device *ec = info->ec;
-	int err;
-	unsigned int role, power_type;
+	int err, res;
+	unsigned int role, dr, pr, power_type;
 
 	err = cros_ec_usb_get_power_type(dev, ec, 0, &power_type);
 	if (err) {
@@ -280,25 +292,36 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		return;
 	}
 
-	err = cros_ec_usb_get_role(dev, ec, 0, &role);
-	if (err) {
-		dev_err(dev, "failed getting role err = %d\n", err);
+	res = cros_ec_usb_get_role(dev, ec, 0, &role);
+	if (res < 0) {
+		dev_err(dev, "failed getting role err = %d\n", res);
 		return;
 	}
+	if (res) {
+		dr = (role & (1 << 1)) ? DUAL_ROLE_PROP_DR_HOST
+				       : DUAL_ROLE_PROP_DR_DEVICE;
+		pr = (role & (1 << 0)) ? DUAL_ROLE_PROP_PR_SRC
+					: DUAL_ROLE_PROP_PR_SNK;
+	} else {
+		dr = DUAL_ROLE_PROP_DR_NONE;
+		pr = DUAL_ROLE_PROP_PR_NONE;
+	}
 
-	if (info->role != role || info->power_type != power_type) {
+	if (info->dr != dr || info->pr != pr ||
+	    info->power_type != power_type) {
 		bool host_connected = false, device_connected = false;
 
 		dev_dbg(dev, "Type/Role switch! type = %s role = %s\n",
 			cros_ec_usb_power_type_string(power_type),
-			cros_ec_usb_role_string(role));
-		info->role = role;
+			cros_ec_usb_role_string(dr));
+		info->dr = dr;
+		info->pr = pr;
 		info->power_type = power_type;
 
-		if (role == DATA_ROLE_UFP &&
+		if (dr == DUAL_ROLE_PROP_DR_DEVICE &&
 		    !cros_ec_usb_power_type_is_wall_wart(power_type))
 			device_connected = true;
-		else if (role == DATA_ROLE_DFP)
+		else if (dr == DUAL_ROLE_PROP_DR_HOST)
 			host_connected = true;
 
 		/* Set a wakelock if device is connected, otherwise release */
@@ -314,6 +337,8 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 					host_connected);
 		extcon_set_cable_state_(info->edev, EXTCON_USB,
 					device_connected);
+		wake_up_all(&info->role_wait);
+		dual_role_instance_changed(info->drp_inst);
 	}
 }
 
@@ -337,6 +362,182 @@ static int extcon_cros_ec_event(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 }
+
+static bool extcon_cros_ec_has_vconn(struct cros_ec_extcon_info *info)
+{
+	struct device *dev = info->dev;
+	struct cros_ec_device *ec = info->ec;
+	unsigned int role;
+	int res;
+
+	res = cros_ec_usb_get_role(dev, ec, 0, &role);
+
+	return (res > 0) && (role & (1 << 2));
+}
+
+static int extcon_cros_ec_force_data_role(struct cros_ec_extcon_info *info,
+					   unsigned int new_dr)
+{
+	struct device *dev = info->dev;
+	struct cros_ec_device *ec = info->ec;
+	struct ec_params_usb_pd_control pd_control;
+	struct ec_response_usb_pd_control_v1 resp;
+	int ret;
+
+	dev_info(dev, "Force Data Role to %d (from %d)\n", new_dr, info->dr);
+
+	if ((new_dr != DUAL_ROLE_PROP_DR_HOST) &&
+	    (new_dr != DUAL_ROLE_PROP_DR_DEVICE))
+		return -EINVAL;
+
+	if (new_dr == info->dr)
+		return 0;
+
+	pd_control.port = 0;
+	pd_control.role = USB_PD_CTRL_ROLE_NO_CHANGE;
+	pd_control.mux = USB_PD_CTRL_MUX_NO_CHANGE;
+	pd_control.swap = USB_PD_CTRL_SWAP_DATA;
+	ret = cros_ec_pd_command(dev, ec, EC_CMD_USB_PD_CONTROL, 1,
+				 (uint8_t *)&pd_control, sizeof(pd_control),
+				 (uint8_t *)&resp, sizeof(resp));
+	dev_dbg(dev, "EC data swap to %s = %d\n",
+		new_dr == DUAL_ROLE_PROP_DR_HOST ? "dfp" : "ufp", ret);
+	if (ret < 0)
+		return ret;
+
+	/* wait for the swap to happen or timeout */
+	ret = wait_event_timeout(info->role_wait, new_dr == info->dr,
+				 DATA_SWAP_TIMEOUT);
+	dev_dbg(dev, "data swap %s role %s\n",
+		ret == 0 ? "timed out" : "succeeded", info->dr ? "UFP" : "DFP");
+
+	return ret == 0 ? -ETIMEDOUT : ret;
+}
+
+static int extcon_cros_ec_force_power_role(struct cros_ec_extcon_info *info,
+					   unsigned int new_pr)
+{
+	struct device *dev = info->dev;
+	struct cros_ec_device *ec = info->ec;
+	struct ec_params_charge_port_override p;
+	int ret;
+
+	dev_info(dev, "Force Power Role to %d (from %d)\n", new_pr, info->pr);
+
+	if (new_pr == info->pr)
+		return 0;
+
+	switch (new_pr) {
+	case DUAL_ROLE_PROP_PR_SRC:
+		p.override_port = OVERRIDE_DONT_CHARGE;
+		break;
+	case DUAL_ROLE_PROP_PR_SNK:
+		p.override_port = 0;
+		break;
+	case DUAL_ROLE_PROP_PR_NONE:
+	default:
+		return -EINVAL;
+	}
+
+	ret = cros_ec_pd_command(dev, ec, EC_CMD_PD_CHARGE_PORT_OVERRIDE, 0,
+				 (uint8_t *)&p, sizeof(p), NULL, 0);
+	dev_dbg(dev, "EC charge port override to %d = %d\n",
+		p.override_port, ret);
+	if (ret < 0)
+		return ret;
+
+	/* wait for the swap to happen or timeout */
+	ret = wait_event_timeout(info->role_wait, new_pr == info->pr,
+				 POWER_SWAP_TIMEOUT);
+	dev_dbg(dev, "power swap %s role %s\n",
+		ret == 0 ? "timed out" : "succeed", info->pr ? "SNK" : "SRC");
+
+	return ret == 0 ? -ETIMEDOUT : ret;
+}
+
+static int extcon_drp_get_prop(struct dual_role_phy_instance *inst,
+			enum dual_role_property prop,
+			unsigned int *val)
+{
+	struct cros_ec_extcon_info *info = dual_role_get_drvdata(inst);
+	int ret = 0;
+
+	if (!info)
+		return -EINVAL;
+
+	switch (prop) {
+	case DUAL_ROLE_PROP_MODE:
+		*val = info->pr == DUAL_ROLE_PROP_PR_SRC ?
+			DUAL_ROLE_PROP_MODE_DFP :
+			(info->pr == DUAL_ROLE_PROP_PR_SNK ?
+				DUAL_ROLE_PROP_MODE_UFP :
+				DUAL_ROLE_PROP_MODE_NONE);
+		break;
+	case DUAL_ROLE_PROP_PR:
+		*val = info->pr;
+		break;
+	case DUAL_ROLE_PROP_DR:
+		*val = info->dr;
+		break;
+	case DUAL_ROLE_PROP_VCONN_SUPPLY:
+		*val = extcon_cros_ec_has_vconn(info);
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+static int extcon_drp_is_writeable(struct dual_role_phy_instance *inst,
+				enum dual_role_property prop)
+{
+	return (prop == DUAL_ROLE_PROP_PR) ||
+	       (prop == DUAL_ROLE_PROP_DR);
+}
+
+static int extcon_drp_set_prop(struct dual_role_phy_instance *inst,
+				enum dual_role_property prop,
+				const unsigned int *val)
+{
+	struct cros_ec_extcon_info *info = dual_role_get_drvdata(inst);
+	int ret = 0;
+
+	if (!info)
+		return -EINVAL;
+
+	switch (prop) {
+	case DUAL_ROLE_PROP_PR:
+		ret = extcon_cros_ec_force_power_role(info, *val);
+		break;
+	case DUAL_ROLE_PROP_DR:
+		ret = extcon_cros_ec_force_data_role(info, *val);
+		break;
+	case DUAL_ROLE_PROP_MODE:
+	case DUAL_ROLE_PROP_VCONN_SUPPLY:
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+static enum dual_role_property extcon_drp_properties[] = {
+	DUAL_ROLE_PROP_MODE,
+	DUAL_ROLE_PROP_PR,
+	DUAL_ROLE_PROP_DR,
+	DUAL_ROLE_PROP_VCONN_SUPPLY,
+};
+
+static struct dual_role_phy_desc extcon_drp_desc = {
+		.name = "otg_default",
+		.supported_modes = DUAL_ROLE_SUPPORTED_MODES_DFP_AND_UFP,
+		.properties = extcon_drp_properties,
+		.num_properties = ARRAY_SIZE(extcon_drp_properties),
+		.get_property = extcon_drp_get_prop,
+		.set_property = extcon_drp_set_prop,
+		.property_is_writeable = extcon_drp_is_writeable,
+};
 
 static int extcon_cros_ec_probe(struct platform_device *pdev)
 {
@@ -377,9 +578,19 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	info->role = DATA_ROLE_DISCONNECTED;
+	info->dr = DUAL_ROLE_PROP_DR_NONE;
+	info->pr = DUAL_ROLE_PROP_PR_NONE;
+	init_waitqueue_head(&info->role_wait);
 
 	platform_set_drvdata(pdev, info);
+
+	if (IS_ENABLED(CONFIG_DUAL_ROLE_USB_INTF)) {
+		struct dual_role_phy_instance *inst;
+
+		inst = devm_dual_role_instance_register(dev, &extcon_drp_desc);
+		inst->drv_data = info;
+		info->drp_inst = inst;
+	}
 
 	/* Get PD events from the EC */
 	info->notifier.notifier_call = extcon_cros_ec_event;
@@ -403,6 +614,10 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 static int extcon_cros_ec_remove(struct platform_device *pdev)
 {
 	struct cros_ec_extcon_info *info = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
+
+	if (IS_ENABLED(CONFIG_DUAL_ROLE_USB_INTF))
+		devm_dual_role_instance_unregister(dev, info->drp_inst);
 
 	blocking_notifier_chain_unregister(&info->ec->event_notifier,
 					   &info->notifier);
