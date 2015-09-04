@@ -74,7 +74,7 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
 		st->core.param.sensor_offset.flags = 0;
 
-		if (send_motion_host_cmd(&st->core)) {
+		if (cros_ec_motion_send_host_cmd(&st->core)) {
 			ret = -EIO;
 			break;
 		}
@@ -95,7 +95,7 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.sensor_range.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (send_motion_host_cmd(&st->core)) {
+		if (cros_ec_motion_send_host_cmd(&st->core)) {
 			ret = -EIO;
 			break;
 		}
@@ -110,7 +110,7 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.ec_rate.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		else
 			*val = st->core.resp->ec_rate.ret;
@@ -126,7 +126,7 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.sensor_odr.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		else
 			*val = st->core.resp->sensor_odr.ret;
@@ -161,20 +161,20 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 		st->core.param.sensor_offset.temp =
 			EC_MOTION_SENSE_INVALID_CALIB_TEMP;
 
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
 		st->core.param.ec_rate.data = val;
 
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_CALIBSCALE:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
 		st->core.param.sensor_range.data = (val << 16) | (val2 / 100);
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_FREQUENCY:
@@ -184,7 +184,7 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_odr.roundup = 1;
 
-		if (send_motion_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
 	default:

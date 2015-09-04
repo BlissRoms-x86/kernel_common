@@ -106,14 +106,14 @@ irqreturn_t cros_ec_sensors_capture(int irq, void *p);
 
 
 /*
- * send_motion_host_cmd - send motion sense host command
+ * cros_ec_motion_send_host_cmd - send motion sense host command
  *
  * @st Pointer to state information for device.
  * @return 0 if ok, -ve on error.
  *
  * Note, when called, the sub-command is assumed to be set in param->cmd.
  */
-int send_motion_host_cmd(struct cros_ec_sensors_core_state *state);
+int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state);
 
 /* List of extended channel specification for all sensors */
 extern const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[];

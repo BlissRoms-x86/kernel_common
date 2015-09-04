@@ -181,7 +181,7 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 	if (fifo_info.info.total_lost) {
 		/* Need to retrieve the number of lost vectors per sensor */
 		state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INFO;
-		if (send_motion_host_cmd(&state->core))
+		if (cros_ec_motion_send_host_cmd(&state->core))
 			goto ring_handler_end;
 		memcpy(&fifo_info, &state->core.resp->fifo_info,
 		       sizeof(fifo_info));
@@ -194,8 +194,8 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 		state->core.param.cmd = MOTIONSENSE_CMD_FIFO_READ;
 		state->core.param.fifo_read.max_data_vector =
 			fifo_info.info.count - i;
-		ret = send_motion_host_cmd(&state->core);
-		if (ret != 0) {
+		ret = cros_ec_motion_send_host_cmd(&state->core);
+		if (ret != EC_RES_SUCCESS) {
 			dev_warn(&indio_dev->dev, "Fifo error: %d\n", ret);
 			break;
 		}
@@ -421,7 +421,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	 * For other errors, the other sensor drivers would have noticed
 	 * already.
 	 */
-	if (send_motion_host_cmd(&state->core))
+	if (cros_ec_motion_send_host_cmd(&state->core))
 		return -ENODEV;
 
 	/* Allocate the full fifo.

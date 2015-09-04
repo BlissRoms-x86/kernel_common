@@ -84,7 +84,7 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 
 		state->param.cmd = MOTIONSENSE_CMD_INFO;
 		state->param.info.sensor_num = sensor_platform->sensor_num;
-		if (send_motion_host_cmd(state)) {
+		if (cros_ec_motion_send_host_cmd(state)) {
 			dev_warn(dev, "Can not access sensor info\n");
 			return -EIO;
 		}
@@ -96,14 +96,14 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 EXPORT_SYMBOL_GPL(cros_ec_sensors_core_init);
 
 /*
- * send_motion_host_cmd - send motion sense host command
+ * cros_ec_motion_send_host_cmd - send motion sense host command
  *
  * @st Pointer to state information for device.
  * @return 0 if ok, -ve on error.
  *
  * Note, when called, the sub-command is assumed to be set in param->cmd.
  */
-int send_motion_host_cmd(struct cros_ec_sensors_core_state *state)
+int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state)
 {
 	int ret;
 
@@ -118,7 +118,7 @@ int send_motion_host_cmd(struct cros_ec_sensors_core_state *state)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(send_motion_host_cmd);
+EXPORT_SYMBOL_GPL(cros_ec_motion_send_host_cmd);
 
 #ifdef CONFIG_IIO_CROS_EC_SENSORS_RING
 static ssize_t cros_ec_sensors_flush(struct iio_dev *indio_dev,
@@ -137,7 +137,7 @@ static ssize_t cros_ec_sensors_flush(struct iio_dev *indio_dev,
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_FIFO_FLUSH;
-	ret = send_motion_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st);
 	if (ret != 0)
 		dev_warn(&indio_dev->dev, "Unable to flush sensor\n");
 	mutex_unlock(&st->cmd_lock);
@@ -160,7 +160,7 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_PERFORM_CALIB;
-	ret = send_motion_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to calibrate sensor\n");
 	} else {
@@ -374,7 +374,7 @@ int cros_ec_sensors_read_cmd(struct iio_dev *indio_dev,
 	 * read all sensor data through a command.
 	 */
 	st->param.cmd = MOTIONSENSE_CMD_DATA;
-	ret = send_motion_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to read sensor data\n");
 		return ret;
