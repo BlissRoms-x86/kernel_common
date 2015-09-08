@@ -39,7 +39,7 @@ struct cros_ec_sensors_state {
 	unsigned nb_activities;
 };
 
-static const struct iio_event_spec cros_ec_activity_still[] = {
+static const struct iio_event_spec cros_ec_activity_single_shot[] = {
 	{
 		.type = IIO_EV_TYPE_CHANGE,
 		/* significant motion trigger when we get out of still. */
@@ -85,6 +85,10 @@ static int cros_ec_read_event_config(struct iio_dev *indio_dev,
 			ret = !!(st->core.resp->list_activities.enabled &
 				 (1 << MOTIONSENSE_ACTIVITY_SIG_MOTION));
 			break;
+		case IIO_MOD_DOUBLE_TAP:
+			ret = !!(st->core.resp->list_activities.enabled &
+				 (1 << MOTIONSENSE_ACTIVITY_DOUBLE_TAP));
+			break;
 		default:
 			dev_warn(&indio_dev->dev, "Unknown activity: %d\n",
 				 chan->channel2);
@@ -114,6 +118,10 @@ static int cros_ec_write_event_config(struct iio_dev *indio_dev,
 	case IIO_MOD_STILL:
 		st->core.param.set_activity.activity =
 			MOTIONSENSE_ACTIVITY_SIG_MOTION;
+		break;
+	case IIO_MOD_DOUBLE_TAP:
+		st->core.param.set_activity.activity =
+			MOTIONSENSE_ACTIVITY_DOUBLE_TAP;
 		break;
 	default:
 		dev_warn(&indio_dev->dev, "Unknown activity: %d\n",
@@ -219,12 +227,15 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 		/* List all available activities */
 		channel->type = IIO_ACTIVITY;
 		channel->modified = 1;
+		channel->event_spec = cros_ec_activity_single_shot;
+		channel->num_event_specs =
+				ARRAY_SIZE(cros_ec_activity_single_shot);
 		switch (i) {
 		case MOTIONSENSE_ACTIVITY_SIG_MOTION:
 			channel->channel2 = IIO_MOD_STILL;
-			channel->event_spec = cros_ec_activity_still;
-			channel->num_event_specs =
-				ARRAY_SIZE(cros_ec_activity_still);
+			break;
+		case MOTIONSENSE_ACTIVITY_DOUBLE_TAP:
+			channel->channel2 = IIO_MOD_DOUBLE_TAP;
 			break;
 		default:
 			dev_warn(&pdev->dev, "Unknown activity: %d\n", i);
