@@ -405,7 +405,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	ec_device = ec_dev->ec_dev;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*state));
-	if (indio_dev == NULL)
+	if (!indio_dev)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, indio_dev);
@@ -430,7 +430,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	state->ring = devm_kcalloc(&pdev->dev,
 			state->core.resp->fifo_info.size,
 			sizeof(struct ec_response_motion_sense), GFP_KERNEL);
-	if (state->ring == NULL)
+	if (!state->ring)
 		return -ENOMEM;
 
 	state->fifo_timestamp[LAST_TS] = cros_ec_get_time_ns();

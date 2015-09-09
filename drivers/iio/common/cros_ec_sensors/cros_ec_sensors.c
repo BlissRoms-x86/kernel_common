@@ -240,7 +240,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	ec_device = ec_dev->ec_dev;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*state));
-	if (indio_dev == NULL)
+	if (!indio_dev)
 		return -ENOMEM;
 
 	ret = cros_ec_sensors_core_init(pdev, indio_dev, true);

@@ -16,6 +16,8 @@
 #ifndef __CROS_EC_SENSORS_CORE_H
 #define __CROS_EC_SENSORS_CORE_H
 
+#include <linux/irqreturn.h>
+
 enum {
 	X,
 	Y,

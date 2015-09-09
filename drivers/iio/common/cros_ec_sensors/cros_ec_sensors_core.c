@@ -64,7 +64,7 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 	state->msg = devm_kzalloc(&pdev->dev,
 				  max((u16)sizeof(struct ec_params_motion_sense),
 				      state->ec->max_response), GFP_KERNEL);
-	if (state->msg == NULL)
+	if (!state->msg)
 		return -ENOMEM;
 
 	state->resp = (struct ec_response_motion_sense *)state->msg->data;
@@ -311,7 +311,7 @@ static void read_ec_sensors_data_unsafe(struct iio_dev *indio_dev,
 }
 
 /*
- * read_ec_sensors_data - read acceleration data from EC shared memory.
+ * cros_ec_sensors_read_lpc - read acceleration data from EC shared memory.
  *
  * @st Pointer to state information for device.
  * @scan_mask Bitmap of the sensor indices to scan.
