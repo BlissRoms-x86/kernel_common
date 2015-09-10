@@ -1735,8 +1735,10 @@ static int input_inhibit(struct input_dev *dev)
 			goto out;
 	}
 
+	spin_lock_irq(&dev->event_lock);
 	input_dev_release_keys(dev);
 	input_dev_toggle(dev, false);
+	spin_unlock_irq(&dev->event_lock);
 
 	dev->inhibited = true;
 
@@ -1754,12 +1756,16 @@ static int input_uninhibit(struct input_dev *dev)
 	if (!dev->inhibited)
 		goto out;
 
+	spin_lock_irq(&dev->event_lock);
 	input_dev_toggle(dev, true);
+	spin_unlock_irq(&dev->event_lock);
 
 	if (dev->uninhibit) {
 		rv = dev->uninhibit(dev);
 		if (rv != 0) {
+			spin_lock_irq(&dev->event_lock);
 			input_dev_toggle(dev, false);
+			spin_unlock_irq(&dev->event_lock);
 			goto out;
 		}
 	}
