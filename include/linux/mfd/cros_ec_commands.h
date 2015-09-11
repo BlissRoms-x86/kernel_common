@@ -1547,6 +1547,7 @@ enum ec_led_colors {
 	EC_LED_COLOR_BLUE,
 	EC_LED_COLOR_YELLOW,
 	EC_LED_COLOR_WHITE,
+	EC_LED_COLOR_AMBER,
 
 	EC_LED_COLOR_COUNT
 };
@@ -1873,6 +1874,7 @@ struct ec_params_motion_sense {
 			 * Unit:
 			 * Accelerometer: 1/1024 g
 			 * Gyro:          1/1024 deg/s
+			 * Compass:       1/16 uT
 			 */
 			int16_t offset[3];
 		} __packed sensor_offset;
@@ -3117,6 +3119,8 @@ struct ec_params_pd_status {
 #define PD_STATUS_JUMPED_TO_IMAGE (1 << 2) /* Current image was jumped to */
 #define PD_STATUS_TCPC_ALERT_0    (1 << 3) /* Alert active in port 0 TCPC */
 #define PD_STATUS_TCPC_ALERT_1    (1 << 4) /* Alert active in port 1 TCPC */
+#define PD_STATUS_TCPC_ALERT_2    (1 << 5) /* Alert active in port 2 TCPC */
+#define PD_STATUS_TCPC_ALERT_3    (1 << 6) /* Alert active in port 3 TCPC */
 #define PD_STATUS_EC_INT_ACTIVE  (PD_STATUS_TCPC_ALERT_0 | \
 				      PD_STATUS_TCPC_ALERT_1 | \
 				      PD_STATUS_HOST_EVENT)
@@ -3160,10 +3164,19 @@ enum usb_pd_control_mux {
 	USB_PD_CTRL_MUX_COUNT
 };
 
+enum usb_pd_control_swap {
+	USB_PD_CTRL_SWAP_NONE = 0,
+	USB_PD_CTRL_SWAP_DATA = 1,
+	USB_PD_CTRL_SWAP_POWER = 2,
+	USB_PD_CTRL_SWAP_VCONN = 3,
+	USB_PD_CTRL_SWAP_COUNT
+};
+
 struct ec_params_usb_pd_control {
 	uint8_t port;
 	uint8_t role;
 	uint8_t mux;
+	uint8_t swap;
 } __packed;
 
 struct ec_response_usb_pd_control {
@@ -3175,7 +3188,8 @@ struct ec_response_usb_pd_control {
 
 struct ec_response_usb_pd_control_v1 {
 	uint8_t enabled; /* [0] comm enabled [1] connected */
-	uint8_t role; /* [0] power: 0=SNK/1=SRC [1] data: 0=UFP/1=DFP */
+	uint8_t role; /* [0] power: 0=SNK/1=SRC [1] data: 0=UFP/1=DFP
+			 [2] vconn 0=off/1=on */
 	uint8_t polarity;
 	char state[32];
 } __packed;
@@ -3421,6 +3435,23 @@ struct ec_params_pd_write_log_entry {
  * params is struct ec_host_request, response is struct ec_host_response.
  */
 #define EC_CMD_BLOB 0x200
+
+/*****************************************************************************/
+/*
+ * Reserve a range of host commands for board-specific, experimental, or
+ * special purpose features. These can be (re)used without updating this file.
+ *
+ * CAUTION: Don't go nuts with this. Shipping products should document ALL
+ * their EC commands for easier development, testing, debugging, and support.
+ *
+ * In your experimental code, you may want to do something like this:
+ *
+ *   #define EC_CMD_MAGIC_FOO (EC_CMD_BOARD_SPECIFIC_BASE + 0x000)
+ *   #define EC_CMD_MAGIC_BAR (EC_CMD_BOARD_SPECIFIC_BASE + 0x001)
+ *   #define EC_CMD_MAGIC_HEY (EC_CMD_BOARD_SPECIFIC_BASE + 0x002)
+ */
+#define EC_CMD_BOARD_SPECIFIC_BASE 0x3E00
+#define EC_CMD_BOARD_SPECIFIC_LAST 0x3FFF
 
 /*****************************************************************************/
 /*
