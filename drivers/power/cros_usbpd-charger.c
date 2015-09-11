@@ -225,16 +225,7 @@ static int get_ec_usb_pd_power_info(struct port_data *port)
 	case USB_PD_PORT_POWER_SOURCE:
 		snprintf(role_str, sizeof(role_str), "%s", "SOURCE");
 		port->psy_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		/*
-		 * Dual-role devices are capable of supplying power to us, mark
-		 * them as online.
-		 * Non-dual-role devices that we are sourcing power to can't
-		 * supply power to us, don't mark them as online.
-		 */
-		if (resp.dualrole)
-			port->psy_online = 1;
-		else
-			port->psy_online = 0;
+		port->psy_online = 0;
 		break;
 	case USB_PD_PORT_POWER_SINK:
 		snprintf(role_str, sizeof(role_str), "%s", "SINK");
@@ -258,20 +249,38 @@ static int get_ec_usb_pd_power_info(struct port_data *port)
 	port->psy_power_max = resp.max_power;
 
 	switch (resp.type) {
-	case USB_CHG_TYPE_NONE:
-		port->psy_type = POWER_SUPPLY_TYPE_USB;
-		break;
-	case USB_CHG_TYPE_PD:
-	case USB_CHG_TYPE_PROPRIETARY:
-	case USB_CHG_TYPE_C:
-	case USB_CHG_TYPE_BC12_DCP:
-	case USB_CHG_TYPE_BC12_CDP:
 	case USB_CHG_TYPE_BC12_SDP:
 	case USB_CHG_TYPE_VBUS:
-		if (resp.dualrole)
-			port->psy_type = POWER_SUPPLY_TYPE_USB;
+		port->psy_type = POWER_SUPPLY_TYPE_USB;
+		break;
+	case USB_CHG_TYPE_NONE:
+		/*
+		 * For dual-role devices when we are a source, the firmware
+		 * reports the type as NONE. Report such chargers as type
+		 * USB_PD_DRP.
+		 */
+		if (resp.role == USB_PD_PORT_POWER_SOURCE && resp.dualrole)
+			port->psy_type = POWER_SUPPLY_TYPE_USB_PD_DRP;
 		else
-			port->psy_type = POWER_SUPPLY_TYPE_MAINS;
+			port->psy_type = POWER_SUPPLY_TYPE_USB;
+		break;
+	case USB_CHG_TYPE_PROPRIETARY:
+		port->psy_type = POWER_SUPPLY_TYPE_MAINS;
+		break;
+	case USB_CHG_TYPE_C:
+		port->psy_type = POWER_SUPPLY_TYPE_USB_TYPE_C;
+		break;
+	case USB_CHG_TYPE_BC12_DCP:
+		port->psy_type = POWER_SUPPLY_TYPE_USB_DCP;
+		break;
+	case USB_CHG_TYPE_BC12_CDP:
+		port->psy_type = POWER_SUPPLY_TYPE_USB_CDP;
+		break;
+	case USB_CHG_TYPE_PD:
+		if (resp.dualrole)
+			port->psy_type = POWER_SUPPLY_TYPE_USB_PD_DRP;
+		else
+			port->psy_type = POWER_SUPPLY_TYPE_USB_PD;
 		break;
 	case USB_CHG_TYPE_UNKNOWN:
 		/*
