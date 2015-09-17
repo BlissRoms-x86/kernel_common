@@ -276,11 +276,6 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_INVALID_CONTACTID_FFFF,
 	},
-	{ .name = MT_CLS_NTRIG,
-		.quirks	= MT_QUIRK_NOT_SEEN_MEANS_UP |
-			MT_QUIRK_ALWAYS_VALID |
-			MT_QUIRK_INVALID_CONTACTID_FFFF,
-	},
 	{ }
 };
 
@@ -620,10 +615,6 @@ static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
 		return td->curdata.contactid - 1;
 
 	if (quirks & MT_QUIRK_INVALID_CONTACTID_FFFF &&
-	    td->curdata.contactid == 0xffff)
-		return -1;
-
-	if ((quirks & MT_QUIRK_INVALID_CONTACTID_FFFF) &&
 	    td->curdata.contactid == 0xffff)
 		return -1;
 
