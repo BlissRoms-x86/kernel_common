@@ -24,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
 #include <linux/usb/class-dual-role.h>
 #include <linux/wakelock.h>
 
