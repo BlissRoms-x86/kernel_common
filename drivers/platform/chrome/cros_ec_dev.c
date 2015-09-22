@@ -3,18 +3,18 @@
  *
  * Copyright (C) 2014 Google, Inc.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation; either version 2 of the License, or (at your option) any later
+ * version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <linux/fs.h>
@@ -360,7 +360,7 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 		}
 		sensor_platforms[id].sensor_num = i;
 		sensor_cells[id].id = sensor_type[resp->info.type];
-		sensor_cells[id].platform_data = &sensor_platforms[i];
+		sensor_cells[id].platform_data = &sensor_platforms[id];
 		sensor_cells[id].pdata_size =
 			sizeof(struct cros_ec_sensor_platform);
 
@@ -372,7 +372,7 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 
 		sensor_cells[id].name = "cros-ec-angle";
 		sensor_cells[id].id = 0;
-		sensor_cells[id].platform_data = &sensor_platforms[i];
+		sensor_cells[id].platform_data = &sensor_platforms[id];
 		sensor_cells[id].pdata_size =
 			sizeof(struct cros_ec_sensor_platform);
 		id++;
