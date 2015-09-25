@@ -59,6 +59,7 @@ struct cros_ec_extcon_info {
 	unsigned int dr; /* data role */
 	unsigned int pr; /* power role */
 	unsigned int power_type;
+	unsigned int writeable;
 	wait_queue_head_t role_wait;
 
 	struct dual_role_phy_instance *drp_inst;
@@ -255,7 +256,8 @@ static const char *cros_ec_usb_power_type_string(unsigned int type)
 	}
 }
 
-static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type)
+static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type,
+						unsigned int role)
 {
 	switch (type) {
 	/* FIXME : Guppy, Donnettes, and other chargers will be miscategorized
@@ -267,8 +269,14 @@ static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type)
 	case USB_CHG_TYPE_BC12_DCP:
 		return true;
 		break;
-	case USB_CHG_TYPE_C:
 	case USB_CHG_TYPE_PD:
+#if 0		/* TODO(crosbug.com/p/45871) use USB comm bit when available */
+		return !(role & PD_CTRL_RESP_ROLE_USB_COMM);
+#else
+		return false;
+#endif
+		break;
+	case USB_CHG_TYPE_C:
 	case USB_CHG_TYPE_BC12_CDP:
 	case USB_CHG_TYPE_BC12_SDP:
 	case USB_CHG_TYPE_OTHER:
@@ -278,6 +286,19 @@ static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type)
 	default:
 		return false;
 	}
+}
+
+static unsigned int cros_ec_usb_role_is_writeable(unsigned int role)
+{
+	unsigned int write_mask = 0;
+
+	if (role & PD_CTRL_RESP_ROLE_DR_POWER)
+		write_mask |= (1 << DUAL_ROLE_PROP_PR);
+	if ((role & PD_CTRL_RESP_ROLE_DR_DATA) &&
+	    (role & PD_CTRL_RESP_ROLE_USB_COMM))
+		write_mask |= (1 << DUAL_ROLE_PROP_DR);
+
+	return write_mask;
 }
 
 static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
@@ -299,14 +320,21 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		return;
 	}
 	if (res) {
-		dr = (role & (1 << 1)) ? DUAL_ROLE_PROP_DR_HOST
-				       : DUAL_ROLE_PROP_DR_DEVICE;
-		pr = (role & (1 << 0)) ? DUAL_ROLE_PROP_PR_SRC
-					: DUAL_ROLE_PROP_PR_SNK;
+		dr = (role & PD_CTRL_RESP_ROLE_DATA) ?
+			DUAL_ROLE_PROP_DR_HOST : DUAL_ROLE_PROP_DR_DEVICE;
+		pr = (role & PD_CTRL_RESP_ROLE_POWER) ?
+			DUAL_ROLE_PROP_PR_SRC : DUAL_ROLE_PROP_PR_SNK;
 	} else {
 		dr = DUAL_ROLE_PROP_DR_NONE;
 		pr = DUAL_ROLE_PROP_PR_NONE;
 	}
+	/*
+	 * When there is no USB host (e.g. USB PD charger),
+	 * we are not really a UFP for the AP.
+	 */
+	if (dr == DUAL_ROLE_PROP_DR_DEVICE &&
+	    cros_ec_usb_power_type_is_wall_wart(power_type, role))
+		dr = DUAL_ROLE_PROP_DR_NONE;
 
 	if (info->dr != dr || info->pr != pr ||
 	    info->power_type != power_type) {
@@ -318,9 +346,9 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		info->dr = dr;
 		info->pr = pr;
 		info->power_type = power_type;
+		info->writeable = cros_ec_usb_role_is_writeable(role);
 
-		if (dr == DUAL_ROLE_PROP_DR_DEVICE &&
-		    !cros_ec_usb_power_type_is_wall_wart(power_type))
+		if (dr == DUAL_ROLE_PROP_DR_DEVICE)
 			device_connected = true;
 		else if (dr == DUAL_ROLE_PROP_DR_HOST)
 			host_connected = true;
@@ -373,7 +401,7 @@ static bool extcon_cros_ec_has_vconn(struct cros_ec_extcon_info *info)
 
 	res = cros_ec_usb_get_role(dev, ec, 0, &role);
 
-	return (res > 0) && (role & (1 << 2));
+	return (res > 0) && (role & PD_CTRL_RESP_ROLE_VCONN);
 }
 
 static int extcon_cros_ec_force_data_role(struct cros_ec_extcon_info *info,
@@ -493,8 +521,13 @@ static int extcon_drp_get_prop(struct dual_role_phy_instance *inst,
 static int extcon_drp_is_writeable(struct dual_role_phy_instance *inst,
 				enum dual_role_property prop)
 {
-	return (prop == DUAL_ROLE_PROP_PR) ||
-	       (prop == DUAL_ROLE_PROP_DR);
+	struct cros_ec_extcon_info *info = dual_role_get_drvdata(inst);
+
+	if (info)
+		return info->writeable & (1 << prop);
+	else /* Not initialized yet */
+		return (prop == DUAL_ROLE_PROP_PR) ||
+		       (prop == DUAL_ROLE_PROP_DR);
 }
 
 static int extcon_drp_set_prop(struct dual_role_phy_instance *inst,
