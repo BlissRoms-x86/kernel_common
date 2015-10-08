@@ -5988,8 +5988,9 @@ intel_dp_init(struct drm_device *dev,
 	intel_encoder = &intel_dig_port->base;
 	encoder = &intel_encoder->base;
 
-	drm_encoder_init(dev, &intel_encoder->base, &intel_dp_enc_funcs,
-			 DRM_MODE_ENCODER_TMDS, NULL);
+	if (drm_encoder_init(dev, &intel_encoder->base, &intel_dp_enc_funcs,
+			     DRM_MODE_ENCODER_TMDS, NULL))
+		goto err_encoder_init;
 
 	intel_encoder->compute_config = intel_dp_compute_config;
 	intel_encoder->disable = intel_disable_dp;
@@ -6039,6 +6040,7 @@ intel_dp_init(struct drm_device *dev,
 
 err_init_connector:
 	drm_encoder_cleanup(encoder);
+err_encoder_init:
 	kfree(intel_connector);
 err_connector_alloc:
 	kfree(intel_dig_port);
