@@ -35,7 +35,7 @@
 
 #include "cros_ec_sensors_core.h"
 
-/* The ring is a FIFO that return sensor informaion from
+/* The ring is a FIFO that return sensor information from
  * the single EC FIFO.
  * There are always 5 channels returned:
 * | ID | FLAG | X | Y | Z | Timestamp |
@@ -126,8 +126,8 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 
 	if (in->flags & MOTIONSENSE_SENSOR_FLAG_TIMESTAMP)
 		*current_timestamp = fifo_timestamp -
-			((int64_t)fifo_info->info.timestamp * 1000) +
-			((int64_t)in->timestamp * 1000);
+			((s64)fifo_info->info.timestamp * 1000) +
+			((s64)in->timestamp * 1000);
 
 	if (in->flags & MOTIONSENSE_SENSOR_FLAG_FLUSH) {
 		out->sensor_id = in->sensor_num;
@@ -246,30 +246,31 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 	 * We know have [TS1+1/3, TS1+2/3, current timestamp]
 	 */
 	for_each_set_bit(i, &sensor_mask, BITS_PER_LONG) {
-		s64 older_timestamp = state->fifo_timestamp[LAST_TS];
+		s64 older_timestamp;
 		s64 timestamp;
 		struct cros_ec_sensors_ring_sample *older_unprocess_out =
 			state->ring;
 		struct cros_ec_sensors_ring_sample *next_out;
-		int count;
-		int lost;
+		int count = 1;
 
 		if (fifo_info.info.total_lost) {
-			lost = fifo_info.lost[i];
-			dev_warn(&indio_dev->dev,
-				 "Sensor %d: lost vectors: %d out of %d\n", i,
-				 fifo_info.lost[i], fifo_info.info.total_lost);
-		} else {
-			lost = 0;
+			int lost = fifo_info.lost[i];
+
+			if (lost)
+				dev_warn(&indio_dev->dev,
+					"Sensor %d: lost: %d out of %d\n", i,
+					lost, fifo_info.info.total_lost);
 		}
 
-		count = lost + 1;
 		for (out = state->ring; out < last_out; out = next_out) {
 			s64 time_period;
 
 			next_out = out + 1;
 			if (out->sensor_id != i)
 				continue;
+
+			/* Timestamp to start with */
+			older_timestamp = out->timestamp;
 
 			/* find next sample */
 			while (next_out < last_out && next_out->sensor_id != i)
@@ -279,7 +280,7 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 				timestamp = current_timestamp;
 			else
 				timestamp = next_out->timestamp;
-			if (timestamp == out->timestamp) {
+			if (timestamp == older_timestamp) {
 				count++;
 				continue;
 			}
@@ -290,9 +291,6 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 				count++;
 			time_period = (timestamp - older_timestamp) / count;
 
-			/* Fill for the lost events once. */
-			older_timestamp += lost * time_period;
-			lost = 0;
 			for (; older_unprocess_out <= out;
 					older_unprocess_out++) {
 				if (older_unprocess_out->sensor_id != i)
