@@ -74,7 +74,7 @@ int coreboot_table_find(int tag, void *data, size_t data_size)
 		ptr_entry += entry.size;
 	}
 
-	return 0;
+	return -ENOENT;
 }
 EXPORT_SYMBOL(coreboot_table_find);
 
