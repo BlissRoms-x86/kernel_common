@@ -574,6 +574,18 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	 */
 	freeze_wake();
 
+	/*
+	 * only set the wakeup_type if we've suspended yet (wakeup_source_type
+	 * is not WAKEUP_INVALID). Otherwise, we want to report WAKEUP_USER if
+	 * we see any user wakeups, even if the most recent or first wakeup is
+	 * WAKEUP_UNKNOWN or WAKEUP_AUTOMATIC.
+	 */
+	if (wakeup_source_type != WAKEUP_INVALID &&
+	    ws->dev &&
+	    ws->dev->power.wakeup_source_type != WAKEUP_UNKNOWN &&
+	    wakeup_source_type != WAKEUP_USER)
+		wakeup_source_type = ws->dev->power.wakeup_source_type;
+
 	ws->active = true;
 	ws->active_count++;
 	ws->last_time = ktime_get();
@@ -1091,6 +1103,15 @@ static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 }
 
 /**
+ * wakeup_clear_source - clear the wakeup source during syscore resume (before
+ * interrupts are enabled or wakeup_find_source is called).
+ */
+static void __maybe_unused wakeup_clear_source(void)
+{
+	wakeup_source_type = WAKEUP_UNKNOWN;
+}
+
+/**
  * wakeup_find_source - resume function to find what woke the
  * system.
  *
@@ -1102,8 +1123,6 @@ static int __maybe_unused wakeup_find_source(struct device *dev)
 {
 	struct wakeup_source *ws;
 	void *plat_data;
-
-	wakeup_source_type = WAKEUP_UNKNOWN;
 
 	if (!platform_wakeup_ops || !platform_wakeup_ops->get ||
 	    !platform_wakeup_ops->put || !platform_wakeup_ops->match)
@@ -1136,8 +1155,10 @@ out:
 }
 
 /**
- * pm_get_wakeup_source_type - return the wakeup source type that woke the
- * system. Returns WAKEUP_INVALID if there was no system wakeup yet.
+ * pm_get_wakeup_source_type - return the highest level wakeup type since the
+ * system woke up.
+ *
+ * USER > AUTOMATIC > UNKNOWN
  */
 enum wakeup_type pm_get_wakeup_source_type(void)
 {
@@ -1177,6 +1198,10 @@ static int __init wakeup_sources_debugfs_init(void)
 
 postcore_initcall(wakeup_sources_debugfs_init);
 
+static struct syscore_ops wakeup_syscore_ops = {
+	.resume = wakeup_clear_source,
+};
+
 static const struct dev_pm_ops wakeup_source_ops = {
 	.resume_early = wakeup_find_source,
 };
@@ -1211,8 +1236,12 @@ static int __init wakeup_platform_driver_init(void)
 	}
 
 	ret = platform_device_register(&wakeup_source_device);
-	if (unlikely(ret))
+	if (unlikely(ret)) {
 		pr_warn("Unable to register wakeup source device\n");
+		return ret;
+	}
+
+	register_syscore_ops(&wakeup_syscore_ops);
 
 	return ret;
 }
