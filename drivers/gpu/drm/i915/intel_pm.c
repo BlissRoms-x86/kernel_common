@@ -4391,7 +4391,7 @@ static void gen6_set_rps(struct drm_device *dev, u8 val)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* WaGsvDisableTurbo: Workaround to disable turbo on BXT A* */
-	if (IS_BROXTON(dev) && (INTEL_REVID(dev) < BXT_REVID_B0))
+	if (IS_BROXTON(dev) && (INTEL_REVID(dev) <= BXT_REVID_A1))
 		return;
 
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
@@ -4715,7 +4715,7 @@ static void gen9_enable_rps(struct drm_device *dev)
 	gen6_init_rps_frequencies(dev);
 
 	/* WaGsvDisableTurbo: Workaround to disable turbo on BXT A* */
-	if (IS_BROXTON(dev) && (INTEL_REVID(dev) < BXT_REVID_B0)) {
+	if (IS_BROXTON(dev) && (INTEL_REVID(dev) <= BXT_REVID_A1)) {
 		intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 		return;
 	}
