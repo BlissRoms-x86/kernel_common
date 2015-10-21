@@ -123,11 +123,19 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 				struct cros_ec_sensors_ring_sample *out)
 {
 	int axis;
+	s64 new_timestamp;
 
-	if (in->flags & MOTIONSENSE_SENSOR_FLAG_TIMESTAMP)
-		*current_timestamp = fifo_timestamp -
+	if (in->flags & MOTIONSENSE_SENSOR_FLAG_TIMESTAMP) {
+		new_timestamp = fifo_timestamp -
 			((s64)fifo_info->info.timestamp * 1000) +
 			((s64)in->timestamp * 1000);
+		/*
+		 * The timestamp can be stale if we had to use the fifo
+		 * info timestamp.
+		 */
+		if (new_timestamp - *current_timestamp > 0)
+			*current_timestamp = new_timestamp;
+	}
 
 	if (in->flags & MOTIONSENSE_SENSOR_FLAG_FLUSH) {
 		out->sensor_id = in->sensor_num;
@@ -219,6 +227,19 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 	}
 	last_out = out;
 
+	if (out == state->ring)
+		/* Unexpected empty FIFO. */
+		goto ring_handler_end;
+
+	/*
+	 * Check if current_timestamp is ahead of the last sample.
+	 * Normally, the EC appends a timestamp after the last sample, but if
+	 * the AP is slow to respond to the IRQ, the EC may have added new
+	 * samples. Use the FIFO info timestamp as last timestamp then.
+	 */
+	if ((last_out-1)->timestamp == current_timestamp)
+		current_timestamp = fifo_timestamp;
+
 	/* check if buffer is set properly */
 	if (!indio_dev->active_scan_mask ||
 	    (bitmap_empty(indio_dev->active_scan_mask,
@@ -276,13 +297,14 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 			while (next_out < last_out && next_out->sensor_id != i)
 				next_out++;
 
-			if (next_out >= last_out)
+			if (next_out >= last_out) {
 				timestamp = current_timestamp;
-			else
+			} else {
 				timestamp = next_out->timestamp;
-			if (timestamp == older_timestamp) {
-				count++;
-				continue;
+				if (timestamp == older_timestamp) {
+					count++;
+					continue;
+				}
 			}
 
 			/* The next sample has a new timestamp,
