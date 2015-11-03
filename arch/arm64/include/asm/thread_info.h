@@ -37,6 +37,7 @@
 struct task_struct;
 
 #include <asm/types.h>
+#include <asm/unistd.h>
 
 typedef unsigned long mm_segment_t;
 
@@ -50,7 +51,32 @@ struct thread_info {
 	struct task_struct	*task;		/* main task structure */
 	int			preempt_count;	/* 0 => preemptable, <0 => bug */
 	int			cpu;		/* cpu */
+#ifdef CONFIG_ALT_SYSCALL
+	unsigned int		nr_syscalls;
+	void			*sys_call_table;
+#ifdef CONFIG_COMPAT
+	unsigned int		compat_nr_syscalls;
+	void			*compat_sys_call_table;
+#endif
+#endif
 };
+
+#ifdef CONFIG_ALT_SYSCALL
+#ifdef CONFIG_COMPAT
+extern void * const compat_sys_call_table[];
+#define INIT_THREAD_INFO_SYSCALL_COMPAT					\
+	.compat_nr_syscalls	= __NR_compat_syscalls,			\
+	.compat_sys_call_table	= &compat_sys_call_table,
+#else
+#define INIT_THREAD_INFO_SYSCALL_COMPAT
+#endif
+#define INIT_THREAD_INFO_SYSCALL					\
+	.nr_syscalls		= __NR_syscalls,			\
+	.sys_call_table		= &sys_call_table,			\
+	INIT_THREAD_INFO_SYSCALL_COMPAT
+#else
+#define INIT_THREAD_INFO_SYSCALL
+#endif
 
 #define INIT_THREAD_INFO(tsk)						\
 {									\
@@ -58,6 +84,7 @@ struct thread_info {
 	.flags		= 0,						\
 	.preempt_count	= INIT_PREEMPT_COUNT,				\
 	.addr_limit	= KERNEL_DS,					\
+	INIT_THREAD_INFO_SYSCALL					\
 }
 
 #define init_thread_info	(init_thread_union.thread_info)

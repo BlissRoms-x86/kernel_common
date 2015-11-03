@@ -38,6 +38,14 @@ int main(void)
   DEFINE(TI_ADDR_LIMIT,		offsetof(struct thread_info, addr_limit));
   DEFINE(TI_TASK,		offsetof(struct thread_info, task));
   DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
+#ifdef CONFIG_ALT_SYSCALL
+  DEFINE(TI_NR_SYSCALLS,	offsetof(struct thread_info, nr_syscalls));
+  DEFINE(TI_SYS_CALL_TABLE,	offsetof(struct thread_info, sys_call_table));
+#ifdef CONFIG_COMPAT
+  DEFINE(TI_COMPAT_NR_SYSCALLS,	offsetof(struct thread_info, compat_nr_syscalls));
+  DEFINE(TI_COMPAT_SYS_CALL_TABLE,	offsetof(struct thread_info, compat_sys_call_table));
+#endif
+#endif
   BLANK();
   DEFINE(THREAD_CPU_CONTEXT,	offsetof(struct task_struct, thread.cpu_context));
   BLANK();
