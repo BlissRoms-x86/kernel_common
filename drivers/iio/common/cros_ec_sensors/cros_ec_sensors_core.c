@@ -145,6 +145,7 @@ static ssize_t cros_ec_sensors_flush(struct iio_dev *indio_dev,
 	return ret ? ret : len;
 }
 #endif
+
 static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 		uintptr_t private, const struct iio_chan_spec *chan,
 		const char *buf, size_t len)
@@ -435,6 +436,72 @@ irqreturn_t cros_ec_sensors_capture(int irq, void *p)
 	return IRQ_HANDLED;
 }
 EXPORT_SYMBOL_GPL(cros_ec_sensors_capture);
+
+int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
+			  struct iio_chan_spec const *chan,
+			  int *val, int *val2, long mask)
+{
+	int ret = IIO_VAL_INT;
+
+	switch (mask) {
+	case IIO_CHAN_INFO_SAMP_FREQ:
+		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
+		st->param.ec_rate.data =
+			EC_MOTION_SENSE_NO_VALUE;
+
+		if (cros_ec_motion_send_host_cmd(st))
+			ret = -EIO;
+		else
+			*val = st->resp->ec_rate.ret;
+		break;
+	case IIO_CHAN_INFO_FREQUENCY:
+		st->param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
+		st->param.sensor_odr.data =
+			EC_MOTION_SENSE_NO_VALUE;
+
+		if (cros_ec_motion_send_host_cmd(st))
+			ret = -EIO;
+		else
+			*val = st->resp->sensor_odr.ret;
+		break;
+	default:
+		break;
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cros_ec_sensors_core_read);
+
+int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
+			       struct iio_chan_spec const *chan,
+			       int val, int val2, long mask)
+{
+	int ret = 0;
+
+	switch (mask) {
+	case IIO_CHAN_INFO_FREQUENCY:
+		st->param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
+		st->param.sensor_odr.data = val;
+
+		/* Always roundup, so caller gets at least what it asks for. */
+		st->param.sensor_odr.roundup = 1;
+
+		if (cros_ec_motion_send_host_cmd(st))
+			ret = -EIO;
+		break;
+	case IIO_CHAN_INFO_SAMP_FREQ:
+		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
+		st->param.ec_rate.data = val;
+
+		if (cros_ec_motion_send_host_cmd(st))
+			ret = -EIO;
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cros_ec_sensors_core_write);
 
 MODULE_DESCRIPTION("ChromeOS EC sensor hub core functions");
 MODULE_LICENSE("GPL v2");

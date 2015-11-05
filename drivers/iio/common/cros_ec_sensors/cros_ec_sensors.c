@@ -44,7 +44,7 @@ struct cros_ec_sensors_state {
 	struct iio_chan_spec channels[MAX_CHANNELS];
 };
 
-static int ec_sensors_read(struct iio_dev *indio_dev,
+static int cros_ec_sensors_read(struct iio_dev *indio_dev,
 			  struct iio_chan_spec const *chan,
 			  int *val, int *val2, long mask)
 {
@@ -79,16 +79,6 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 				st->core.resp->sensor_offset.offset[i];
 
 		*val = st->core.calib[idx].offset;
-		break;
-	case IIO_CHAN_INFO_SAMP_FREQ:
-		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
-		st->core.param.ec_rate.data =
-			EC_MOTION_SENSE_NO_VALUE;
-
-		if (cros_ec_motion_send_host_cmd(&st->core))
-			ret = -EIO;
-		else
-			*val = st->core.resp->ec_rate.ret;
 		break;
 	case IIO_CHAN_INFO_SCALE:
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_RANGE;
@@ -132,24 +122,16 @@ static int ec_sensors_read(struct iio_dev *indio_dev,
 			ret = -EINVAL;
 		}
 		break;
-	case IIO_CHAN_INFO_FREQUENCY:
-		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
-		st->core.param.sensor_odr.data =
-			EC_MOTION_SENSE_NO_VALUE;
-
-		if (cros_ec_motion_send_host_cmd(&st->core))
-			ret = -EIO;
-		else
-			*val = st->core.resp->sensor_odr.ret;
-		break;
 	default:
+		ret = cros_ec_sensors_core_read(
+				&st->core, chan, val, val2, mask);
 		break;
 	}
 	mutex_unlock(&st->core.cmd_lock);
 	return ret;
 }
 
-static int ec_sensors_write(struct iio_dev *indio_dev,
+static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 			       struct iio_chan_spec const *chan,
 			       int val, int val2, long mask)
 {
@@ -177,13 +159,6 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
-	case IIO_CHAN_INFO_SAMP_FREQ:
-		st->core.param.cmd = MOTIONSENSE_CMD_EC_RATE;
-		st->core.param.ec_rate.data = val;
-
-		if (cros_ec_motion_send_host_cmd(&st->core))
-			ret = -EIO;
-		break;
 	case IIO_CHAN_INFO_SCALE:
 		if (st->core.type == MOTIONSENSE_TYPE_MAG) {
 			ret = -EINVAL;
@@ -198,18 +173,9 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 		if (cros_ec_motion_send_host_cmd(&st->core))
 			ret = -EIO;
 		break;
-	case IIO_CHAN_INFO_FREQUENCY:
-		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_ODR;
-		st->core.param.sensor_odr.data = val;
-
-		/* Always roundup, so caller gets at least what it asks for. */
-		st->core.param.sensor_odr.roundup = 1;
-
-		if (cros_ec_motion_send_host_cmd(&st->core))
-			ret = -EIO;
-		break;
 	default:
-		ret = -EINVAL;
+		ret = cros_ec_sensors_core_write(
+				&st->core, chan, val, val2, mask);
 		break;
 	}
 
@@ -218,8 +184,8 @@ static int ec_sensors_write(struct iio_dev *indio_dev,
 }
 
 static const struct iio_info ec_sensors_info = {
-	.read_raw = &ec_sensors_read,
-	.write_raw = &ec_sensors_write,
+	.read_raw = &cros_ec_sensors_read,
+	.write_raw = &cros_ec_sensors_write,
 	.driver_module = THIS_MODULE,
 };
 

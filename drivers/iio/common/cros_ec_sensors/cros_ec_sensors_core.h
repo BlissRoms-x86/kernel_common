@@ -117,6 +117,23 @@ irqreturn_t cros_ec_sensors_capture(int irq, void *p);
  */
 int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state);
 
+/*
+ * cros_ec_sensors_core_read/write: handler for core attributes.
+ *
+ * Handler for attributes identical among sensors:
+ * - frequency,
+ * - sampling_frequency.
+ *
+ * cmd_lock lock must be held.
+ */
+int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
+			  struct iio_chan_spec const *chan,
+			  int *val, int *val2, long mask);
+
+int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
+			       struct iio_chan_spec const *chan,
+			       int val, int val2, long mask);
+
 /* List of extended channel specification for all sensors */
 extern const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[];
 extern const struct iio_chan_spec_ext_info cros_ec_sensors_limited_info[];
