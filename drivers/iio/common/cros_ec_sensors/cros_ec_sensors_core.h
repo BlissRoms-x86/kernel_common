@@ -34,7 +34,12 @@ enum {
  * 4 16 bit channels are allowed.
  * Good enough for current sensors, thye use up to 3 16 bit vectors.
  */
-#define SAMPLE_SIZE  (sizeof(s64) * 2)
+#define CROS_EC_SAMPLE_SIZE  (sizeof(s64) * 2)
+
+/*
+ * minimum sampling period to use when device is suspending.
+ */
+#define CROS_EC_MIN_SUSPEND_SAMPLING_FREQUENCY 1000  /* 1 second */
 
 /*
  * Function to read the sensor data.
@@ -82,10 +87,13 @@ struct cros_ec_sensors_core_state {
 	 * channel we need 2 bytes, except for the timestamp. The timestamp
 	 * is always last and is always 8-byte aligned.
 	 */
-	u8 samples[SAMPLE_SIZE];
+	u8 samples[CROS_EC_SAMPLE_SIZE];
 
 	/* Pointer to function used for accessing sensors values. */
 	cros_ec_sensors_read_t *read_ec_sensors_data;
+
+	/* Current sampling period */
+	int curr_sampl_freq;
 };
 
 /* Basic initialization of the core structure. */
@@ -133,6 +141,8 @@ int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
 int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
 			       struct iio_chan_spec const *chan,
 			       int val, int val2, long mask);
+
+extern const struct dev_pm_ops cros_ec_sensors_pm_ops;
 
 /* List of extended channel specification for all sensors */
 extern const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[];
