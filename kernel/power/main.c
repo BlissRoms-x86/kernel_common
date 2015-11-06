@@ -17,6 +17,7 @@
 #include <linux/seq_file.h>
 #include <linux/pm.h>
 #include <linux/pm_dark_resume.h>
+#include <linux/pm_wakeup.h>
 
 #include "power.h"
 
@@ -84,6 +85,11 @@ static const char * const pm_tests[__TEST_AFTER_LAST] = {
 	[TEST_DEVICES] = "devices",
 	[TEST_FREEZER] = "freezer",
 };
+
+static const char * const unknown = "unknown";
+static const char * const automatic = "automatic";
+static const char * const user = "user";
+static const char * const invalid = "invalid";
 
 static ssize_t pm_test_show(struct kobject *kobj, struct kobj_attribute *attr,
 				char *buf)
@@ -464,17 +470,17 @@ static ssize_t wakeup_type_show(struct kobject *kobj,
 	 * rid of dark_resume_always.
 	 */
 	if (pm_dark_resume_active())
-		return sprintf(buf, "automatic\n");
+		return sprintf(buf, "%s\n", automatic);
 
 	switch (type) {
 	case WAKEUP_UNKNOWN:
-		return sprintf(buf, "unknown\n");
+		return sprintf(buf, "%s\n", unknown);
 	case WAKEUP_AUTOMATIC:
-		return sprintf(buf, "automatic\n");
+		return sprintf(buf, "%s\n", automatic);
 	case WAKEUP_USER:
-		return sprintf(buf, "user\n");
+		return sprintf(buf, "%s\n", user);
 	default:
-		return sprintf(buf, "invalid\n");
+		return sprintf(buf, "%s\n", invalid);
 	}
 }
 
@@ -482,6 +488,15 @@ static ssize_t wakeup_type_store(struct kobject *kobj,
 				struct kobj_attribute *attr,
 				const char *buf, size_t n)
 {
+	/*
+	 * Just the funcionality to set wakeup_type to "unknown" from userspace
+	 * is supported and is all that's needed.
+	 */
+	if (sysfs_streq(unknown, buf)) {
+		pm_set_wakeup_type(WAKEUP_UNKNOWN);
+		return n;
+	}
+
 	return -EINVAL;
 }
 

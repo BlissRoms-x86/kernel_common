@@ -935,6 +935,11 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 	}
 }
 
+void pm_set_wakeup_type(enum wakeup_type type)
+{
+	wakeup_source_type = type;
+}
+
 /**
  * pm_get_wakeup_count - Read the number of registered wakeup events.
  * @count: Address to store the value at.
@@ -1103,15 +1108,6 @@ static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 }
 
 /**
- * wakeup_clear_source - clear the wakeup source during syscore resume (before
- * interrupts are enabled or wakeup_find_source is called).
- */
-static void __maybe_unused wakeup_clear_source(void)
-{
-	wakeup_source_type = WAKEUP_UNKNOWN;
-}
-
-/**
  * wakeup_find_source - resume function to find what woke the
  * system.
  *
@@ -1198,10 +1194,6 @@ static int __init wakeup_sources_debugfs_init(void)
 
 postcore_initcall(wakeup_sources_debugfs_init);
 
-static struct syscore_ops wakeup_syscore_ops = {
-	.resume = wakeup_clear_source,
-};
-
 static const struct dev_pm_ops wakeup_source_ops = {
 	.resume_early = wakeup_find_source,
 };
@@ -1240,8 +1232,6 @@ static int __init wakeup_platform_driver_init(void)
 		pr_warn("Unable to register wakeup source device\n");
 		return ret;
 	}
-
-	register_syscore_ops(&wakeup_syscore_ops);
 
 	return ret;
 }
