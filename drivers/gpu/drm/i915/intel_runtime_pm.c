@@ -396,6 +396,20 @@ static void assert_can_disable_dc9(struct drm_i915_private *dev_priv)
 	  */
 }
 
+static void gen9_set_dc_state_debugmask_memory_up(
+			struct drm_i915_private *dev_priv)
+{
+	uint32_t val;
+
+	/* The below bit doesn't need to be cleared ever afterwards */
+	val = I915_READ(DC_STATE_DEBUG);
+	if (!(val & DC_STATE_DEBUG_MASK_MEMORY_UP)) {
+		val |= DC_STATE_DEBUG_MASK_MEMORY_UP;
+		I915_WRITE(DC_STATE_DEBUG, val);
+		POSTING_READ(DC_STATE_DEBUG);
+	}
+}
+
 static void gen9_set_dc_state(struct drm_i915_private *dev_priv, uint32_t state)
 {
 	uint32_t val;
@@ -408,6 +422,9 @@ static void gen9_set_dc_state(struct drm_i915_private *dev_priv, uint32_t state)
 		mask |= DC_STATE_EN_UPTO_DC6;
 
 	WARN_ON_ONCE(state & ~mask);
+
+	if (state & DC_STATE_EN_UPTO_DC5_DC6_MASK)
+		gen9_set_dc_state_debugmask_memory_up(dev_priv);
 
 	val = I915_READ(DC_STATE_EN);
 	DRM_DEBUG_KMS("Setting DC state from %02x to %02x\n",
@@ -434,20 +451,6 @@ void bxt_disable_dc9(struct drm_i915_private *dev_priv)
 	DRM_DEBUG_KMS("Disabling DC9\n");
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
-}
-
-static void gen9_set_dc_state_debugmask_memory_up(
-			struct drm_i915_private *dev_priv)
-{
-	uint32_t val;
-
-	/* The below bit doesn't need to be cleared ever afterwards */
-	val = I915_READ(DC_STATE_DEBUG);
-	if (!(val & DC_STATE_DEBUG_MASK_MEMORY_UP)) {
-		val |= DC_STATE_DEBUG_MASK_MEMORY_UP;
-		I915_WRITE(DC_STATE_DEBUG, val);
-		POSTING_READ(DC_STATE_DEBUG);
-	}
 }
 
 static void assert_csr_loaded(struct drm_i915_private *dev_priv)
@@ -498,8 +501,6 @@ static void gen9_enable_dc5(struct drm_i915_private *dev_priv)
 
 	DRM_DEBUG_KMS("Enabling DC5\n");
 
-	gen9_set_dc_state_debugmask_memory_up(dev_priv);
-
 	gen9_set_dc_state(dev_priv, DC_STATE_EN_UPTO_DC5);
 }
 
@@ -544,8 +545,6 @@ void skl_enable_dc6(struct drm_i915_private *dev_priv)
 	assert_can_enable_dc6(dev_priv);
 
 	DRM_DEBUG_KMS("Enabling DC6\n");
-
-	gen9_set_dc_state_debugmask_memory_up(dev_priv);
 
 	gen9_set_dc_state(dev_priv, DC_STATE_EN_UPTO_DC6);
 
