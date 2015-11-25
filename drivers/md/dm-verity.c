@@ -88,9 +88,8 @@ struct dm_verity {
 struct dm_verity_io {
 	struct dm_verity *v;
 
-	/* original values of bio->bi_end_io and bio->bi_private */
+	/* original value of bio->bi_end_io */
 	bio_end_io_t *orig_bi_end_io;
-	void *orig_bi_private;
 
 	sector_t block;
 	unsigned n_blocks;
@@ -572,7 +571,6 @@ static void verity_finish_io(struct dm_verity_io *io, int error)
 	if (error)
 		verity_error(v, io, error);
 	bio->bi_end_io = io->orig_bi_end_io;
-	bio->bi_private = io->orig_bi_private;
 	bio->bi_error = error;
 
 	bio_endio(bio);
@@ -685,7 +683,6 @@ static int verity_map(struct dm_target *ti, struct bio *bio)
 	io = dm_per_bio_data(bio, ti->per_bio_data_size);
 	io->v = v;
 	io->orig_bi_end_io = bio->bi_end_io;
-	io->orig_bi_private = bio->bi_private;
 	io->block = bio->bi_iter.bi_sector >> (v->data_dev_block_bits - SECTOR_SHIFT);
 	io->n_blocks = bio->bi_iter.bi_size >> v->data_dev_block_bits;
 
