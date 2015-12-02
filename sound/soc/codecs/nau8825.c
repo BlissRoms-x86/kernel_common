@@ -354,6 +354,10 @@ static const struct snd_soc_dapm_widget nau8825_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA_S("Output DACL", 2, NAU8825_REG_CHARGE_PUMP, 8, 1, NULL, 0),
 	SND_SOC_DAPM_PGA_S("Output DACR", 2, NAU8825_REG_CHARGE_PUMP, 9, 1, NULL, 0),
 
+	/* unground HPL/HPR before playback to reduce plop */
+	SND_SOC_DAPM_PGA_S("HPR Hi-Z", 2, NAU8825_REG_HSD_CTRL, 1, 1, NULL, 0),
+	SND_SOC_DAPM_PGA_S("HPL Hi-Z", 2, NAU8825_REG_HSD_CTRL, 0, 1, NULL, 0),
+
 	SND_SOC_DAPM_OUTPUT("HPOL"),
 	SND_SOC_DAPM_OUTPUT("HPOR"),
 };
@@ -389,8 +393,10 @@ static const struct snd_soc_dapm_route nau8825_dapm_routes[] = {
 	{"Output Driver R Stage 3", NULL, "Output Driver R Stage 2"},
 	{"Output DACL", NULL, "Output Driver L Stage 3"},
 	{"Output DACR", NULL, "Output Driver R Stage 3"},
-	{"HPOL", NULL, "Output DACL"},
-	{"HPOR", NULL, "Output DACR"},
+	{"HPL Hi-Z", NULL, "Output DACL"},
+	{"HPR Hi-Z", NULL, "Output DACR"},
+	{"HPOL", NULL, "HPL Hi-Z"},
+	{"HPOR", NULL, "HPR Hi-Z"},
 	{"HPOL", NULL, "Charge Pump"},
 	{"HPOR", NULL, "Charge Pump"},
 };
