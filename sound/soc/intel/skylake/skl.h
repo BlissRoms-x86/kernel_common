@@ -71,6 +71,8 @@ struct skl {
 
 	const char *fw_name;
 	const struct firmware *tplg;
+
+	int supend_active;
 };
 
 #define skl_to_ebus(s)	(&(s)->ebus)
