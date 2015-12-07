@@ -239,6 +239,30 @@ static int nau8825_pump_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+
+static int nau8825_playback_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	struct nau8825 *nau8825 = snd_soc_codec_get_drvdata(codec);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+	case SND_SOC_DAPM_PRE_PMD:
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_BIAS_ADJ,
+			NAU8825_BIAS_TESTDAC_MASK, NAU8825_BIAS_TESTDAC_MASK);
+		break;
+	case SND_SOC_DAPM_POST_PMU:
+	case SND_SOC_DAPM_POST_PMD:
+		regmap_update_bits(nau8825->regmap, NAU8825_REG_BIAS_ADJ,
+			NAU8825_BIAS_TESTDAC_MASK, 0);
+		break;
+	break;
+	}
+	return 0;
+}
+
+
 static const char * const nau8825_adc_decimation[] = {
 	"32", "64", "128", "256"
 };
@@ -360,6 +384,9 @@ static const struct snd_soc_dapm_widget nau8825_dapm_widgets[] = {
 
 	SND_SOC_DAPM_OUTPUT("HPOL"),
 	SND_SOC_DAPM_OUTPUT("HPOR"),
+
+	SND_SOC_DAPM_PRE("Pre Playback", nau8825_playback_event),
+	SND_SOC_DAPM_POST("Post Playback", nau8825_playback_event),
 };
 
 static const struct snd_soc_dapm_route nau8825_dapm_routes[] = {
