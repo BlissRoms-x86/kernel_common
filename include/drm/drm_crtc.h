@@ -426,6 +426,8 @@ struct drm_crtc {
 	struct device_node *port;
 	struct list_head head;
 
+	char *name;
+
 	/*
 	 * crtc mutex
 	 *
