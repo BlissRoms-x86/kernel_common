@@ -67,12 +67,12 @@
 #ifdef CONFIG_ANDROID_PARANOID_NETWORK
 #include <linux/android_aid.h>
 
-static inline int current_has_network(void)
+static inline int current_has_network(struct net *net)
 {
-	return in_egroup_p(AID_INET) || capable(CAP_NET_RAW);
+	return in_egroup_p(AID_INET) || ns_capable(net->user_ns, CAP_NET_RAW);
 }
 #else
-static inline int current_has_network(void)
+static inline int current_has_network(struct net *net)
 {
 	return 1;
 }
@@ -126,7 +126,7 @@ static int inet6_create(struct net *net, struct socket *sock, int protocol,
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
 
-	if (!current_has_network())
+	if (!current_has_network(net))
 		return -EACCES;
 
 	/* Look for the requested type/protocol pair. */
@@ -175,7 +175,8 @@ lookup_protocol:
 	}
 
 	err = -EPERM;
-	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
+	if (sock->type == SOCK_RAW && !kern && !ns_capable(net->user_ns,
+							   CAP_NET_RAW))
 		goto out_rcu_unlock;
 
 	sock->ops = answer->ops;
