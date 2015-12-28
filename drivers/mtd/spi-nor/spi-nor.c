@@ -481,6 +481,7 @@ static int stm_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 	u8 status_old, status_new;
 	u8 mask = SR_BP2 | SR_BP1 | SR_BP0;
 	u8 shift = ffs(mask) - 1, pow, val;
+	int ret;
 
 	status_old = read_sr(nor);
 
@@ -517,7 +518,10 @@ static int stm_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		return -EINVAL;
 
 	write_enable(nor);
-	return write_sr(nor, status_new);
+	ret = write_sr(nor, status_new);
+	if (ret)
+		return ret;
+	return spi_nor_wait_till_ready(nor);
 }
 
 /*
@@ -531,6 +535,7 @@ static int stm_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 	uint8_t status_old, status_new;
 	u8 mask = SR_BP2 | SR_BP1 | SR_BP0;
 	u8 shift = ffs(mask) - 1, pow, val;
+	int ret;
 
 	status_old = read_sr(nor);
 
@@ -565,7 +570,10 @@ static int stm_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		return -EINVAL;
 
 	write_enable(nor);
-	return write_sr(nor, status_new);
+	ret = write_sr(nor, status_new);
+	if (ret)
+		return ret;
+	return spi_nor_wait_till_ready(nor);
 }
 
 /*
