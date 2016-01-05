@@ -74,7 +74,6 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 	state->msg->version = 2;
 	state->msg->command = EC_CMD_MOTION_SENSE_CMD + ec->cmd_offset;
 	state->msg->outsize = sizeof(struct ec_params_motion_sense);
-	state->msg->insize = state->ec->max_response;
 
 	indio_dev->dev.parent = &pdev->dev;
 	indio_dev->name = pdev->name;
@@ -84,7 +83,7 @@ int cros_ec_sensors_core_init(struct platform_device *pdev,
 
 		state->param.cmd = MOTIONSENSE_CMD_INFO;
 		state->param.info.sensor_num = sensor_platform->sensor_num;
-		if (cros_ec_motion_send_host_cmd(state)) {
+		if (cros_ec_motion_send_host_cmd(state, 0)) {
 			dev_warn(dev, "Can not access sensor info\n");
 			return -EIO;
 		}
@@ -103,9 +102,15 @@ EXPORT_SYMBOL_GPL(cros_ec_sensors_core_init);
  *
  * Note, when called, the sub-command is assumed to be set in param->cmd.
  */
-int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state)
+int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state,
+				 u16 opt_length)
 {
 	int ret;
+
+	if (opt_length)
+		state->msg->insize = min(opt_length, state->ec->max_response);
+	else
+		state->msg->insize = state->ec->max_response;
 
 	memcpy(state->msg->data, &state->param, sizeof(state->param));
 	/* Send host command. */
@@ -137,7 +142,7 @@ static ssize_t __maybe_unused cros_ec_sensors_flush(struct iio_dev *indio_dev,
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_FIFO_FLUSH;
-	ret = cros_ec_motion_send_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st, 0);
 	if (ret != 0)
 		dev_warn(&indio_dev->dev, "Unable to flush sensor\n");
 	mutex_unlock(&st->cmd_lock);
@@ -160,7 +165,7 @@ static ssize_t cros_ec_sensors_calibrate(struct iio_dev *indio_dev,
 
 	mutex_lock(&st->cmd_lock);
 	st->param.cmd = MOTIONSENSE_CMD_PERFORM_CALIB;
-	ret = cros_ec_motion_send_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st, 0);
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to calibrate sensor\n");
 	} else {
@@ -388,7 +393,7 @@ int cros_ec_sensors_read_cmd(struct iio_dev *indio_dev,
 	 * read all sensor data through a command.
 	 */
 	st->param.cmd = MOTIONSENSE_CMD_DATA;
-	ret = cros_ec_motion_send_host_cmd(st);
+	ret = cros_ec_motion_send_host_cmd(st, sizeof(st->resp->data));
 	if (ret != 0) {
 		dev_warn(&indio_dev->dev, "Unable to read sensor data\n");
 		return ret;
@@ -447,7 +452,7 @@ int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
 		st->param.ec_rate.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (cros_ec_motion_send_host_cmd(st))
+		if (cros_ec_motion_send_host_cmd(st, 0))
 			ret = -EIO;
 		else
 			*val = st->resp->ec_rate.ret;
@@ -457,7 +462,7 @@ int cros_ec_sensors_core_read(struct cros_ec_sensors_core_state *st,
 		st->param.sensor_odr.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (cros_ec_motion_send_host_cmd(st))
+		if (cros_ec_motion_send_host_cmd(st, 0))
 			ret = -EIO;
 		else
 			*val = st->resp->sensor_odr.ret;
@@ -483,14 +488,14 @@ int cros_ec_sensors_core_write(struct cros_ec_sensors_core_state *st,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->param.sensor_odr.roundup = 1;
 
-		if (cros_ec_motion_send_host_cmd(st))
+		if (cros_ec_motion_send_host_cmd(st, 0))
 			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
 		st->param.ec_rate.data = val;
 
-		if (cros_ec_motion_send_host_cmd(st))
+		if (cros_ec_motion_send_host_cmd(st, 0))
 			ret = -EIO;
 		else
 			st->curr_sampl_freq = val;
@@ -520,7 +525,7 @@ static int __maybe_unused cros_ec_sensors_prepare(struct device *dev)
 		mutex_lock(&st->cmd_lock);
 		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
 		st->param.ec_rate.data = CROS_EC_MIN_SUSPEND_SAMPLING_FREQUENCY;
-		cros_ec_motion_send_host_cmd(st);
+		cros_ec_motion_send_host_cmd(st, 0);
 		mutex_unlock(&st->cmd_lock);
 	}
 	return 0;
@@ -539,7 +544,7 @@ static void __maybe_unused cros_ec_sensors_complete(struct device *dev)
 		mutex_lock(&st->cmd_lock);
 		st->param.cmd = MOTIONSENSE_CMD_EC_RATE;
 		st->param.ec_rate.data = st->curr_sampl_freq;
-		cros_ec_motion_send_host_cmd(st);
+		cros_ec_motion_send_host_cmd(st, 0);
 		mutex_unlock(&st->cmd_lock);
 	}
 }

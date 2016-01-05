@@ -79,7 +79,7 @@ static int cros_ec_read_event_config(struct iio_dev *indio_dev,
 
 	mutex_lock(&st->core.cmd_lock);
 	st->core.param.cmd = MOTIONSENSE_CMD_LIST_ACTIVITIES;
-	if (cros_ec_motion_send_host_cmd(&st->core) == EC_RES_SUCCESS) {
+	if (cros_ec_motion_send_host_cmd(&st->core, 0) == EC_RES_SUCCESS) {
 		switch (chan->channel2) {
 		case IIO_MOD_STILL:
 			ret = !!(st->core.resp->list_activities.enabled &
@@ -129,7 +129,7 @@ static int cros_ec_write_event_config(struct iio_dev *indio_dev,
 	}
 	st->core.param.set_activity.enable = state;
 
-	ret = cros_ec_motion_send_host_cmd(&st->core);
+	ret = cros_ec_motion_send_host_cmd(&st->core, 0);
 
 	mutex_unlock(&st->core.cmd_lock);
 	return ret;
@@ -203,7 +203,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	 * List all available activities
 	 */
 	st->core.param.cmd = MOTIONSENSE_CMD_LIST_ACTIVITIES;
-	ret = cros_ec_motion_send_host_cmd(&st->core);
+	ret = cros_ec_motion_send_host_cmd(&st->core, 0);
 	if (ret)
 		return ret;
 	activities = st->core.resp->list_activities.enabled |

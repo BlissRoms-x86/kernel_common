@@ -119,11 +119,15 @@ irqreturn_t cros_ec_sensors_capture(int irq, void *p);
  * cros_ec_motion_send_host_cmd - send motion sense host command
  *
  * @st Pointer to state information for device.
+ * @opt_length: optional length: to reduce the response size,
+ *    useful on the data path.
+ *    Otherwise, the maximal allowed response size is used.
  * @return 0 if ok, -ve on error.
  *
  * Note, when called, the sub-command is assumed to be set in param->cmd.
  */
-int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state);
+int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *st,
+				 u16 opt_length);
 
 /*
  * cros_ec_sensors_core_read/write: handler for core attributes.

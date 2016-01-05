@@ -68,7 +68,7 @@ static int cros_ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.cmd = MOTIONSENSE_CMD_SENSOR_OFFSET;
 		st->core.param.sensor_offset.flags = 0;
 
-		if (cros_ec_motion_send_host_cmd(&st->core)) {
+		if (cros_ec_motion_send_host_cmd(&st->core, 0)) {
 			ret = -EIO;
 			break;
 		}
@@ -85,7 +85,7 @@ static int cros_ec_sensors_read(struct iio_dev *indio_dev,
 		st->core.param.sensor_range.data =
 			EC_MOTION_SENSE_NO_VALUE;
 
-		if (cros_ec_motion_send_host_cmd(&st->core)) {
+		if (cros_ec_motion_send_host_cmd(&st->core, 0)) {
 			ret = -EIO;
 			break;
 		}
@@ -156,7 +156,7 @@ static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 		st->core.param.sensor_offset.temp =
 			EC_MOTION_SENSE_INVALID_CALIB_TEMP;
 
-		if (cros_ec_motion_send_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core, 0))
 			ret = -EIO;
 		break;
 	case IIO_CHAN_INFO_SCALE:
@@ -170,7 +170,7 @@ static int cros_ec_sensors_write(struct iio_dev *indio_dev,
 		/* Always roundup, so caller gets at least what it asks for. */
 		st->core.param.sensor_range.roundup = 1;
 
-		if (cros_ec_motion_send_host_cmd(&st->core))
+		if (cros_ec_motion_send_host_cmd(&st->core, 0))
 			ret = -EIO;
 		break;
 	default:
