@@ -213,7 +213,7 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 		number_data =
 			state->core.resp->fifo_read.number_data;
 		if (number_data == 0) {
-			dev_warn(&indio_dev->dev, "Unexpected empty FIFO\n");
+			dev_dbg(&indio_dev->dev, "Unexpected empty FIFO\n");
 			break;
 		}
 
