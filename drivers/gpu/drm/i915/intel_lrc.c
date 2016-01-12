@@ -1963,6 +1963,13 @@ logical_ring_default_vfuncs(struct drm_device *dev,
 	}
 }
 
+static inline void
+logical_ring_default_irqs(struct intel_engine_cs *ring, unsigned shift)
+{
+	ring->irq_enable_mask = GT_RENDER_USER_INTERRUPT << shift;
+	ring->irq_keep_mask = GT_CONTEXT_SWITCH_INTERRUPT << shift;
+}
+
 static int
 logical_ring_init(struct drm_device *dev, struct intel_engine_cs *ring)
 {
@@ -2018,10 +2025,8 @@ static int logical_render_ring_init(struct drm_device *dev)
 	ring->name = "render ring";
 	ring->id = RCS;
 	ring->mmio_base = RENDER_RING_BASE;
-	ring->irq_enable_mask =
-		GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT;
-	ring->irq_keep_mask =
-		GT_CONTEXT_SWITCH_INTERRUPT << GEN8_RCS_IRQ_SHIFT;
+
+	logical_ring_default_irqs(ring, GEN8_RCS_IRQ_SHIFT);
 	if (HAS_L3_DPF(dev))
 		ring->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 
@@ -2069,11 +2074,8 @@ static int logical_bsd_ring_init(struct drm_device *dev)
 	ring->name = "bsd ring";
 	ring->id = VCS;
 	ring->mmio_base = GEN6_BSD_RING_BASE;
-	ring->irq_enable_mask =
-		GT_RENDER_USER_INTERRUPT << GEN8_VCS1_IRQ_SHIFT;
-	ring->irq_keep_mask =
-		GT_CONTEXT_SWITCH_INTERRUPT << GEN8_VCS1_IRQ_SHIFT;
 
+	logical_ring_default_irqs(ring, GEN8_VCS1_IRQ_SHIFT);
 	logical_ring_default_vfuncs(dev, ring);
 
 	return logical_ring_init(dev, ring);
@@ -2087,11 +2089,8 @@ static int logical_bsd2_ring_init(struct drm_device *dev)
 	ring->name = "bds2 ring";
 	ring->id = VCS2;
 	ring->mmio_base = GEN8_BSD2_RING_BASE;
-	ring->irq_enable_mask =
-		GT_RENDER_USER_INTERRUPT << GEN8_VCS2_IRQ_SHIFT;
-	ring->irq_keep_mask =
-		GT_CONTEXT_SWITCH_INTERRUPT << GEN8_VCS2_IRQ_SHIFT;
 
+	logical_ring_default_irqs(ring, GEN8_VCS2_IRQ_SHIFT);
 	logical_ring_default_vfuncs(dev, ring);
 
 	return logical_ring_init(dev, ring);
@@ -2105,11 +2104,8 @@ static int logical_blt_ring_init(struct drm_device *dev)
 	ring->name = "blitter ring";
 	ring->id = BCS;
 	ring->mmio_base = BLT_RING_BASE;
-	ring->irq_enable_mask =
-		GT_RENDER_USER_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
-	ring->irq_keep_mask =
-		GT_CONTEXT_SWITCH_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
 
+	logical_ring_default_irqs(ring, GEN8_BCS_IRQ_SHIFT);
 	logical_ring_default_vfuncs(dev, ring);
 
 	return logical_ring_init(dev, ring);
@@ -2123,11 +2119,8 @@ static int logical_vebox_ring_init(struct drm_device *dev)
 	ring->name = "video enhancement ring";
 	ring->id = VECS;
 	ring->mmio_base = VEBOX_RING_BASE;
-	ring->irq_enable_mask =
-		GT_RENDER_USER_INTERRUPT << GEN8_VECS_IRQ_SHIFT;
-	ring->irq_keep_mask =
-		GT_CONTEXT_SWITCH_INTERRUPT << GEN8_VECS_IRQ_SHIFT;
 
+	logical_ring_default_irqs(ring, GEN8_VECS_IRQ_SHIFT);
 	logical_ring_default_vfuncs(dev, ring);
 
 	return logical_ring_init(dev, ring);
