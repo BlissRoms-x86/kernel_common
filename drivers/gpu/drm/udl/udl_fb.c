@@ -145,7 +145,7 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 {
 	struct drm_device *dev = fb->base.dev;
 	struct udl_device *udl = dev->dev_private;
-	int i, ret;
+	int i, ret = 0;
 	char *cmd;
 	cycles_t start_cycles, end_cycles;
 	int bytes_sent = 0;
@@ -158,13 +158,16 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 	unsigned long flags;
 	struct udl_cursor *cursor_copy = NULL;
 
+	mutex_lock(&udl->transfer_lock);
+
 	if (!fb->active_16)
-		return 0;
+		goto out;
 
 	ret = udl_gem_vmap(fb->obj);
 	if (ret) {
 		DRM_ERROR("failed to vmap fb\n");
-		return 0;
+		ret = 0;
+		goto out;
 	}
 
 	aligned_x = DL_ALIGN_DOWN(x, sizeof(unsigned long));
@@ -173,8 +176,10 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 
 	if ((width <= 0) ||
 	    (x + width > fb->base.width) ||
-	    (y + height > fb->base.height))
-		return -EINVAL;
+	    (y + height > fb->base.height)) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	/* if we are in atomic just store the info
 	   can't test inside spin lock */
@@ -201,7 +206,7 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 		fb->y1 = y;
 		fb->y2 = y2;
 		spin_unlock_irqrestore(&fb->dirty_lock, flags);
-		return 0;
+		goto out;
 	}
 
 	fb->x1 = fb->y1 = INT_MAX;
@@ -212,7 +217,7 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 
 	urb = udl_get_urb(dev);
 	if (!urb)
-		return 0;
+		goto out;
 	cmd = urb->transfer_buffer;
 
 	mutex_lock(&dev->struct_mutex);
@@ -237,7 +242,7 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 	if (cmd > (char *) urb->transfer_buffer) {
 		/* Send partial buffer remaining before exiting */
 		int len = cmd - (char *) urb->transfer_buffer;
-		ret = udl_submit_urb(dev, urb, len);
+		udl_submit_urb(dev, urb, len);
 		bytes_sent += len;
 	} else
 		udl_urb_completion(urb);
@@ -253,7 +258,9 @@ error:
 		    >> 10)), /* Kcycles */
 		   &udl->cpu_kcycles_used);
 
-	return 0;
+out:
+	mutex_unlock(&udl->transfer_lock);
+	return ret;
 }
 
 static int udl_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)

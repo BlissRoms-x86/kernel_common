@@ -292,6 +292,8 @@ int udl_driver_load(struct drm_device *dev, unsigned long flags)
 	if (!udl)
 		return -ENOMEM;
 
+	mutex_init(&udl->transfer_lock);
+
 	udl->udev = udev;
 	udl->ddev = dev;
 	dev->dev_private = udl;
@@ -357,6 +359,7 @@ int udl_driver_unload(struct drm_device *dev)
 
 	udl_fbdev_cleanup(dev);
 	udl_modeset_cleanup(dev);
+	mutex_destroy(&udl->transfer_lock);
 	kfree(udl);
 	return 0;
 }
