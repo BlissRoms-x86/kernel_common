@@ -463,7 +463,7 @@ static ssize_t wakeup_type_show(struct kobject *kobj,
 				struct kobj_attribute *attr,
 				char *buf)
 {
-	enum wakeup_type type = pm_get_wakeup_source_type();
+	enum pm_wakeup_type type = pm_get_wakeup_source_type();
 
 	/*
 	 * Hack to support dark_resume_always with wakeup_type until we can get

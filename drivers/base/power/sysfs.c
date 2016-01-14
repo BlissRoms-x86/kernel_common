@@ -532,7 +532,7 @@ static ssize_t wakeup_type_store(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t n)
 {
-	enum wakeup_type type;
+	enum pm_wakeup_type type;
 
 	if (sysfs_streq(unknown, buf))
 		type = WAKEUP_UNKNOWN;
