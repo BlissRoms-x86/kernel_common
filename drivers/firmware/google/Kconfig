@@ -26,9 +26,14 @@ config GOOGLE_COREBOOT_TABLE
 	  This option enable the coreboot_table module, which provide other
 	  firmware modules to access coreboot table.
 
+config GOOGLE_MEMCONSOLE
+	tristate
+	depends on GOOGLE_MEMCONSOLE_X86 || GOOGLE_MEMCONSOLE_OF
+
 config GOOGLE_MEMCONSOLE_X86
 	tristate "Firmware Memory Console - X86"
 	depends on X86 && ACPI && DMI
+	select GOOGLE_MEMCONSOLE
 	help
 	  This option enables the kernel to search for a firmware log in
 	  the EBDA / ACPI on Google servers on x86.  If found, this log is
@@ -36,7 +41,8 @@ config GOOGLE_MEMCONSOLE_X86
 
 config GOOGLE_MEMCONSOLE_OF
 	tristate "Firmware Memory Console - OF"
-	depends on GOOGLE_COREBOOT_TABLE
+	depends on GOOGLE_COREBOOT_TABLE && OF
+	select GOOGLE_MEMCONSOLE
 	help
 	  This option enables the kernel to search for a firmware log on
 	  coreboot platforms using device tree.  If found, this log is exported
