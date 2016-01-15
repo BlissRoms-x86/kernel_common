@@ -783,6 +783,7 @@ config INTEL_IPS
 config ACPI_CHROMEOS
 	bool "ChromeOS specific ACPI extensions"
 	depends on ACPI
+	select NVRAM
 	select CHROMEOS
 	---help---
 	  This driver provides the firmware interface for the services exported
