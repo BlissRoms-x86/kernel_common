@@ -46,7 +46,7 @@ int arch_dup_sys_call_table(struct alt_sys_call_table *entry)
 		goto compat_failed;
 	}
 	memcpy(entry->compat_table, compat_sys_call_table,
-	       entry->size * sizeof(sys_call_ptr_t));
+	       entry->compat_size * sizeof(sys_call_ptr_t));
 #endif
 
 	return 0;
