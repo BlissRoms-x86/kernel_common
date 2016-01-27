@@ -110,6 +110,7 @@ void of_iommu_set_ops(struct device_node *np, const struct iommu_ops *ops)
 	if (WARN_ON(!iommu))
 		return;
 
+	of_node_get(np);
 	INIT_LIST_HEAD(&iommu->list);
 	iommu->np = np;
 	iommu->ops = ops;
