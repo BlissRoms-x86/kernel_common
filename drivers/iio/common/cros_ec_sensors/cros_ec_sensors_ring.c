@@ -219,13 +219,13 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 
 		for (in = state->core.resp->fifo_read.data, j = 0;
 		     j < number_data; j++, in++) {
+			BUG_ON(out >= state->ring + fifo_info.info.size);
 			if (cros_ec_ring_process_event(
 					&fifo_info, fifo_timestamp,
 					&current_timestamp, in, out)) {
 				sensor_mask |= (1 << in->sensor_num);
 				out++;
 			}
-			BUG_ON(out > state->ring + fifo_info.info.size);
 		}
 	}
 	last_out = out;
@@ -452,7 +452,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	 */
 	state->ring = devm_kcalloc(&pdev->dev,
 			state->core.resp->fifo_info.size,
-			sizeof(struct ec_response_motion_sense), GFP_KERNEL);
+			sizeof(*state->ring), GFP_KERNEL);
 	if (!state->ring)
 		return -ENOMEM;
 
