@@ -1008,6 +1008,7 @@ struct i915_psr {
 	unsigned busy_frontbuffer_bits;
 	bool psr2_support;
 	bool aux_frame_sync;
+	bool link_standby;
 };
 
 enum intel_pch {
