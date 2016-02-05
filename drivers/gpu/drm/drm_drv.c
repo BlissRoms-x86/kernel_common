@@ -380,9 +380,6 @@ struct drm_minor *drm_minor_acquire(unsigned int minor_id)
 
 	if (!minor) {
 		return ERR_PTR(-ENODEV);
-	} else if (drm_device_is_unplugged(minor->dev)) {
-		drm_dev_unref(minor->dev);
-		return ERR_PTR(-ENODEV);
 	}
 
 	return minor;
@@ -468,8 +465,6 @@ void drm_unplug_dev(struct drm_device *dev)
 	drm_minor_unregister(dev, DRM_MINOR_CONTROL);
 
 	mutex_lock(&drm_global_mutex);
-
-	drm_device_set_unplugged(dev);
 
 	if (dev->open_count == 0) {
 		drm_put_dev(dev);

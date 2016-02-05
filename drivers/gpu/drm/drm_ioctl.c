@@ -695,9 +695,6 @@ long drm_ioctl(struct file *filp,
 
 	dev = file_priv->minor->dev;
 
-	if (drm_device_is_unplugged(dev))
-		return -ENODEV;
-
 	is_driver_ioctl = nr >= DRM_COMMAND_BASE && nr < DRM_COMMAND_END;
 
 	if (is_driver_ioctl) {
