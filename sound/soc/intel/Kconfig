@@ -30,9 +30,13 @@ config SND_SST_IPC_ACPI
 config SND_SOC_INTEL_SST
 	tristate
 	select SND_SOC_INTEL_SST_ACPI if ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
 	depends on (X86 || COMPILE_TEST)
 
 config SND_SOC_INTEL_SST_ACPI
+	tristate
+
+config SND_SOC_INTEL_SST_MATCH
 	tristate
 
 config SND_SOC_INTEL_HASWELL
@@ -96,6 +100,7 @@ config SND_SOC_INTEL_BYTCR_RT5640_MACH
 	select SND_SOC_RT5640
 	select SND_SST_MFLD_PLATFORM
 	select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
 	help
 	  This adds support for ASoC machine driver for Intel(R) MID Baytrail platform
           used as alsa device in audio substem in Intel(R) MID devices
@@ -108,6 +113,7 @@ config SND_SOC_INTEL_CHT_BSW_RT5672_MACH
         select SND_SOC_RT5670
         select SND_SST_MFLD_PLATFORM
         select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
         help
           This adds support for ASoC machine driver for Intel(R) Cherrytrail & Braswell
           platforms with RT5672 audio codec.
@@ -120,6 +126,7 @@ config SND_SOC_INTEL_CHT_BSW_RT5645_MACH
 	select SND_SOC_RT5645
 	select SND_SST_MFLD_PLATFORM
 	select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
 	help
 	  This adds support for ASoC machine driver for Intel(R) Cherrytrail & Braswell
 	  platforms with RT5645/5650 audio codec.
@@ -132,6 +139,7 @@ config SND_SOC_INTEL_CHT_BSW_MAX98090_TI_MACH
 	select SND_SOC_TS3A227E
 	select SND_SST_MFLD_PLATFORM
 	select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
 	help
       This adds support for ASoC machine driver for Intel(R) Cherrytrail & Braswell
       platforms with MAX98090 audio codec it also can support TI jack chip as aux device.
