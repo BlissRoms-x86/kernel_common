@@ -19,6 +19,8 @@
 #ifndef _DMA_BUF_UAPI_H_
 #define _DMA_BUF_UAPI_H_
 
+#include <linux/types.h>
+
 /* begin/end dma-buf functions used for userspace mmap. */
 struct dma_buf_sync {
 	__u64 flags;

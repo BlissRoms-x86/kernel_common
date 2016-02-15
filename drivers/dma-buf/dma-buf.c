@@ -262,25 +262,27 @@ static long dma_buf_ioctl(struct file *file,
 
 	dmabuf = file->private_data;
 
-	if (!is_dma_buf_file(file))
-		return -EINVAL;
-
 	switch (cmd) {
 	case DMA_BUF_IOCTL_SYNC:
 		if (copy_from_user(&sync, (void __user *) arg, sizeof(sync)))
 			return -EFAULT;
 
-		if (sync.flags & DMA_BUF_SYNC_RW)
-			direction = DMA_BIDIRECTIONAL;
-		else if (sync.flags & DMA_BUF_SYNC_READ)
-			direction = DMA_FROM_DEVICE;
-		else if (sync.flags & DMA_BUF_SYNC_WRITE)
-			direction = DMA_TO_DEVICE;
-		else
-			return -EINVAL;
-
 		if (sync.flags & ~DMA_BUF_SYNC_VALID_FLAGS_MASK)
 			return -EINVAL;
+
+		switch (sync.flags & DMA_BUF_SYNC_RW) {
+		case DMA_BUF_SYNC_READ:
+			direction = DMA_FROM_DEVICE;
+			break;
+		case DMA_BUF_SYNC_WRITE:
+			direction = DMA_TO_DEVICE;
+			break;
+		case DMA_BUF_SYNC_RW:
+			direction = DMA_BIDIRECTIONAL;
+			break;
+		default:
+			return -EINVAL;
+		}
 
 		if (sync.flags & DMA_BUF_SYNC_END)
 			dma_buf_end_cpu_access(dmabuf, direction);
