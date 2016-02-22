@@ -196,6 +196,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_getpriority	__NR_ia32_getpriority
 #define __NR_compat_getrlimit	__NR_ia32_getrlimit
 #define __NR_compat_getrusage	__NR_ia32_getrusage
+#define __NR_compat_getsid	__NR_ia32_getsid
 #define __NR_compat_gettid	__NR_ia32_gettid
 #define __NR_compat_gettimeofday	__NR_ia32_gettimeofday
 #define __NR_compat_getuid	__NR_ia32_getuid
@@ -295,6 +296,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_setxattr	__NR_ia32_setxattr
 #define __NR_compat_sigaltstack	__NR_ia32_sigaltstack
 #define __NR_compat_socketcall	__NR_ia32_socketcall
+#define __NR_compat_splice	__NR_ia32_splice
 #define __NR_compat_stat	__NR_ia32_stat
 #define __NR_compat_statfs	__NR_ia32_statfs
 #define __NR_compat_symlink	__NR_ia32_symlink
@@ -302,6 +304,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_sync_file_range	__NR_ia32_sync_file_range
 #define __NR_compat_sysinfo	__NR_ia32_sysinfo
 #define __NR_compat_syslog	__NR_ia32_syslog
+#define __NR_compat_tee		__NR_ia32_tee
 #define __NR_compat_tgkill	__NR_ia32_tgkill
 #define __NR_compat_tkill	__NR_ia32_tkill
 #define __NR_compat_timer_create	__NR_ia32_timer_create
@@ -319,6 +322,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_utimensat	__NR_ia32_utimensat
 #define __NR_compat_utimes	__NR_ia32_utimes
 #define __NR_compat_vfork	__NR_ia32_vfork
+#define __NR_compat_vmsplice	__NR_ia32_vmsplice
 #define __NR_compat_wait4	__NR_ia32_wait4
 #define __NR_compat_write	__NR_ia32_write
 #define __NR_compat_writev	__NR_ia32_writev
@@ -434,6 +438,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(getpriority),
 	SYSCALL_ENTRY(getrlimit),
 	SYSCALL_ENTRY(getrusage),
+	SYSCALL_ENTRY(getsid),
 	SYSCALL_ENTRY(gettid),
 	SYSCALL_ENTRY(gettimeofday),
 	SYSCALL_ENTRY(getuid),
@@ -519,10 +524,12 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(setuid),
 	SYSCALL_ENTRY(setxattr),
 	SYSCALL_ENTRY(sigaltstack),
+	SYSCALL_ENTRY(splice),
 	SYSCALL_ENTRY(statfs),
 	SYSCALL_ENTRY(symlinkat),
 	SYSCALL_ENTRY(sysinfo),
 	SYSCALL_ENTRY(syslog),
+	SYSCALL_ENTRY(tee),
 	SYSCALL_ENTRY(tgkill),
 	SYSCALL_ENTRY(tkill),
 	SYSCALL_ENTRY(timer_create),
@@ -536,6 +543,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(unlinkat),
 	SYSCALL_ENTRY(unshare),
 	SYSCALL_ENTRY(utimensat),
+	SYSCALL_ENTRY(vmsplice),
 	SYSCALL_ENTRY(wait4),
 	SYSCALL_ENTRY(write),
 	SYSCALL_ENTRY(writev),
@@ -741,6 +749,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(getppid),
 	COMPAT_SYSCALL_ENTRY(getpriority),
 	COMPAT_SYSCALL_ENTRY(getrusage),
+	COMPAT_SYSCALL_ENTRY(getsid),
 	COMPAT_SYSCALL_ENTRY(gettid),
 	COMPAT_SYSCALL_ENTRY(gettimeofday),
 	COMPAT_SYSCALL_ENTRY(getuid),
@@ -837,6 +846,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(setuid),
 	COMPAT_SYSCALL_ENTRY(setxattr),
 	COMPAT_SYSCALL_ENTRY(sigaltstack),
+	COMPAT_SYSCALL_ENTRY(splice),
 	COMPAT_SYSCALL_ENTRY(stat),
 	COMPAT_SYSCALL_ENTRY(statfs),
 	COMPAT_SYSCALL_ENTRY(symlink),
@@ -844,6 +854,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(sysinfo),
 	COMPAT_SYSCALL_ENTRY(syslog),
 	COMPAT_SYSCALL_ENTRY(tgkill),
+	COMPAT_SYSCALL_ENTRY(tee),
 	COMPAT_SYSCALL_ENTRY(tkill),
 	COMPAT_SYSCALL_ENTRY(timer_create),
 	COMPAT_SYSCALL_ENTRY(timer_settime),
@@ -860,6 +871,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(utimensat),
 	COMPAT_SYSCALL_ENTRY(utimes),
 	COMPAT_SYSCALL_ENTRY(vfork),
+	COMPAT_SYSCALL_ENTRY(vmsplice),
 	COMPAT_SYSCALL_ENTRY(wait4),
 	COMPAT_SYSCALL_ENTRY(write),
 	COMPAT_SYSCALL_ENTRY(writev),
