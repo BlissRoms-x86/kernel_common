@@ -147,6 +147,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_clock_gettime	__NR_ia32_clock_gettime
 #define __NR_compat_clock_getres	__NR_ia32_clock_getres
 #define __NR_compat_clock_nanosleep	__NR_ia32_clock_nanosleep
+#define __NR_compat_clock_settime	__NR_ia32_clock_settime
 #define __NR_compat_clone	__NR_ia32_clone
 #define __NR_compat_close	__NR_ia32_close
 #define __NR_compat_creat	__NR_ia32_creat
@@ -246,7 +247,9 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_prctl	__NR_ia32_prctl
 #define __NR_compat_pread64	__NR_ia32_pread64
 #define __NR_compat_preadv	__NR_ia32_preadv
+#define __NR_compat_prlimit64	__NR_ia32_prlimit64
 #define __NR_compat_process_vm_readv	__NR_ia32_process_vm_readv
+#define __NR_compat_process_vm_writev	__NR_ia32_process_vm_writev
 #define __NR_compat_pselect6	__NR_ia32_pselect6
 #define __NR_compat_ptrace	__NR_ia32_ptrace
 #define __NR_compat_pwrite64	__NR_ia32_pwrite64
@@ -277,6 +280,8 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_sched_getscheduler	__NR_ia32_sched_getscheduler
 #define __NR_compat_sched_setscheduler	__NR_ia32_sched_setscheduler
 #define __NR_compat_sched_yield	__NR_ia32_sched_yield
+#define __NR_compat_sendfile	__NR_ia32_sendfile
+#define __NR_compat_sendfile64	__NR_ia32_sendfile64
 #define __NR_compat_sendmmsg	__NR_ia32_sendmmsg
 #define __NR_compat_set_tid_address	__NR_ia32_set_tid_address
 #define __NR_compat_set_thread_area	__NR_ia32_set_thread_area
@@ -308,6 +313,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_tgkill	__NR_ia32_tgkill
 #define __NR_compat_tkill	__NR_ia32_tkill
 #define __NR_compat_timer_create	__NR_ia32_timer_create
+#define __NR_compat_timer_delete	__NR_ia32_timer_delete
 #define __NR_compat_timer_settime	__NR_ia32_timer_settime
 #define __NR_compat_timerfd_create	__NR_ia32_timerfd_create
 #define __NR_compat_timerfd_settime	__NR_ia32_timerfd_settime
@@ -397,6 +403,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(clock_gettime),
 	SYSCALL_ENTRY(clock_getres),
 	SYSCALL_ENTRY(clock_nanosleep),
+	SYSCALL_ENTRY(clock_settime),
 	SYSCALL_ENTRY(clone),
 	SYSCALL_ENTRY(close),
 	SYSCALL_ENTRY(dup),
@@ -479,7 +486,9 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY_ALT(prctl, alt_sys_prctl),
 	SYSCALL_ENTRY(pread64),
 	SYSCALL_ENTRY(preadv),
+	SYSCALL_ENTRY(prlimit64),
 	SYSCALL_ENTRY(process_vm_readv),
+	SYSCALL_ENTRY(process_vm_writev),
 	SYSCALL_ENTRY(pselect6),
 	SYSCALL_ENTRY(ptrace),
 	SYSCALL_ENTRY(pwrite64),
@@ -507,6 +516,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(sched_getscheduler),
 	SYSCALL_ENTRY(sched_setscheduler),
 	SYSCALL_ENTRY(sched_yield),
+	SYSCALL_ENTRY(sendfile),
 	SYSCALL_ENTRY(sendmmsg),
 	SYSCALL_ENTRY(set_tid_address),
 	SYSCALL_ENTRY(setgid),
@@ -533,6 +543,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(tgkill),
 	SYSCALL_ENTRY(tkill),
 	SYSCALL_ENTRY(timer_create),
+	SYSCALL_ENTRY(timer_delete),
 	SYSCALL_ENTRY(timer_settime),
 	SYSCALL_ENTRY(timerfd_create),
 	SYSCALL_ENTRY(timerfd_settime),
@@ -662,6 +673,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(sigprocmask),
 	SYSCALL_ENTRY(sigreturn),
 	SYSCALL_ENTRY(sigsuspend),
+	SYSCALL_ENTRY(sendfile64),
 	SYSCALL_ENTRY(setgid32),
 	SYSCALL_ENTRY(setgroups32),
 	SYSCALL_ENTRY(setregid32),
@@ -701,6 +713,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(clock_gettime),
 	COMPAT_SYSCALL_ENTRY(clock_getres),
 	COMPAT_SYSCALL_ENTRY(clock_nanosleep),
+	COMPAT_SYSCALL_ENTRY(clock_settime),
 	COMPAT_SYSCALL_ENTRY(clone),
 	COMPAT_SYSCALL_ENTRY(close),
 	COMPAT_SYSCALL_ENTRY(creat),
@@ -798,7 +811,9 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY_ALT(prctl, alt_sys_prctl),
 	COMPAT_SYSCALL_ENTRY(pread64),
 	COMPAT_SYSCALL_ENTRY(preadv),
+	COMPAT_SYSCALL_ENTRY(prlimit64),
 	COMPAT_SYSCALL_ENTRY(process_vm_readv),
+	COMPAT_SYSCALL_ENTRY(process_vm_writev),
 	COMPAT_SYSCALL_ENTRY(pselect6),
 	COMPAT_SYSCALL_ENTRY(ptrace),
 	COMPAT_SYSCALL_ENTRY(pwrite64),
@@ -829,6 +844,8 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(sched_getscheduler),
 	COMPAT_SYSCALL_ENTRY(sched_setscheduler),
 	COMPAT_SYSCALL_ENTRY(sched_yield),
+	COMPAT_SYSCALL_ENTRY(sendfile),
+	COMPAT_SYSCALL_ENTRY(sendfile64),
 	COMPAT_SYSCALL_ENTRY(sendmmsg),
 	COMPAT_SYSCALL_ENTRY(set_tid_address),
 	COMPAT_SYSCALL_ENTRY(setgid),
@@ -857,6 +874,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(tee),
 	COMPAT_SYSCALL_ENTRY(tkill),
 	COMPAT_SYSCALL_ENTRY(timer_create),
+	COMPAT_SYSCALL_ENTRY(timer_delete),
 	COMPAT_SYSCALL_ENTRY(timer_settime),
 	COMPAT_SYSCALL_ENTRY(timerfd_create),
 	COMPAT_SYSCALL_ENTRY(timerfd_settime),
