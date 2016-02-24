@@ -314,8 +314,11 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_tkill	__NR_ia32_tkill
 #define __NR_compat_timer_create	__NR_ia32_timer_create
 #define __NR_compat_timer_delete	__NR_ia32_timer_delete
+#define __NR_compat_timer_getoverrun	__NR_ia32_timer_getoverrun
+#define __NR_compat_timer_gettime	__NR_ia32_timer_gettime
 #define __NR_compat_timer_settime	__NR_ia32_timer_settime
 #define __NR_compat_timerfd_create	__NR_ia32_timerfd_create
+#define __NR_compat_timerfd_gettime	__NR_ia32_timerfd_gettime
 #define __NR_compat_timerfd_settime	__NR_ia32_timerfd_settime
 #define __NR_compat_truncate	__NR_ia32_truncate
 #define __NR_compat_umask	__NR_ia32_umask
@@ -544,8 +547,11 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(tkill),
 	SYSCALL_ENTRY(timer_create),
 	SYSCALL_ENTRY(timer_delete),
+	SYSCALL_ENTRY(timer_gettime),
+	SYSCALL_ENTRY(timer_getoverrun),
 	SYSCALL_ENTRY(timer_settime),
 	SYSCALL_ENTRY(timerfd_create),
+	SYSCALL_ENTRY(timerfd_gettime),
 	SYSCALL_ENTRY(timerfd_settime),
 	SYSCALL_ENTRY(truncate),
 	SYSCALL_ENTRY(umask),
@@ -875,8 +881,11 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(tkill),
 	COMPAT_SYSCALL_ENTRY(timer_create),
 	COMPAT_SYSCALL_ENTRY(timer_delete),
+	COMPAT_SYSCALL_ENTRY(timer_gettime),
+	COMPAT_SYSCALL_ENTRY(timer_getoverrun),
 	COMPAT_SYSCALL_ENTRY(timer_settime),
 	COMPAT_SYSCALL_ENTRY(timerfd_create),
+	COMPAT_SYSCALL_ENTRY(timerfd_gettime),
 	COMPAT_SYSCALL_ENTRY(timerfd_settime),
 	COMPAT_SYSCALL_ENTRY(truncate),
 	COMPAT_SYSCALL_ENTRY(umask),
