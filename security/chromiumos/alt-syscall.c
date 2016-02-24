@@ -363,6 +363,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_setregid32	__NR_ia32_setregid32
 #define __NR_compat_setresgid32	__NR_ia32_setresgid32
 #define __NR_compat_setresuid32	__NR_ia32_setresuid32
+#define __NR_compat_setreuid32	__NR_ia32_setreuid32
 #define __NR_compat_setuid32	__NR_ia32_setuid32
 #define __NR_compat_stat64	__NR_ia32_stat64
 #define __NR_compat_statfs64	__NR_ia32_statfs64
@@ -650,6 +651,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 #if defined(CONFIG_X86_64) || defined(CONFIG_ARM64)
 	SYSCALL_ENTRY(newfstatat),
 	SYSCALL_ENTRY(mmap),
+	SYSCALL_ENTRY(setreuid),
 	/* select(2) is deprecated and not wired up on ARM64. */
 #ifndef CONFIG_ARM64
 	SYSCALL_ENTRY(select),
@@ -685,6 +687,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(setregid32),
 	SYSCALL_ENTRY(setresgid32),
 	SYSCALL_ENTRY(setresuid32),
+	SYSCALL_ENTRY(setreuid32),
 	SYSCALL_ENTRY(setuid32),
 	SYSCALL_ENTRY(stat64),
 	SYSCALL_ENTRY(statfs64),
@@ -928,6 +931,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(setregid32),
 	COMPAT_SYSCALL_ENTRY(setresgid32),
 	COMPAT_SYSCALL_ENTRY(setresuid32),
+	COMPAT_SYSCALL_ENTRY(setreuid32),
 	COMPAT_SYSCALL_ENTRY(setuid32),
 	COMPAT_SYSCALL_ENTRY(stat64),
 	COMPAT_SYSCALL_ENTRY(statfs64),
