@@ -480,6 +480,7 @@ static void cros_usb_pd_print_log_entry(struct ec_response_pd_log *r,
 	struct usb_chg_measures *meas;
 	struct mcdp_info *minfo;
 	struct rtc_time rt;
+	s64 msecs;
 	int len = 0;
 	char buf[BUF_SIZE + 1];
 
@@ -548,10 +549,11 @@ static void cros_usb_pd_print_log_entry(struct ec_response_pd_log *r,
 		break;
 	}
 
-	pr_info("PDLOG %d/%02d/%02d %02d:%02d:%02d.%03d P%d %s\n",
+	msecs = ktime_to_ms(tstamp);
+	do_div(msecs, MSEC_PER_SEC);
+	pr_info("PDLOG %d/%02d/%02d %02d:%02d:%02d.%03lld P%d %s\n",
 		rt.tm_year + 1900, rt.tm_mon + 1, rt.tm_mday,
-		rt.tm_hour, rt.tm_min, rt.tm_sec,
-		(int)(ktime_to_ms(tstamp) % MSEC_PER_SEC),
+		rt.tm_hour, rt.tm_min, rt.tm_sec, msecs,
 		PD_LOG_PORT(r->size_port), buf);
 }
 
