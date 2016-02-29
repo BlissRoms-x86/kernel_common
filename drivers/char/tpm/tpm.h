@@ -34,7 +34,7 @@
 enum tpm_const {
 	TPM_MINOR = 224,	/* officially assigned */
 	TPM_BUFSIZE = 4096,
-	TPM_NUM_DEVICES = 256,
+	TPM_NUM_DEVICES = 65536,
 	TPM_RETRY = 50,		/* 5 seconds */
 };
 
@@ -199,7 +199,6 @@ struct tpm_chip {
 	char ppi_version[TPM_PPI_VERSION_LEN + 1];
 #endif /* CONFIG_ACPI */
 
-	struct list_head list;
 	struct notifier_block shutdown_nb;
 };
 
@@ -496,6 +495,7 @@ static inline void tpm_buf_append_u32(struct tpm_buf *buf, const u32 value)
 extern struct class *tpm_class;
 extern dev_t tpm_devt;
 extern const struct file_operations tpm_fops;
+extern struct idr dev_nums_idr;
 
 ssize_t	tpm_getcap(struct device *, __be32, cap_t *, const char *);
 ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
