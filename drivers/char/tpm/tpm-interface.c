@@ -332,10 +332,10 @@ void tpm_resume_if_needed(struct tpm_chip *chip)
 {
 	mutex_lock(&chip->resume_mutex);
 	if (chip->needs_resume) {
-		dev_info(chip->pdev, "waiting for TPM self test\n");
+		dev_info(&chip->dev, "waiting for TPM self test\n");
 		tpm_continue_selftest_nocheck(chip);
 		chip->needs_resume = 0;
-		dev_info(chip->pdev, "TPM delayed resume completed\n");
+		dev_info(&chip->dev, "TPM delayed resume completed\n");
 	}
 	mutex_unlock(&chip->resume_mutex);
 }
@@ -383,7 +383,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 	if (count == 0)
 		return -ENODATA;
 	if (count > bufsiz) {
-		dev_err(chip->pdev,
+		dev_err(&chip->dev,
 			"invalid count value %x %zx\n", count, bufsiz);
 		return -E2BIG;
 	}
@@ -392,7 +392,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 
 	rc = chip->ops->send(chip, (u8 *) buf, count);
 	if (rc < 0) {
-		dev_err(chip->pdev,
+		dev_err(&chip->dev,
 			"tpm_transmit: tpm_send: error %zd\n", rc);
 		goto out;
 	}
@@ -411,7 +411,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 			goto out_recv;
 
 		if (chip->ops->req_canceled(chip, status)) {
-			dev_err(chip->pdev, "Operation Canceled\n");
+			dev_err(&chip->dev, "Operation Canceled\n");
 			rc = -ECANCELED;
 			goto out;
 		}
@@ -421,14 +421,14 @@ ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 	} while (time_before(jiffies, stop));
 
 	chip->ops->cancel(chip);
-	dev_err(chip->pdev, "Operation Timed out\n");
+	dev_err(&chip->dev, "Operation Timed out\n");
 	rc = -ETIME;
 	goto out;
 
 out_recv:
 	rc = chip->ops->recv(chip, (u8 *) buf, bufsiz);
 	if (rc < 0)
-		dev_err(chip->pdev,
+		dev_err(&chip->dev,
 			"tpm_transmit: tpm_recv: error %zd\n", rc);
 out:
 	mutex_unlock(&chip->tpm_mutex);
@@ -456,7 +456,7 @@ ssize_t tpm_transmit_cmd(struct tpm_chip *chip, void *cmd,
 
 	err = be32_to_cpu(header->return_code);
 	if (err != 0 && desc)
-		dev_err(chip->pdev, "A TPM error (%d) occurred %s\n", err,
+		dev_err(&chip->dev, "A TPM error (%d) occurred %s\n", err,
 			desc);
 
 	return err;
@@ -567,7 +567,7 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 	if (rc == TPM_ERR_INVALID_POSTINIT) {
 		/* The TPM is not started, we are the first to talk to it.
 		   Execute a startup command. */
-		dev_info(chip->pdev, "Issuing TPM_STARTUP");
+		dev_info(&chip->dev, "Issuing TPM_STARTUP");
 		if (tpm_startup(chip, TPM_ST_CLEAR))
 			return rc;
 
@@ -579,7 +579,7 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 				  NULL);
 	}
 	if (rc) {
-		dev_err(chip->pdev,
+		dev_err(&chip->dev,
 			"A TPM error (%zd) occurred attempting to determine the timeouts\n",
 			rc);
 		goto duration;
@@ -618,7 +618,7 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 
 	/* Report adjusted timeouts */
 	if (chip->vendor.timeout_adjusted) {
-		dev_info(chip->pdev,
+		dev_info(&chip->dev,
 			 HW_ERR "Adjusting reported timeouts: A %lu->%luus B %lu->%luus C %lu->%luus D %lu->%luus\n",
 			 old_timeout[0], new_timeout[0],
 			 old_timeout[1], new_timeout[1],
@@ -665,7 +665,7 @@ duration:
 		chip->vendor.duration[TPM_MEDIUM] *= 1000;
 		chip->vendor.duration[TPM_LONG] *= 1000;
 		chip->vendor.duration_adjusted = true;
-		dev_info(chip->pdev, "Adjusting TPM timeout parameters.\n");
+		dev_info(&chip->dev, "Adjusting TPM timeout parameters.\n");
 	}
 	return 0;
 }
@@ -864,7 +864,9 @@ int tpm_do_selftest(struct tpm_chip *chip)
 		 * around 300ms while the self test is ongoing, keep trying
 		 * until the self test duration expires. */
 		if (rc == -ETIME) {
-			dev_info(chip->pdev, HW_ERR "TPM command timed out during continue self test");
+			dev_info(
+			    &chip->dev, HW_ERR
+			    "TPM command timed out during continue self test");
 			msleep(delay_msec);
 			continue;
 		}
@@ -874,7 +876,7 @@ int tpm_do_selftest(struct tpm_chip *chip)
 
 		rc = be32_to_cpu(cmd.header.out.return_code);
 		if (rc == TPM_ERR_DISABLED || rc == TPM_ERR_DEACTIVATED) {
-			dev_info(chip->pdev,
+			dev_info(&chip->dev,
 				 "TPM is disabled/deactivated (0x%X)\n", rc);
 			/* TPM is disabled and/or deactivated; driver can
 			 * proceed and TPM does handle commands for
@@ -1027,10 +1029,10 @@ int tpm_pm_suspend(struct device *dev)
 	}
 
 	if (rc)
-		dev_err(chip->pdev,
+		dev_err(&chip->dev,
 			"Error (%d) sending savestate before suspend\n", rc);
 	else if (try > 0)
-		dev_warn(chip->pdev, "TPM savestate took %dms\n",
+		dev_warn(&chip->dev, "TPM savestate took %dms\n",
 			 try * TPM_TIMEOUT_RETRY);
 
 	return rc;
