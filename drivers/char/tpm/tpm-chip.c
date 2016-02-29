@@ -58,9 +58,6 @@ int tpm_try_get_ops(struct tpm_chip *chip)
 	if (!chip->ops)
 		goto out_lock;
 
-	if (!try_module_get(chip->dev.parent->driver->owner))
-		goto out_lock;
-
 	return 0;
 out_lock:
 	up_read(&chip->ops_sem);
@@ -78,7 +75,6 @@ EXPORT_SYMBOL_GPL(tpm_try_get_ops);
  */
 void tpm_put_ops(struct tpm_chip *chip)
 {
-	module_put(chip->dev.parent->driver->owner);
 	up_read(&chip->ops_sem);
 	put_device(&chip->dev);
 }
@@ -186,7 +182,7 @@ struct tpm_chip *tpmm_chip_alloc(struct device *dev,
 		goto out;
 
 	cdev_init(&chip->cdev, &tpm_fops);
-	chip->cdev.owner = dev->driver->owner;
+	chip->cdev.owner = THIS_MODULE;
 	chip->cdev.kobj.parent = &chip->dev.kobj;
 
 	rc = devm_add_action(dev, (void (*)(void *)) put_device, &chip->dev);
