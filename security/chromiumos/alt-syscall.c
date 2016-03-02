@@ -320,6 +320,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_timerfd_create	__NR_ia32_timerfd_create
 #define __NR_compat_timerfd_gettime	__NR_ia32_timerfd_gettime
 #define __NR_compat_timerfd_settime	__NR_ia32_timerfd_settime
+#define __NR_compat_times		__NR_ia32_times
 #define __NR_compat_truncate	__NR_ia32_truncate
 #define __NR_compat_umask	__NR_ia32_umask
 #define __NR_compat_umount2	__NR_ia32_umount2
@@ -543,6 +544,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(timerfd_create),
 	SYSCALL_ENTRY(timerfd_gettime),
 	SYSCALL_ENTRY(timerfd_settime),
+	SYSCALL_ENTRY(times),
 	SYSCALL_ENTRY(truncate),
 	SYSCALL_ENTRY(umask),
 	SYSCALL_ENTRY(umount2),
@@ -882,6 +884,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(timerfd_create),
 	COMPAT_SYSCALL_ENTRY(timerfd_gettime),
 	COMPAT_SYSCALL_ENTRY(timerfd_settime),
+	COMPAT_SYSCALL_ENTRY(times),
 	COMPAT_SYSCALL_ENTRY(truncate),
 	COMPAT_SYSCALL_ENTRY(umask),
 	COMPAT_SYSCALL_ENTRY(umount2),
