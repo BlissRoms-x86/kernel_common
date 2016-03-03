@@ -148,7 +148,7 @@ static int vpd_section_init(const char *name, struct vpd_section *sec,
 	int ret;
 	int raw_len;
 
-	sec->baseaddr = ioremap_cache(physaddr, size);
+	sec->baseaddr = memremap(physaddr, size, MEMREMAP_WB);
 	if (sec->baseaddr == NULL)
 		return -ENOMEM;
 
@@ -210,7 +210,7 @@ static int init_vpd_sections(phys_addr_t physaddr)
 	struct vpd_cbmem header;
 	int ret = 0;
 
-	temp = ioremap_cache(physaddr, sizeof(struct vpd_cbmem));
+	temp = memremap(physaddr, sizeof(struct vpd_cbmem), MEMREMAP_WB);
 	if (temp == NULL) {
 		return -ENOMEM;
 	}
