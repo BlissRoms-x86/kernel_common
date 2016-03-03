@@ -143,7 +143,7 @@ static phys_addr_t check_cbmem(void)
 				    E820_RESERVED))
 			break;
 
-		pcbm = ioremap_cache(scan_addr, remap_size);
+		pcbm = memremap(scan_addr, remap_size, MEMREMAP_WB);
 		if (!pcbm) {
 			scan_addr += CBMEM_ALIGNMENT;
 			continue;
