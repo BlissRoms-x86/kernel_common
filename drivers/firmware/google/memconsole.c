@@ -49,13 +49,14 @@ int memconsole_coreboot_init(phys_addr_t physaddr)
 {
 	struct cbmem_cons __iomem *tmp_cbmc;
 
-	tmp_cbmc = ioremap_cache(physaddr, sizeof(*tmp_cbmc));
+	tmp_cbmc = memremap(physaddr, sizeof(*tmp_cbmc), MEMREMAP_WB);
 
 	if (tmp_cbmc == NULL)
 		return -ENOMEM;
 
-	cbmem_console = ioremap_cache(physaddr, tmp_cbmc->buffer_size +
-		sizeof(*cbmem_console)); /* Don't forget counting the header. */
+	cbmem_console = memremap(physaddr, tmp_cbmc->buffer_size +
+		sizeof(*cbmem_console), /* Don't forget counting the header. */
+		MEMREMAP_WB);
 
 	iounmap(tmp_cbmc);
 
