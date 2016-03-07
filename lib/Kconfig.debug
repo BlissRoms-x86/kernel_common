@@ -1875,6 +1875,7 @@ source "lib/Kconfig.kgdb"
 
 config ERROR_ON_WARNING
 	bool "Treat compiler warnings as errors"
+	depends on !COMPILE_TEST
 	help
 	  If you say Y here, the Makefile will pass the "-Werror" option to the
 	  compiler.  This will cause the compiler to fail on any warning, as if
