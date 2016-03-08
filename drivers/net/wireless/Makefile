@@ -41,6 +41,7 @@ obj-$(CONFIG_MWL8K)	+= mwl8k.o
 
 obj-$(CONFIG_IWLWIFI)	+= iwlwifi/
 obj-$(CONFIG_IWLEGACY)	+= iwlegacy/
+obj-$(CONFIG_IWL7000)	+= iwl7000/
 obj-$(CONFIG_RT2X00)	+= rt2x00/
 
 obj-$(CONFIG_WL_MEDIATEK)	+= mediatek/
