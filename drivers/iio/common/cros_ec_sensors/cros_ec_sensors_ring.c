@@ -314,7 +314,8 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 			 * spread the unprocessed samples */
 			if (next_out < last_out)
 				count++;
-			time_period = (timestamp - older_timestamp) / count;
+			time_period = div_s64(timestamp - older_timestamp,
+					      count);
 
 			for (; older_unprocess_out <= out;
 					older_unprocess_out++) {

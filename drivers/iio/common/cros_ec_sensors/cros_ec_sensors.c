@@ -96,7 +96,7 @@ static int cros_ec_sensors_read(struct iio_dev *indio_dev,
 			 * EC returns data in g, iio exepects m/s^2.
 			 * Do not use IIO_G_TO_M_S_2 to avoid precision loss.
 			 */
-			*val = (val64 * 980665) / 10;
+			*val = div_s64(val64 * 980665, 10);
 			*val2 = 10000 << (CROS_EC_SENSOR_BITS - 1);
 			ret = IIO_VAL_FRACTIONAL;
 			break;
@@ -105,7 +105,7 @@ static int cros_ec_sensors_read(struct iio_dev *indio_dev,
 			 * Do not use IIO_DEGREE_TO_RAD to avoid precision
 			 * loss. Round to the nearest integer.
 			 */
-			*val = (val64 * 314159 + 9000000ULL) / 1000;
+			*val = div_s64(val64 * 314159 + 9000000ULL, 1000);
 			*val2 = 18000 << (CROS_EC_SENSOR_BITS - 1);
 			ret = IIO_VAL_FRACTIONAL;
 			break;
