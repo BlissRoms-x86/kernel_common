@@ -159,9 +159,10 @@ fail1:
 static int dt_gpio_init(struct platform_device *pdev, const char *of_list_name,
 			const char *gpio_desc_name, const char *sysfs_name)
 {
-	int gpio, err, active_low;
+	int gpio, err;
 	enum of_gpio_flags flags;
 	struct device_node *np = pdev->dev.of_node;
+	unsigned long gpio_flags = GPIOF_DIR_IN;
 
 	gpio = of_get_named_gpio_flags(np, of_list_name, 0, &flags);
 	if (!gpio_is_valid(gpio)) {
@@ -169,12 +170,10 @@ static int dt_gpio_init(struct platform_device *pdev, const char *of_list_name,
 		return -EINVAL;
 	}
 
-	err = gpio_request_one(gpio, GPIOF_DIR_IN, gpio_desc_name);
-	if (err)
-		return err;
+	if (flags & OF_GPIO_ACTIVE_LOW)
+		gpio_flags |= GPIOF_ACTIVE_LOW;
 
-	active_low = !!(flags & OF_GPIO_ACTIVE_LOW);
-	err = gpio_sysfs_set_active_low(gpio, active_low);
+	err = gpio_request_one(gpio, gpio_flags, gpio_desc_name);
 	if (err)
 		return err;
 
