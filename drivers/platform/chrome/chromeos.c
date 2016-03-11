@@ -42,6 +42,7 @@ int chromeos_set_need_recovery(void)
 
 	return vbc_write_byte(RECOVERY_OFFSET, VBNV_RECOVERY_RW_INVALID_OS);
 }
+EXPORT_SYMBOL(chromeos_set_need_recovery);
 
 /*
  * Lifted from vboot_reference:firmware/lib/vboot_nvstorage.c and formatted.
