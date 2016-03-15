@@ -365,11 +365,28 @@ static int cros_usb_pd_charger_get_prop(struct power_supply *psy,
 	struct port_data *port = power_supply_get_drvdata(psy);
 	struct charger_data *charger = port->charger;
 	struct device *dev = charger->dev;
+	struct cros_ec_device *ec_device = charger->ec_device;
 	int ret;
 
 
 	/* Only refresh ec_port_status for dynamic properties */
 	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		/*
+		 * If mkbp_event_supported, then we can be assured that
+		 * the driver's state for the online property is consistent
+		 * with the hardware. However, if we aren't event driven,
+		 * the optimization before to skip an ec_port_status get
+		 * and only returned cached values of the online property will
+		 * cause a delay in detecting a cable attach until one of the
+		 * other properties are read.
+		 *
+		 * Allow an ec_port_status refresh for online property check
+		 * if we're not already online to check for plug events if
+		 * not mkbp_event_supported.
+		 */
+		if (ec_device->mkbp_event_supported || port->psy_online)
+			break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
