@@ -5469,9 +5469,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int sync = wake_flags & WF_SYNC;
 
 	if (sd_flag & SD_BALANCE_WAKE)
-		want_affine = (!wake_wide(p) && task_fits_max(p, cpu) &&
-			      cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) ||
-			      energy_aware;
+		want_affine = !wake_wide(p) && task_fits_max(p, cpu) &&
+			      cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
 	rcu_read_lock();
 	for_each_domain(cpu, tmp) {
@@ -5501,7 +5500,14 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 
 	if (!sd) {
-		if (energy_aware && !cpu_rq(cpu)->rd->overutilized)
+		/*
+		 * energy_aware_wake_cpu() causes performance variation on
+		 * energy-aware platform. Disable it to reduce performance
+		 * variaction while we look into a fix to it.
+		 *
+		 * (http://crosbug.com/p/51263)
+		 */
+		if (false && energy_aware && !cpu_rq(cpu)->rd->overutilized)
 			new_cpu = energy_aware_wake_cpu(p, prev_cpu);
 		else if (sd_flag & SD_BALANCE_WAKE) /* XXX always ? */
 			new_cpu = select_idle_sibling(p, new_cpu);
