@@ -9,12 +9,14 @@
 kernel_arch=${ARCH}
 its_out=/dev/stdout
 dtb_dir=.
+compression="none"
 
 show_usage()
 {
 cat <<-EOF
 $0 [options] <image> <dtbs>
 	-a <arch>          CPU architecture
+	-c <compression>   Compression to use (none|lzma|lz4)
 	-d <dtb_dir>       directory where dtb files exist
 	-h                 shows this message
 	-o <its_script>    output its script pathname
@@ -30,10 +32,13 @@ die()
 }
 
 OPTIND=1
-while getopts "a:d:ho:r:" opt; do
+while getopts "a:c:d:ho:r:" opt; do
 	case "$opt" in
 		a)
 			kernel_arch=${OPTARG}
+			;;
+		c)
+			compression=${OPTARG}
 			;;
 		d)
 			dtb_dir=${OPTARG}
@@ -62,6 +67,18 @@ fi
 image_path=${1}
 shift
 
+if [[ "${compression}" == "lzma" ]]; then
+	lzma -9 -z -f -k "${image_path}" || die
+	image_path="${image_path}.lzma"
+elif [[ "${compression}" == "lz4" ]]; then
+	lz4 -20 -z -f "${image_path}" "${image_path}.lz4" || die
+	image_path="${image_path}.lz4"
+elif [[ "${compression}" != "none" ]]; then
+	>&2 echo "ERROR: compression method unknown"
+	show_usage
+	die
+fi
+
 cat > "${its_out}" <<-EOF || die
 /dts-v1/;
 
@@ -75,7 +92,7 @@ cat > "${its_out}" <<-EOF || die
 			type = "kernel_noload";
 			arch = "${kernel_arch}";
 			os = "linux";
-			compression = "none";
+			compression = "${compression}";
 			load = <0>;
 			entry = <0>;
 		};
