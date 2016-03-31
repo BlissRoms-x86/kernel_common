@@ -330,7 +330,7 @@ static int request_locality(struct tpm_chip *chip, int loc)
 	iic_tpm_write(TPM_ACCESS(loc), &buf, 1);
 
 	/* wait for burstcount */
-	stop = jiffies + chip->vendor.timeout_a;
+	stop = jiffies + chip->timeout_a;
 	do {
 		if (check_locality(chip, loc) >= 0)
 			return loc;
@@ -372,7 +372,7 @@ static ssize_t get_burstcount(struct tpm_chip *chip)
 
 	/* wait for burstcount */
 	/* which timeout value, spec has 2 answers (c & d) */
-	stop = jiffies + chip->vendor.timeout_d;
+	stop = jiffies + chip->timeout_d;
 	do {
 		/* Note: STS is little endian */
 		if (iic_tpm_read(TPM_STS(tpm_dev.locality)+1, buf, 3) < 0)
@@ -474,7 +474,7 @@ static int tpm_tis_i2c_recv(struct tpm_chip *chip, u8 *buf, size_t count)
 		goto out;
 	}
 
-	wait_for_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c, &status);
+	wait_for_stat(chip, TPM_STS_VALID, chip->timeout_c, &status);
 	if (status & TPM_STS_DATA_AVAIL) {	/* retry? */
 		dev_err(&chip->dev, "Error left over data\n");
 		size = -EIO;
@@ -510,7 +510,7 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 		tpm_tis_i2c_ready(chip);
 		if (wait_for_stat
 		    (chip, TPM_STS_COMMAND_READY,
-		     chip->vendor.timeout_b, &status) < 0) {
+		     chip->timeout_b, &status) < 0) {
 			rc = -ETIME;
 			goto out_err;
 		}
@@ -540,7 +540,7 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 		}
 
 		wait_for_stat(chip, TPM_STS_VALID,
-			      chip->vendor.timeout_c, &status);
+			      chip->timeout_c, &status);
 
 		if ((status & TPM_STS_DATA_EXPECT) == 0) {
 			rc = -EIO;
@@ -550,7 +550,7 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 
 	/* write last byte */
 	iic_tpm_write(TPM_DATA_FIFO(tpm_dev.locality), &(buf[count]), 1);
-	wait_for_stat(chip, TPM_STS_VALID, chip->vendor.timeout_c, &status);
+	wait_for_stat(chip, TPM_STS_VALID, chip->timeout_c, &status);
 	if ((status & TPM_STS_DATA_EXPECT) != 0) {
 		rc = -EIO;
 		goto out_err;
@@ -596,10 +596,10 @@ static int tpm_tis_i2c_init(struct device *dev)
 		return PTR_ERR(chip);
 
 	/* Default timeouts */
-	chip->vendor.timeout_a = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
-	chip->vendor.timeout_b = msecs_to_jiffies(TIS_LONG_TIMEOUT);
-	chip->vendor.timeout_c = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
-	chip->vendor.timeout_d = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
+	chip->timeout_a = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
+	chip->timeout_b = msecs_to_jiffies(TIS_LONG_TIMEOUT);
+	chip->timeout_c = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
+	chip->timeout_d = msecs_to_jiffies(TIS_SHORT_TIMEOUT);
 
 	if (request_locality(chip, 0) != 0) {
 		dev_err(dev, "could not request locality\n");
