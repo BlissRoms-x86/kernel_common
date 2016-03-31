@@ -374,6 +374,9 @@ static void __init dm_setup_drives(void)
 			DMDEBUG("failed to create the table");
 			goto dm_table_create_fail;
 		}
+
+		dm_lock_md_type(md);
+
 		for (target = dev->target; target; target = target->next) {
 			DMINFO("adding target '%llu %llu %s %s'",
 			       (unsigned long long) target->begin,
@@ -397,6 +400,15 @@ static void __init dm_setup_drives(void)
 		if (dm_suspend(md, 0)) {
 			DMDEBUG("failed to suspend the device pre-bind");
 			goto suspend_fail;
+		}
+
+		/* Initial table load: acquire type of table. */
+		dm_set_md_type(md, dm_table_get_type(table));
+
+		/* Setup md->queue to reflect md's type. */
+		if (dm_setup_md_queue(md)) {
+			DMWARN("unable to set up device queue for new table.");
+			goto setup_md_queue_fail;
 		}
 
 		/*
@@ -423,6 +435,9 @@ static void __init dm_setup_drives(void)
 				" name and uuid");
 			goto export_fail;
 		}
+
+		dm_unlock_md_type(md);
+
 		DMINFO("dm-%d is ready", dev->minor);
 	}
 	dm_setup_cleanup(devices);
@@ -431,9 +446,11 @@ static void __init dm_setup_drives(void)
 export_fail:
 resume_fail:
 table_bind_fail:
+setup_md_queue_fail:
 suspend_fail:
 table_complete_fail:
 add_target_fail:
+	dm_unlock_md_type(md);
 dm_table_create_fail:
 	dm_put(md);
 dm_create_fail:
