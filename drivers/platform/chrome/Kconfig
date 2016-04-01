@@ -77,9 +77,9 @@ config CROS_EC_LPC
           To compile this driver as a module, choose M here: the
           module will be called cros_ec_lpc.
 
-config MFD_CROS_EC_LPC_MEC
+config CROS_EC_LPC_MEC
 	bool "ChromeOS Embedded Controller LPC Microchip EC (MEC) variant"
-	depends on MFD_CROS_EC_LPC
+	depends on CROS_EC_LPC
 	default n
 	help
 	  If you say Y here, a variant LPC protocol for the Microchip EC

@@ -54,7 +54,7 @@ static u8 lpc_write_bytes(unsigned int offset, unsigned int length, u8 *msg)
 	return sum;
 }
 
-#ifdef CONFIG_MFD_CROS_EC_LPC_MEC
+#ifdef CONFIG_CROS_EC_LPC_MEC
 u8 cros_ec_lpc_read_bytes(unsigned int offset, unsigned int length, u8 *dest)
 {
 	if (length == 0)
@@ -101,7 +101,7 @@ void cros_ec_lpc_reg_destroy(void)
 	cros_ec_lpc_mec_destroy();
 }
 
-#else /* CONFIG_MFD_CROS_EC_LPC_MEC */
+#else /* CONFIG_CROS_EC_LPC_MEC */
 u8 cros_ec_lpc_read_bytes(unsigned int offset, unsigned int length, u8 *dest)
 {
 	return lpc_read_bytes(offset, length, dest);
@@ -119,4 +119,4 @@ void cros_ec_lpc_reg_init(void)
 void cros_ec_lpc_reg_destroy(void)
 {
 }
-#endif /* CONFIG_MFD_CROS_EC_LPC_MEC */
+#endif /* CONFIG_CROS_EC_LPC_MEC */
