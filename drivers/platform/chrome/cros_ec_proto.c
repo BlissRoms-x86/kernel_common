@@ -159,8 +159,8 @@ static int cros_ec_get_host_command_version_mask(struct cros_ec_device *ec_dev,
 
 	msg->command = EC_CMD_GET_CMD_VERSIONS;
 	msg->version = 0;
-	msg->outsize = sizeof(pver);
-	msg->insize = sizeof(rver);
+	msg->outsize = sizeof(*pver);
+	msg->insize = sizeof(*rver);
 
 	pver = (struct ec_params_get_cmd_versions *)msg->data;
 	rver = (struct ec_response_get_cmd_versions *)msg->data;
