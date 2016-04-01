@@ -603,11 +603,6 @@ static void cros_ec_pd_update_check(struct work_struct *work)
 
 	dev_dbg(dev, "Checking for updates\n");
 
-	if (!pd_ec) {
-		dev_err(dev, "No pd_ec device found\n");
-		return;
-	}
-
 	/* Force GFU entry for devices not in GFU by default. */
 	for (port = 0; port < drv_data->num_ports; ++port) {
 		dev_dbg(dev, "Considering GFU entry on C%d\n", port);
@@ -762,6 +757,10 @@ static int cros_ec_pd_add(struct device *dev)
 {
 	struct cros_ec_pd_update_data *drv_data;
 	int ret, i;
+
+	/* If pd_ec is not initialized, try again later */
+	if (!pd_ec)
+		return -EPROBE_DEFER;
 
 	drv_data =
 		devm_kzalloc(dev, sizeof(*drv_data), GFP_KERNEL);
