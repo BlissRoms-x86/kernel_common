@@ -481,6 +481,14 @@
 	cpu-supply = <&ppvar_bigcpu>;
 };
 
+&display_subsystem {
+	status = "okay";
+};
+
+&edp {
+	status = "okay";
+};
+
 &emmc_phy {
 	status = "okay";
 };
@@ -694,6 +702,22 @@ ap_i2c_audio: &i2c8 {
 &usbdrd_dwc3_1 {
 	status = "okay";
 	dr_mode = "host";
+};
+
+&vopb {
+	status = "okay";
+};
+
+&vopb_mmu {
+	status = "okay";
+};
+
+&vopl {
+	status = "okay";
+};
+
+&vopl_mmu {
+	status = "okay";
 };
 
 #include "common/cros-ec-keyboard.dtsi"
