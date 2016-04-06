@@ -282,6 +282,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_sched_setaffinity	__NR_ia32_sched_setaffinity
 #define __NR_compat_sched_setscheduler	__NR_ia32_sched_setscheduler
 #define __NR_compat_sched_yield	__NR_ia32_sched_yield
+#define __NR_compat_seccomp	__NR_ia32_seccomp
 #define __NR_compat_sendfile	__NR_ia32_sendfile
 #define __NR_compat_sendfile64	__NR_ia32_sendfile64
 #define __NR_compat_sendmmsg	__NR_ia32_sendmmsg
@@ -519,6 +520,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(sched_setaffinity),
 	SYSCALL_ENTRY(sched_setscheduler),
 	SYSCALL_ENTRY(sched_yield),
+	SYSCALL_ENTRY(seccomp),
 	SYSCALL_ENTRY(sendfile),
 	SYSCALL_ENTRY(sendmmsg),
 	SYSCALL_ENTRY(set_tid_address),
@@ -859,6 +861,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(sched_setaffinity),
 	COMPAT_SYSCALL_ENTRY(sched_setscheduler),
 	COMPAT_SYSCALL_ENTRY(sched_yield),
+	COMPAT_SYSCALL_ENTRY(seccomp),
 	COMPAT_SYSCALL_ENTRY(sendfile),
 	COMPAT_SYSCALL_ENTRY(sendfile64),
 	COMPAT_SYSCALL_ENTRY(sendmmsg),
