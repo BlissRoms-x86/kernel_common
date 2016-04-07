@@ -148,7 +148,6 @@ struct iommu_dm_region {
  * @domain_set_attr: Change domain attributes
  * @of_xlate: add OF master IDs to iommu grouping
  * @pgsize_bitmap: bitmap of supported page sizes
- * @priv: per-instance data private to the iommu driver
  */
 struct iommu_ops {
 	bool (*capable)(enum iommu_cap);
@@ -192,7 +191,6 @@ struct iommu_ops {
 #endif
 
 	unsigned long pgsize_bitmap;
-	void *priv;
 };
 
 #define IOMMU_GROUP_NOTIFY_ADD_DEVICE		1 /* Device added */
