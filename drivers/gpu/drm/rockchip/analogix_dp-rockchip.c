@@ -14,6 +14,7 @@
 
 #include <linux/component.h>
 #include <linux/mfd/syscon.h>
+#include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
@@ -35,11 +36,17 @@
 
 #define to_dp(nm)	container_of(nm, struct rockchip_dp_device, nm)
 
-/* dp grf register offset */
-#define GRF_SOC_CON6                            0x025c
-#define GRF_EDP_LCD_SEL_MASK                    BIT(5)
-#define GRF_EDP_SEL_VOP_LIT                     BIT(5)
-#define GRF_EDP_SEL_VOP_BIG                     0
+/**
+ * struct rockchip_dp_chip_data - splite the grf setting of kind of chips
+ * @lcdsel_grf_reg: grf register offset of lcdc select
+ * @lcdsel_big: reg value of selecting vop big for eDP
+ * @lcdsel_lit: reg value of selecting vop little for eDP
+ */
+struct rockchip_dp_chip_data {
+	u32	lcdsel_grf_reg;
+	u32	lcdsel_big;
+	u32	lcdsel_lit;
+};
 
 struct rockchip_dp_device {
 	struct drm_device        *drm_dev;
@@ -50,6 +57,8 @@ struct rockchip_dp_device {
 	struct clk               *pclk;
 	struct regmap            *grf;
 	struct reset_control     *rst;
+
+	const struct rockchip_dp_chip_data *data;
 
 	struct analogix_dp_plat_data plat_data;
 };
@@ -119,13 +128,13 @@ static void rockchip_dp_drm_encoder_enable(struct drm_encoder *encoder)
 		return;
 
 	if (ret)
-		val = GRF_EDP_SEL_VOP_LIT | (GRF_EDP_LCD_SEL_MASK << 16);
+		val = dp->data->lcdsel_lit;
 	else
-		val = GRF_EDP_SEL_VOP_BIG | (GRF_EDP_LCD_SEL_MASK << 16);
+		val = dp->data->lcdsel_big;
 
 	dev_dbg(dp->dev, "vop %s output to dp\n", (ret) ? "LIT" : "BIG");
 
-	ret = regmap_write(dp->grf, GRF_SOC_CON6, val);
+	ret = regmap_write(dp->grf, dp->data->lcdsel_grf_reg, val);
 	if (ret != 0) {
 		dev_err(dp->dev, "Could not write to GRF: %d\n", ret);
 		return;
@@ -246,6 +255,7 @@ static int rockchip_dp_bind(struct device *dev, struct device *master,
 			    void *data)
 {
 	struct rockchip_dp_device *dp = dev_get_drvdata(dev);
+	const struct rockchip_dp_chip_data *dp_data;
 	struct drm_device *drm_dev = data;
 	int ret;
 
@@ -256,10 +266,15 @@ static int rockchip_dp_bind(struct device *dev, struct device *master,
 	 */
 	dev_set_drvdata(dev, NULL);
 
+	dp_data = of_device_get_match_data(dev);
+	if (!dp_data)
+		return -ENODEV;
+
 	ret = rockchip_dp_init(dp);
 	if (ret < 0)
 		return ret;
 
+	dp->data = dp_data;
 	dp->drm_dev = drm_dev;
 
 	ret = rockchip_dp_drm_create_encoder(dp);
@@ -365,8 +380,14 @@ static const struct dev_pm_ops rockchip_dp_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(rockchip_dp_suspend, rockchip_dp_resume)
 };
 
+static const struct rockchip_dp_chip_data rk3288_dp = {
+	.lcdsel_grf_reg = 0x025c,
+	.lcdsel_big = 0 | BIT(21),
+	.lcdsel_lit = BIT(5) | BIT(21),
+};
+
 static const struct of_device_id rockchip_dp_dt_ids[] = {
-	{.compatible = "rockchip,rk3288-dp",},
+	{.compatible = "rockchip,rk3288-dp", .data = &rk3288_dp },
 	{}
 };
 MODULE_DEVICE_TABLE(of, rockchip_dp_dt_ids);
