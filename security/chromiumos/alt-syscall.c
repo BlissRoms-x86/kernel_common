@@ -338,6 +338,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_vfork	__NR_ia32_vfork
 #define __NR_compat_vmsplice	__NR_ia32_vmsplice
 #define __NR_compat_wait4	__NR_ia32_wait4
+#define __NR_compat_waitpid	__NR_ia32_waitpid
 #define __NR_compat_write	__NR_ia32_write
 #define __NR_compat_writev	__NR_ia32_writev
 #define __NR_compat_chown32	__NR_ia32_chown32
@@ -596,6 +597,14 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(ustat),
 	SYSCALL_ENTRY(utimes),
 	SYSCALL_ENTRY(vfork),
+#endif
+
+	/*
+	 * waitpid(2) is deprecated on most architectures, but still exists
+	 * on IA32.
+	 */
+#ifdef CONFIG_X86_32
+	SYSCALL_ENTRY(waitpid),
 #endif
 
 	/* IA32 uses the common socketcall(2) entrypoint for socket calls. */
@@ -945,6 +954,14 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(statfs64),
 	COMPAT_SYSCALL_ENTRY(truncate64),
 	COMPAT_SYSCALL_ENTRY(ugetrlimit),
+
+	/*
+	 * waitpid(2) is deprecated on most architectures, but still exists
+	 * on IA32.
+	 */
+#ifdef CONFIG_X86
+	COMPAT_SYSCALL_ENTRY(waitpid),
+#endif
 
 	/*
 	 * posix_fadvise(2) and sync_file_range(2) have ARM-specific wrappers
