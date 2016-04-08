@@ -1708,6 +1708,19 @@ static const struct driver_info lenovo_info = {
 	.tx_fixup = ax88179_tx_fixup,
 };
 
+static const struct driver_info cypress_GX3_info = {
+	.description = "Cypress GX3 SuperSpeed to Gigabit Ethernet Controller",
+	.bind = ax88179_bind,
+	.unbind = ax88179_unbind,
+	.status = ax88179_status,
+	.link_reset = ax88179_link_reset,
+	.reset = ax88179_reset,
+	.stop = ax88179_stop,
+	.flags = FLAG_ETHER | FLAG_FRAMING_AX,
+	.rx_fixup = ax88179_rx_fixup,
+	.tx_fixup = ax88179_tx_fixup,
+};
+
 static const struct usb_device_id products[] = {
 {
 	/* ASIX AX88179 10/100/1000 */
@@ -1733,6 +1746,10 @@ static const struct usb_device_id products[] = {
 	/* Lenovo OneLinkDock Gigabit LAN */
 	USB_DEVICE(0x17ef, 0x304b),
 	.driver_info = (unsigned long)&lenovo_info,
+}, {
+	/* Cypress GX3 SuperSpeed to Gigabit Ethernet Bridge Controller */
+	USB_DEVICE(0x04b4, 0x3610),
+	.driver_info = (unsigned long)&cypress_GX3_info,
 },
 	{ },
 };
