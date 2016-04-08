@@ -43,8 +43,6 @@ static void __enqueue_in_driver(struct vb2_buffer *vb);
 static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 {
 	struct vb2_queue *q = vb->vb2_queue;
-	enum dma_data_direction dma_dir =
-		q->is_output ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	void *mem_priv;
 	int plane;
 
@@ -56,7 +54,7 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 		unsigned long size = PAGE_ALIGN(q->plane_sizes[plane]);
 
 		mem_priv = call_ptr_memop(vb, alloc, q->alloc_ctx[plane],
-				      size, dma_dir, q->gfp_flags);
+				      size, q->dma_dir, q->gfp_flags);
 		if (IS_ERR_OR_NULL(mem_priv))
 			goto free;
 
@@ -420,20 +418,6 @@ bool vb2_buffer_in_use(struct vb2_queue *q, struct vb2_buffer *vb)
 EXPORT_SYMBOL(vb2_buffer_in_use);
 
 /**
- * __buffers_in_use() - return true if any buffers on the queue are in use and
- * the queue cannot be freed (by the means of REQBUFS(0)) call
- */
-static bool __buffers_in_use(struct vb2_queue *q)
-{
-	unsigned int buffer;
-	for (buffer = 0; buffer < q->num_buffers; ++buffer) {
-		if (vb2_buffer_in_use(q, q->bufs[buffer]))
-			return true;
-	}
-	return false;
-}
-
-/**
  * vb2_core_querybuf() - query video buffer information
  * @q:		videobuf queue
  * @index:	id number of the buffer
@@ -578,17 +562,7 @@ int vb2_core_reqbufs(struct vb2_queue *q, enum vb2_memory memory,
 	}
 
 	if (*count == 0 || q->num_buffers != 0 || q->memory != memory) {
-		/*
-		 * We already have buffers allocated, so first check if they
-		 * are not in use and can be freed.
-		 */
 		mutex_lock(&q->mmap_lock);
-		if (q->memory == VB2_MEMORY_MMAP && __buffers_in_use(q)) {
-			mutex_unlock(&q->mmap_lock);
-			dprintk(1, "memory in use, cannot free\n");
-			return -EBUSY;
-		}
-
 		/*
 		 * Call queue_cancel to clean up any buffers in the PREPARED or
 		 * QUEUED state which is possible if buffers were prepared or
@@ -943,9 +917,6 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const void *pb)
 	void *mem_priv;
 	unsigned int plane;
 	int ret;
-	enum dma_data_direction dma_dir =
-		q->is_output ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
-	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
 	/* Copy relevant information provided by the userspace */
@@ -954,14 +925,7 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const void *pb)
 		return ret;
 
 	for (plane = 0; plane < vb->num_planes; ++plane) {
-		/* Skip the plane if already verified */
-		if (vb->planes[plane].m.userptr &&
-			vb->planes[plane].m.userptr == planes[plane].m.userptr
-			&& vb->planes[plane].length == planes[plane].length)
-			continue;
-
-		dprintk(3, "userspace address for plane %d changed, "
-				"reacquiring memory\n", plane);
+		WARN_ON(vb->planes[plane].mem_priv != NULL);
 
 		/* Check if the provided plane buffer is large enough */
 		if (planes[plane].length < q->plane_sizes[plane]) {
@@ -973,25 +937,10 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const void *pb)
 			goto err;
 		}
 
-		/* Release previously acquired memory if present */
-		if (vb->planes[plane].mem_priv) {
-			if (!reacquired) {
-				reacquired = true;
-				call_void_vb_qop(vb, buf_cleanup, vb);
-			}
-			call_void_memop(vb, put_userptr, vb->planes[plane].mem_priv);
-		}
-
-		vb->planes[plane].mem_priv = NULL;
-		vb->planes[plane].bytesused = 0;
-		vb->planes[plane].length = 0;
-		vb->planes[plane].m.userptr = 0;
-		vb->planes[plane].data_offset = 0;
-
 		/* Acquire each plane's memory */
 		mem_priv = call_ptr_memop(vb, get_userptr, q->alloc_ctx[plane],
 				      planes[plane].m.userptr,
-				      planes[plane].length, dma_dir);
+				      planes[plane].length, q->dma_dir);
 		if (IS_ERR_OR_NULL(mem_priv)) {
 			dprintk(1, "failed acquiring userspace "
 						"memory for plane %d\n", plane);
@@ -1012,17 +961,14 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const void *pb)
 		vb->planes[plane].data_offset = planes[plane].data_offset;
 	}
 
-	if (reacquired) {
-		/*
-		 * One or more planes changed, so we must call buf_init to do
-		 * the driver-specific initialization on the newly acquired
-		 * buffer, if provided.
-		 */
-		ret = call_vb_qop(vb, buf_init, vb);
-		if (ret) {
-			dprintk(1, "buffer initialization failed\n");
-			goto err;
-		}
+	/*
+	 * Call buf_init to do driver-specific initialization on the newly
+	 * acquired buffer, if provided.
+	 */
+	ret = call_vb_qop(vb, buf_init, vb);
+	if (ret) {
+		dprintk(1, "buffer initialization failed\n");
+		goto err;
 	}
 
 	ret = call_vb_qop(vb, buf_prepare, vb);
@@ -1057,8 +1003,6 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const void *pb)
 	void *mem_priv;
 	unsigned int plane;
 	int ret;
-	enum dma_data_direction dma_dir =
-		q->is_output ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
@@ -1112,7 +1056,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const void *pb)
 		/* Acquire each plane's memory */
 		mem_priv = call_ptr_memop(vb, attach_dmabuf,
 			q->alloc_ctx[plane], dbuf, planes[plane].length,
-			dma_dir);
+			q->dma_dir);
 		if (IS_ERR(mem_priv)) {
 			dprintk(1, "failed to attach dmabuf\n");
 			ret = PTR_ERR(mem_priv);
@@ -1569,13 +1513,23 @@ static void __vb2_dqbuf(struct vb2_buffer *vb)
 	vb->state = VB2_BUF_STATE_DEQUEUED;
 
 	/* unmap DMABUF buffer */
-	if (q->memory == VB2_MEMORY_DMABUF)
+	if (q->memory == VB2_MEMORY_DMABUF) {
 		for (i = 0; i < vb->num_planes; ++i) {
 			if (!vb->planes[i].dbuf_mapped)
 				continue;
 			call_void_memop(vb, unmap_dmabuf, vb->planes[i].mem_priv);
 			vb->planes[i].dbuf_mapped = 0;
 		}
+	} else if (q->memory == VB2_MEMORY_USERPTR) {
+		call_void_vb_qop(vb, buf_cleanup, vb);
+
+		for (i = 0; i < vb->num_planes; ++i) {
+			WARN_ON(vb->planes[i].mem_priv == NULL);
+			call_void_memop(vb, put_userptr,
+					vb->planes[i].mem_priv);
+			vb->planes[i].mem_priv = NULL;
+		}
+	}
 }
 
 /**
@@ -2068,6 +2022,12 @@ int vb2_core_queue_init(struct vb2_queue *q)
 
 	if (q->buf_struct_size == 0)
 		q->buf_struct_size = sizeof(struct vb2_buffer);
+
+	if (q->is_output)
+		q->dma_dir = DMA_TO_DEVICE;
+	else
+		q->dma_dir = q->use_dma_bidirectional
+			   ? DMA_BIDIRECTIONAL : DMA_FROM_DEVICE;
 
 	return 0;
 }

@@ -347,7 +347,7 @@ struct v4l2_buffer32 {
 		__s32		fd;
 	} m;
 	__u32			length;
-	__u32			reserved2;
+	__u32			config_store;
 	__u32			reserved;
 };
 
@@ -415,7 +415,8 @@ static int get_v4l2_buffer32(struct v4l2_buffer *kp, struct v4l2_buffer32 __user
 		get_user(kp->index, &up->index) ||
 		get_user(kp->type, &up->type) ||
 		get_user(kp->flags, &up->flags) ||
-		get_user(kp->memory, &up->memory))
+		get_user(kp->memory, &up->memory) ||
+		get_user(kp->length, &up->length))
 			return -EFAULT;
 
 	if (V4L2_TYPE_IS_OUTPUT(kp->type))
@@ -427,9 +428,6 @@ static int get_v4l2_buffer32(struct v4l2_buffer *kp, struct v4l2_buffer32 __user
 			return -EFAULT;
 
 	if (V4L2_TYPE_IS_MULTIPLANAR(kp->type)) {
-		if (get_user(kp->length, &up->length))
-			return -EFAULT;
-
 		num_planes = kp->length;
 		if (num_planes == 0) {
 			kp->m.planes = NULL;
@@ -462,16 +460,14 @@ static int get_v4l2_buffer32(struct v4l2_buffer *kp, struct v4l2_buffer32 __user
 	} else {
 		switch (kp->memory) {
 		case V4L2_MEMORY_MMAP:
-			if (get_user(kp->length, &up->length) ||
-				get_user(kp->m.offset, &up->m.offset))
+			if (get_user(kp->m.offset, &up->m.offset))
 				return -EFAULT;
 			break;
 		case V4L2_MEMORY_USERPTR:
 			{
 			compat_long_t tmp;
 
-			if (get_user(kp->length, &up->length) ||
-			    get_user(tmp, &up->m.userptr))
+			if (get_user(tmp, &up->m.userptr))
 				return -EFAULT;
 
 			kp->m.userptr = (unsigned long)compat_ptr(tmp);
@@ -512,8 +508,9 @@ static int put_v4l2_buffer32(struct v4l2_buffer *kp, struct v4l2_buffer32 __user
 		put_user(kp->timestamp.tv_usec, &up->timestamp.tv_usec) ||
 		copy_to_user(&up->timecode, &kp->timecode, sizeof(struct v4l2_timecode)) ||
 		put_user(kp->sequence, &up->sequence) ||
-		put_user(kp->reserved2, &up->reserved2) ||
-		put_user(kp->reserved, &up->reserved))
+		put_user(kp->config_store, &up->config_store) ||
+		put_user(kp->reserved, &up->reserved) ||
+		put_user(kp->length, &up->length))
 			return -EFAULT;
 
 	if (V4L2_TYPE_IS_MULTIPLANAR(kp->type)) {
@@ -536,13 +533,11 @@ static int put_v4l2_buffer32(struct v4l2_buffer *kp, struct v4l2_buffer32 __user
 	} else {
 		switch (kp->memory) {
 		case V4L2_MEMORY_MMAP:
-			if (put_user(kp->length, &up->length) ||
-				put_user(kp->m.offset, &up->m.offset))
+			if (put_user(kp->m.offset, &up->m.offset))
 				return -EFAULT;
 			break;
 		case V4L2_MEMORY_USERPTR:
-			if (put_user(kp->length, &up->length) ||
-				put_user(kp->m.userptr, &up->m.userptr))
+			if (put_user(kp->m.userptr, &up->m.userptr))
 				return -EFAULT;
 			break;
 		case V4L2_MEMORY_OVERLAY:
@@ -761,6 +756,11 @@ struct v4l2_event32 {
 	__u32				type;
 	union {
 		compat_s64		value64;
+		struct v4l2_event_vsync		vsync;
+		struct v4l2_event_ctrl		ctrl;
+		struct v4l2_event_frame_sync	frame_sync;
+		struct v4l2_event_src_change	src_change;
+		struct v4l2_event_motion_det	motion_det;
 		__u8			data[64];
 	} u;
 	__u32				pending;
@@ -773,9 +773,25 @@ struct v4l2_event32 {
 static int put_v4l2_event32(struct v4l2_event *kp, struct v4l2_event32 __user *up)
 {
 	if (!access_ok(VERIFY_WRITE, up, sizeof(struct v4l2_event32)) ||
-		put_user(kp->type, &up->type) ||
-		copy_to_user(&up->u, &kp->u, sizeof(kp->u)) ||
-		put_user(kp->pending, &up->pending) ||
+		put_user(kp->type, &up->type))
+			return -EFAULT;
+	/* We can simply memcpy the union because there are no paddings between
+	 * the members of the structs that belong to the union. */
+	if (kp->type == V4L2_EVENT_VSYNC ||
+			kp->type == V4L2_EVENT_EOS ||
+			kp->type == V4L2_EVENT_CTRL ||
+			kp->type == V4L2_EVENT_FRAME_SYNC ||
+			kp->type == V4L2_EVENT_SOURCE_CHANGE ||
+			kp->type == V4L2_EVENT_MOTION_DET ||
+			kp->type >= V4L2_EVENT_PRIVATE_START) {
+		if (copy_to_user(&up->u, &kp->u, sizeof(kp->u)))
+			return -EFAULT;
+	} else {
+		pr_info("compat_ioctl32: unexpected VIDIOC_DQEVENT type %d\n",
+			kp->type);
+		return -EINVAL;
+	}
+	if (put_user(kp->pending, &up->pending) ||
 		put_user(kp->sequence, &up->sequence) ||
 		compat_put_timespec(&kp->timestamp, &up->timestamp) ||
 		put_user(kp->id, &up->id) ||
