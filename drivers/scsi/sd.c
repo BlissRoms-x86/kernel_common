@@ -52,6 +52,7 @@
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <linux/pr.h>
+#include <linux/workqueue.h>
 #include <asm/uaccess.h>
 #include <asm/unaligned.h>
 
@@ -108,6 +109,7 @@ static int  sd_remove(struct device *);
 static void sd_shutdown(struct device *);
 static int sd_suspend_system(struct device *);
 static int sd_suspend_runtime(struct device *);
+static void __sd_resume(struct work_struct *work);
 static int sd_resume(struct device *);
 static void sd_rescan(struct device *);
 static int sd_init_command(struct scsi_cmnd *SCpnt);
@@ -3070,6 +3072,7 @@ static int sd_probe(struct device *dev)
 	sdkp = kzalloc(sizeof(*sdkp), GFP_KERNEL);
 	if (!sdkp)
 		goto out;
+	INIT_WORK(&sdkp->resume_work, __sd_resume);
 
 	gd = alloc_disk(SD_MINORS);
 	if (!gd)
@@ -3249,6 +3252,10 @@ static void sd_shutdown(struct device *dev)
 	if (!sdkp)
 		return;         /* this can happen */
 
+	/* Avoid race condition with resume */
+	if (work_pending(&sdkp->resume_work))
+		flush_work(&sdkp->resume_work);
+
 	if (pm_runtime_suspended(dev))
 		return;
 
@@ -3270,6 +3277,10 @@ static int sd_suspend_common(struct device *dev, bool ignore_stop_errors)
 
 	if (!sdkp)	/* E.g.: runtime suspend following sd_remove() */
 		return 0;
+
+	/* Avoid race condition with resume */
+	if (work_pending(&sdkp->resume_work))
+		flush_work(&sdkp->resume_work);
 
 	if (sdkp->WCE && sdkp->media_present) {
 		sd_printk(KERN_NOTICE, sdkp, "Synchronizing SCSI cache\n");
@@ -3304,18 +3315,31 @@ static int sd_suspend_runtime(struct device *dev)
 	return sd_suspend_common(dev, false);
 }
 
+static void __sd_resume(struct work_struct *work)
+{
+	struct scsi_disk *sdkp = container_of(work, struct scsi_disk,
+					      resume_work);
+	int ret;
+
+	if (!sdkp)	/* E.g.: runtime resume at the start of sd_probe() */
+		return;
+
+	if (!sdkp->device->manage_start_stop)
+		return;
+
+	sd_printk(KERN_NOTICE, sdkp, "Starting disk\n");
+	ret = sd_start_stop_device(sdkp, 1);
+	WARN_ON(ret);
+}
+
 static int sd_resume(struct device *dev)
 {
 	struct scsi_disk *sdkp = dev_get_drvdata(dev);
 
-	if (!sdkp)	/* E.g.: runtime resume at the start of sd_probe() */
-		return 0;
+	sdkp->resume_work.func = __sd_resume;
+	schedule_work(&sdkp->resume_work);
 
-	if (!sdkp->device->manage_start_stop)
-		return 0;
-
-	sd_printk(KERN_NOTICE, sdkp, "Starting disk\n");
-	return sd_start_stop_device(sdkp, 1);
+	return 0;
 }
 
 /**

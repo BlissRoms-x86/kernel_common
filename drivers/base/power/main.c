@@ -22,6 +22,7 @@
 #include <linux/export.h>
 #include <linux/mutex.h>
 #include <linux/pm.h>
+#include <linux/pm_dark_resume.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm-trace.h>
 #include <linux/pm_wakeirq.h>
@@ -1013,7 +1014,6 @@ void dpm_resume_end(pm_message_t state)
 }
 EXPORT_SYMBOL_GPL(dpm_resume_end);
 
-
 /*------------------------- Suspend routines -------------------------*/
 
 /**
@@ -1422,7 +1422,12 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	add_timer(&timer);
 
 	if (dev->power.direct_complete) {
-		if (pm_runtime_status_suspended(dev)) {
+		/*
+		 * Check if we're runtime suspended. If not, try to runtime
+		 * suspend for autosuspend cases.
+		 */
+		if (pm_runtime_status_suspended(dev) ||
+		    !pm_runtime_suspend(dev)) {
 			pm_runtime_disable(dev);
 			if (pm_runtime_status_suspended(dev))
 				goto Complete;

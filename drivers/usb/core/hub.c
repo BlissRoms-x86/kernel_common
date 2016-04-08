@@ -26,6 +26,7 @@
 #include <linux/mutex.h>
 #include <linux/random.h>
 #include <linux/pm_qos.h>
+#include <linux/pm_dark_resume.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -101,6 +102,21 @@ EXPORT_SYMBOL_GPL(ehci_cf_port_reset_rwsem);
 
 static void hub_release(struct kref *kref);
 static int usb_reset_and_verify_device(struct usb_device *udev);
+
+#define PORT_RESET_TRIES	5
+#define SET_ADDRESS_TRIES	2
+#define GET_DESCRIPTOR_TRIES	2
+#define SET_CONFIG_TRIES	(2 * (use_both_schemes + 1))
+#define USE_NEW_SCHEME(i)	((i) / 2 == (int)old_scheme_first)
+
+#define HUB_ROOT_RESET_TIME	50	/* times are in msec */
+#define HUB_SHORT_RESET_TIME	10
+#define HUB_BH_RESET_TIME	50
+#define HUB_LONG_RESET_TIME	200
+#define HUB_RESET_TIMEOUT	800
+
+static int hub_port_reset(struct usb_hub *hub, int port1,
+			struct usb_device *udev, unsigned int delay, bool warm);
 
 static inline char *portspeed(struct usb_hub *hub, int portstatus)
 {
@@ -890,7 +906,8 @@ static int hub_set_port_link_state(struct usb_hub *hub, int port1,
  *
  * Instead, set the link state to Disabled, wait for the link to settle into
  * that state, clear any change bits, and then put the port into the RxDetect
- * state.
+ * state.  If the device fails to enter RxDetect state and is instead stuck
+ * in the Polling state then issue a warm reset to recover it.
  */
 static int hub_usb3_port_disable(struct usb_hub *hub, int port1)
 {
@@ -941,7 +958,39 @@ static int hub_usb3_port_disable(struct usb_hub *hub, int port1)
 		dev_warn(&hub->ports[port1 - 1]->dev,
 				"Could not disable after %d ms\n", total_time);
 
-	return hub_set_port_link_state(hub, port1, USB_SS_PORT_LS_RX_DETECT);
+	ret = hub_set_port_link_state(hub, port1, USB_SS_PORT_LS_RX_DETECT);
+	if (ret) {
+		dev_err(hub->intfdev, "cannot enable port %d (err = %d)\n",
+				port1, ret);
+		return ret;
+	}
+
+	/* Wait for the link to enter the rxdetect state. */
+	for (total_time = 0; ; total_time += HUB_DEBOUNCE_STEP) {
+		ret = hub_port_status(hub, port1, &portstatus, &portchange);
+		if (ret < 0)
+			return ret;
+
+		portstatus &= USB_PORT_STAT_LINK_STATE;
+		if (portstatus == USB_SS_PORT_LS_RX_DETECT ||
+		    portstatus == USB_SS_PORT_LS_U0 ||
+		    portstatus == USB_SS_PORT_LS_U1 ||
+		    portstatus == USB_SS_PORT_LS_U2)
+			break;
+		if (total_time >= HUB_DEBOUNCE_TIMEOUT)
+			break;
+		msleep(HUB_DEBOUNCE_STEP);
+	}
+	if (total_time >= HUB_DEBOUNCE_TIMEOUT) {
+		dev_warn(hub->intfdev, "Could not enable port %d after %d ms\n",
+				port1, total_time);
+
+		/* Issue warm reset if the port is stuck polling. */
+		if (portstatus == USB_SS_PORT_LS_POLLING)
+			return hub_port_reset(hub, port1, NULL,
+					      HUB_BH_RESET_TIME, true);
+	}
+	return 0;
 }
 
 static int hub_port_disable(struct usb_hub *hub, int port1, int set_state)
@@ -2185,6 +2234,7 @@ void usb_disconnect(struct usb_device **pdev)
 	usb_remove_ep_devs(&udev->ep0);
 	usb_unlock_device(udev);
 
+	dev_dark_resume_remove_consumer(&udev->dev);
 	/* Unregister the device.  The device driver is responsible
 	 * for de-configuring the device and invoking the remove-device
 	 * notifier chain (used by usbfs and possibly others).
@@ -2527,6 +2577,7 @@ int usb_new_device(struct usb_device *udev)
 	(void) usb_create_ep_devs(&udev->dev, &udev->ep0, udev);
 	usb_mark_last_busy(udev);
 	pm_runtime_put_sync_autosuspend(&udev->dev);
+	dev_dark_resume_add_consumer(&udev->dev);
 	return err;
 
 fail:
@@ -2622,19 +2673,6 @@ static unsigned hub_is_wusb(struct usb_hub *hub)
 	hcd = container_of(hub->hdev->bus, struct usb_hcd, self);
 	return hcd->wireless;
 }
-
-
-#define PORT_RESET_TRIES	5
-#define SET_ADDRESS_TRIES	2
-#define GET_DESCRIPTOR_TRIES	2
-#define SET_CONFIG_TRIES	(2 * (use_both_schemes + 1))
-#define USE_NEW_SCHEME(i)	((i) / 2 == (int)old_scheme_first)
-
-#define HUB_ROOT_RESET_TIME	50	/* times are in msec */
-#define HUB_SHORT_RESET_TIME	10
-#define HUB_BH_RESET_TIME	50
-#define HUB_LONG_RESET_TIME	200
-#define HUB_RESET_TIMEOUT	800
 
 /*
  * "New scheme" enumeration causes an extra state transition to be
@@ -3071,6 +3109,20 @@ static unsigned wakeup_enabled_descendants(struct usb_device *udev)
 			(hub ? hub->wakeup_enabled_descendants : 0);
 }
 
+bool usb_port_may_wakeup(struct usb_device *hdev, int port1)
+{
+	struct usb_hub *hub = usb_hub_to_struct_hub(hdev);
+	struct usb_device *udev;
+
+	if (hub) {
+		udev = hub->ports[port1 - 1]->child;
+		if (udev)
+			return wakeup_enabled_descendants(udev) > 0;
+	}
+	return false;
+}
+EXPORT_SYMBOL_GPL(usb_port_may_wakeup);
+
 /*
  * usb_port_suspend - suspend a usb device's upstream port
  * @udev: device that's no longer in active use, not a root hub
@@ -3399,6 +3451,11 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 	int		port1 = udev->portnum;
 	int		status;
 	u16		portchange, portstatus;
+
+	if (dev_dark_resume_active(&udev->dev)) {
+		dev_info(&udev->dev, "disabled for dark resume\n");
+		return 0;
+	}
 
 	if (!test_and_set_bit(port1, hub->child_usage_bits)) {
 		status = pm_runtime_get_sync(&port_dev->dev);
