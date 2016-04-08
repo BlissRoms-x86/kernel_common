@@ -2474,6 +2474,7 @@ force_ro_fail:
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15
 #define CID_MANFID_KINGSTON	0x70
+#define CID_MANFID_HYNIX	0x90
 
 static const struct mmc_fixup blk_fixups[] =
 {
@@ -2544,6 +2545,10 @@ static const struct mmc_fixup blk_fixups[] =
 		  MMC_QUIRK_TRIM_BROKEN),
 	MMC_FIXUP("V10016", CID_MANFID_KINGSTON, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_TRIM_BROKEN),
+
+	/* Add Hynix specific fixup here */
+	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_HYNIX, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_NOTIFY_POWEROFF_ON_SLEEP),
 
 	END_FIXUP
 };
