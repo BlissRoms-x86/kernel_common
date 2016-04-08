@@ -8,6 +8,8 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 
+#include <linux/alt-syscall.h>
+
 #include <asm/pgtable.h>
 #include <asm/uaccess.h>
 

@@ -865,8 +865,55 @@ static inline void put_link(struct nameidata *nd)
 		path_put(&last->link);
 }
 
-int sysctl_protected_symlinks __read_mostly = 0;
-int sysctl_protected_hardlinks __read_mostly = 0;
+int sysctl_protected_symlinks __read_mostly = 1;
+int sysctl_protected_hardlinks __read_mostly = 1;
+
+/**
+ * nameidata_set_temporary - Used by Chromium OS LSM to check
+ * whether a mount point includes traversing symlinks.
+ */
+int nameidata_set_temporary(const char __user *dir_name)
+{
+	struct nameidata *tmp;
+
+	tmp = kmalloc(sizeof(*tmp), GFP_KERNEL);
+	if (unlikely(!tmp))
+		return -ENOMEM;
+	set_nameidata(tmp, AT_FDCWD,
+		      getname_flags(dir_name, LOOKUP_FOLLOW, NULL));
+	return 0;
+}
+
+/**
+ * nameidata_restore_temporary - Used by Chromium OS LSM to check
+ * whether a mount point includes traversing symlinks.
+ */
+void nameidata_restore_temporary(void)
+{
+	struct nameidata *tmp = current->nameidata;
+
+	restore_nameidata();
+	kfree(tmp);
+}
+
+/**
+ * nameidata_get_total_link_count - Used by security/chromiumos/lsm.c to check
+ * whether a mount point includes traversing symlinks.
+ */
+int nameidata_get_total_link_count(void)
+{
+	struct nameidata *tmp = current->nameidata;
+
+	if (unlikely(!tmp)) {
+		WARN(1, "Unexpectedly got here with current->nameidata == NULL");
+		/* Pretend we did traverse symlinks, that is the safe/sane
+		 * result here from a security point of view...
+		 */
+		return MAXSYMLINKS;
+	}
+	return tmp->total_link_count;
+}
+EXPORT_SYMBOL(nameidata_get_total_link_count);
 
 /**
  * may_follow_link - Check symlink following for unsafe situations
