@@ -18,6 +18,7 @@
 #include <asm/mtrr.h>
 #include <asm/page.h>
 #include <asm/mce.h>
+#include <asm/setup.h>
 #include <asm/suspend.h>
 #include <asm/fpu/internal.h>
 #include <asm/debugreg.h>
@@ -229,6 +230,7 @@ static void notrace __restore_processor_state(struct saved_context *ctxt)
 	x86_platform.restore_sched_clock_state();
 	mtrr_bp_restore();
 	perf_restore_debug_store();
+	cpu_control_vmx(0);
 }
 
 /* Needed by apm.c */
