@@ -479,6 +479,8 @@ static const struct tis_vendor_timeout_override vendor_timeout_overrides[] = {
 	/* Atmel 3204 */
 	{ 0x32041114, { (TIS_SHORT_TIMEOUT*1000), (TIS_LONG_TIMEOUT*1000),
 			(TIS_SHORT_TIMEOUT*1000), (TIS_SHORT_TIMEOUT*1000) } },
+	/* STMicro */
+	{ 0x53544d20, { 4000000, 4000000, 4000000, 4000000 } },
 };
 
 static bool tpm_tis_update_timeouts(struct tpm_chip *chip,
@@ -689,7 +691,7 @@ static int tpm_tis_init(struct device *dev, struct tpm_info *tpm_info,
 	vendor = ioread32(chip->vendor.iobase + TPM_DID_VID(0));
 	chip->vendor.manufacturer_id = vendor;
 
-	dev_info(dev, "%s TPM (device-id 0x%X, rev-id %d)\n",
+	dev_info(dev, "%s TPM (device-id 0x%X, rev-id %d) [gentle shutdown]\n",
 		 (chip->flags & TPM_CHIP_FLAG_TPM2) ? "2.0" : "1.2",
 		 vendor >> 16, ioread8(chip->vendor.iobase + TPM_RID(0)));
 
