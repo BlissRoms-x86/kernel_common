@@ -1149,11 +1149,32 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	return 0;
 }
 
+static int mt_release_touches(struct hid_device *hid)
+{
+	struct hid_input *hidinput;
+
+	list_for_each_entry(hidinput, &hid->inputs, list) {
+		struct input_dev *input_dev = hidinput->input;
+		struct input_mt *mt = input_dev->mt;
+		int i;
+
+		for (i = 0; i < mt->num_slots; i++) {
+			input_mt_slot(input_dev, i);
+			input_mt_report_slot_state(input_dev, MT_TOOL_FINGER,
+						   false);
+		}
+		input_sync(input_dev);
+	}
+
+	return 0;
+}
+
 #ifdef CONFIG_PM
 static int mt_reset_resume(struct hid_device *hdev)
 {
 	mt_set_maxcontacts(hdev);
 	mt_set_input_mode(hdev);
+	mt_release_touches(hdev);
 	return 0;
 }
 
