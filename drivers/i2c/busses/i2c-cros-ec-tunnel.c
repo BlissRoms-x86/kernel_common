@@ -40,6 +40,84 @@ struct ec_i2c_device {
 	u8 response_buf[256];
 };
 
+#define CHECK_I2C_WR(num, length) \
+	(((msgs[num].flags & I2C_M_RD) == 0) && (msgs[num].len == length))
+
+#define CHECK_I2C_RD(num, length) \
+	((msgs[num].flags & I2C_M_RD) && (msgs[num].len == length))
+
+/* Standard I2C address for smart batteries */
+#define SBS_I2C_ADDR 0xB
+
+static int ec_i2c_forward_msg(struct ec_i2c_device *bus, int cmd,
+			      struct i2c_msg *outmsg, struct i2c_msg *inmsg)
+{
+	struct cros_ec_command *msg;
+	int ret;
+
+	msg = kzalloc(sizeof(*msg) + max(inmsg->len, outmsg->len), GFP_KERNEL);
+
+	msg->command = cmd;
+	msg->outsize = outmsg ? outmsg->len : 0;
+	msg->insize = inmsg ? inmsg->len : 0;
+
+	if (outmsg)
+		memcpy(msg->data, outmsg->buf, outmsg->len);
+
+	ret = cros_ec_cmd_xfer_status(bus->ec, msg);
+	if (ret >= 0 && inmsg)
+		memcpy(inmsg->buf, msg->data, inmsg->len);
+	return ret;
+}
+
+static int ec_i2c_limited_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
+			       int num)
+{
+	struct ec_i2c_device *bus = adap->algo_data;
+
+	if (!num || (msgs[0].addr != SBS_I2C_ADDR))
+		return -ENODEV;
+
+	/* Battery device probing */
+	if ((num == 1) && (msgs[0].len == 0)) {
+		uint8_t dummy[] = { 0x0d, 0 };
+		struct i2c_msg otmp = { .buf = dummy, .len = 1 };
+		struct i2c_msg itmp = { .buf = dummy, .len = 2 };
+		return ec_i2c_forward_msg(bus, EC_CMD_SB_READ_WORD,
+					  &otmp, &itmp);
+	}
+	/* Read a word-sized register */
+	if ((num == 1) && CHECK_I2C_WR(0, 3))
+		return ec_i2c_forward_msg(bus, EC_CMD_SB_WRITE_WORD,
+					  &msgs[0], NULL);
+	/* Write a word-sized register */
+	if ((num == 2) && CHECK_I2C_WR(0, 1) && CHECK_I2C_RD(1, 2))
+		return ec_i2c_forward_msg(bus, EC_CMD_SB_READ_WORD,
+					  &msgs[0], &msgs[1]);
+	/* Retrieve string data length */
+	if ((num == 2) && CHECK_I2C_WR(0, 1) && CHECK_I2C_RD(1, 1)) {
+		msgs[1].buf[0] = I2C_SMBUS_BLOCK_MAX;
+		return 0;
+	}
+	/* Read string data */
+	if ((num == 2) && CHECK_I2C_WR(0, 1) &&
+			  CHECK_I2C_RD(1, I2C_SMBUS_BLOCK_MAX)) {
+		char tmpblock[I2C_SMBUS_BLOCK_MAX + 1];
+		struct i2c_msg tmpmsg = { .buf = tmpblock,
+					  .len = I2C_SMBUS_BLOCK_MAX };
+		int ret;
+		ret = ec_i2c_forward_msg(bus, EC_CMD_SB_READ_BLOCK,
+					 &msgs[0], &tmpmsg);
+		tmpblock[I2C_SMBUS_BLOCK_MAX] = 0;
+		/* real string length */
+		msgs[1].buf[0] = strlen(tmpblock);
+		strlcpy(&msgs[1].buf[1], tmpblock, msgs[1].len);
+		return ret;
+	}
+
+	return -EIO;
+}
+
 /**
  * ec_i2c_count_message - Count bytes needed for ec_i2c_construct_message
  *
@@ -215,7 +293,7 @@ static int ec_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg i2c_msgs[],
 	msg->outsize = request_len;
 	msg->insize = response_len;
 
-	result = cros_ec_cmd_xfer(bus->ec, msg);
+	result = cros_ec_cmd_xfer_status(bus->ec, msg);
 	if (result < 0) {
 		dev_err(dev, "Error transferring EC i2c message %d\n", result);
 		goto exit;
@@ -238,6 +316,11 @@ static u32 ec_i2c_functionality(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL;
 }
+
+static const struct i2c_algorithm ec_i2c_limited_algorithm = {
+	.master_xfer	= ec_i2c_limited_xfer,
+	.functionality	= ec_i2c_functionality,
+};
 
 static const struct i2c_algorithm ec_i2c_algorithm = {
 	.master_xfer	= ec_i2c_xfer,
@@ -280,6 +363,9 @@ static int ec_i2c_probe(struct platform_device *pdev)
 	bus->adap.dev.of_node = np;
 	bus->adap.retries = I2C_MAX_RETRIES;
 
+	if (of_find_property(np, "google,limited-passthrough", NULL))
+		bus->adap.algo = &ec_i2c_limited_algorithm;
+
 	err = i2c_add_adapter(&bus->adap);
 	if (err) {
 		dev_err(dev, "cannot register i2c adapter\n");
@@ -316,7 +402,17 @@ static struct platform_driver ec_i2c_tunnel_driver = {
 	},
 };
 
-module_platform_driver(ec_i2c_tunnel_driver);
+static int __init ec_i2c_init(void)
+{
+	return platform_driver_register(&ec_i2c_tunnel_driver);
+}
+subsys_initcall(ec_i2c_init);
+
+static void __exit ec_i2c_exit(void)
+{
+	platform_driver_unregister(&ec_i2c_tunnel_driver);
+}
+module_exit(ec_i2c_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("EC I2C tunnel driver");

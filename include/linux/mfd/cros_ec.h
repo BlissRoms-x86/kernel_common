@@ -19,6 +19,7 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/notifier.h>
+#include <linux/power_supply.h>
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/mutex.h>
 
@@ -35,10 +36,14 @@
  * Max bus-specific overhead incurred by request/responses.
  * I2C requires 1 additional byte for requests.
  * I2C requires 2 additional bytes for responses.
+ * SPI requires up to 32 additional bytes for responses.
  * */
 #define EC_PROTO_VERSION_UNKNOWN	0
 #define EC_MAX_REQUEST_OVERHEAD		1
-#define EC_MAX_RESPONSE_OVERHEAD	2
+#define EC_MAX_RESPONSE_OVERHEAD	32
+
+/* ec_command return value for non-success result from EC */
+#define EECRESULT 1000
 
 /*
  * Command interface between EC and AP, for LPC, I2C and SPI interfaces.
@@ -72,6 +77,24 @@ struct cros_ec_command {
 	uint8_t data[0];
 };
 
+/*
+ * event_data is used by keyboard or event notifier:
+ * event_data format:
+ * If MKBP protocol is supported:
+ * 0           1
+ * +-----------+--------------------------------
+ * | type      | payload
+ * +-----------+--------------------------------
+ * |HOST_EVENT | EVENT (32 bit)
+ * |KEY_MATRIX | Keyboard keys pressed.
+ * |SENSOR_FIFO| Sensors FIFO information.
+ *
+ * Otherwise:
+ * 0           1
+ * +-----------+--------------------------------
+ * |Unused     | Keyboard keys pressed.
+ */
+
 /**
  * struct cros_ec_device - Information about a ChromeOS EC device
  *
@@ -101,12 +124,16 @@ struct cros_ec_command {
  * @din_size: size of din buffer to allocate (zero to use static din)
  * @dout_size: size of dout buffer to allocate (zero to use static dout)
  * @wake_enabled: true if this device can wake the system from sleep
+ * @suspended: true if this device had been suspended
  * @cmd_xfer: send command to EC and get response
  *     Returns the number of bytes received if the communication succeeded, but
  *     that doesn't mean the EC was happy with the command. The caller
  *     should check msg.result for the EC's result code.
  * @pkt_xfer: send packet to EC and get response
  * @lock: one transaction at a time
+ * @event_notifier: interrupt event notifier for transport devices.
+ * @event_data: raw payload transferred with the MKBP event.
+ * @event_size: size in bytes of the event data.
  */
 struct cros_ec_device {
 
@@ -130,21 +157,27 @@ struct cros_ec_device {
 	int din_size;
 	int dout_size;
 	bool wake_enabled;
+	bool suspended;
 	int (*cmd_xfer)(struct cros_ec_device *ec,
 			struct cros_ec_command *msg);
 	int (*pkt_xfer)(struct cros_ec_device *ec,
 			struct cros_ec_command *msg);
+	struct power_supply *charger;
 	struct mutex lock;
+	bool mkbp_event_supported;
+	struct blocking_notifier_head event_notifier;
+	struct ec_response_get_next_event event_data;
+	int event_size;
 };
 
-/* struct cros_ec_platform - ChromeOS EC platform information
+/* struct cros_ec_dev_platform - ChromeOS EC platform information
  *
  * @ec_name: name of EC device (e.g. 'cros-ec', 'cros-pd', ...)
  * used in /dev/ and sysfs.
  * @cmd_offset: offset to apply for each command. Set when
  * registering a devicde behind another one.
  */
-struct cros_ec_platform {
+struct cros_ec_dev_platform {
 	const char *ec_name;
 	u16 cmd_offset;
 };
@@ -164,6 +197,17 @@ struct cros_ec_dev {
 	struct cros_ec_device *ec_dev;
 	struct device *dev;
 	u16 cmd_offset;
+	u32 features[2];
+};
+
+/* struct cros_ec_sensor_platform - ChromeOS EC sensor platform information
+ *
+ * On top of cros_ec_devicem information cros_ec_sensors needs.
+ *
+ * @sensor_num: Id of the sensor, as reported by the EC.
+ */
+struct cros_ec_sensor_platform {
+	u8 sensor_num;
 };
 
 /**
@@ -215,13 +259,31 @@ int cros_ec_check_result(struct cros_ec_device *ec_dev,
  * cros_ec_cmd_xfer - Send a command to the ChromeOS EC
  *
  * Call this to send a command to the ChromeOS EC.  This should be used
- * instead of calling the EC's cmd_xfer() callback directly.
+ * instead of calling the EC's cmd_xfer() callback directly. Note that
+ * msg->result should be checked before assuming that the command ran
+ * successfully on the EC.
  *
  * @ec_dev: EC device
  * @msg: Message to write
+ * @return: Num. of bytes transferred on success, <0 on failure
  */
 int cros_ec_cmd_xfer(struct cros_ec_device *ec_dev,
 		     struct cros_ec_command *msg);
+
+/**
+ * cros_ec_cmd_xfer_status - Send a command to the ChromeOS EC
+ *
+ * This function is identical to cros_ec_cmd_xfer, except it returns succes
+ * status only if both the command was transmitted successfully and the EC
+ * replied with success status. It's not necessary to check msg->result when
+ * using this function.
+ *
+ * @ec_dev: EC device
+ * @msg: Message to write
+ * @return: Num. of bytes transferred on success, <0 on failure
+ */
+int cros_ec_cmd_xfer_status(struct cros_ec_device *ec_dev,
+			    struct cros_ec_command *msg);
 
 /**
  * cros_ec_remove - Remove a ChromeOS EC
@@ -245,16 +307,28 @@ int cros_ec_remove(struct cros_ec_device *ec_dev);
 int cros_ec_register(struct cros_ec_device *ec_dev);
 
 /**
- * cros_ec_register -  Query the protocol version supported by the ChromeOS EC
+ * cros_ec_query_all -  Query the protocol version supported by the ChromeOS EC
  *
- * @ec_dev: Device to register
+ * @ec_dev: Device to query
  * @return 0 if ok, -ve on error
  */
 int cros_ec_query_all(struct cros_ec_device *ec_dev);
 
 /* sysfs stuff */
 extern struct attribute_group cros_ec_attr_group;
+extern struct attribute_group cros_ec_pd_attr_group;
 extern struct attribute_group cros_ec_lightbar_attr_group;
 extern struct attribute_group cros_ec_vbc_attr_group;
+extern struct attribute_group cros_usb_pd_charger_attr_group;
 
-#endif /* __LINUX_MFD_CROS_EC_H */
+/**
+ * cros_ec_get_host_event - Return a mask of event set by the EC.
+ *
+ * When MKBP is supported, when the EC raises an interrupt,
+ * We collect the events raised and call the functions in the ec notifier.
+ *
+ * This function is a helper to know which events are raised.
+ */
+uint32_t cros_ec_get_host_event(struct cros_ec_device *ec_dev);
+
+#endif  /* __LINUX_MFD_CROS_EC_H */

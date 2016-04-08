@@ -149,6 +149,28 @@ int cros_ec_check_result(struct cros_ec_device *ec_dev,
 }
 EXPORT_SYMBOL(cros_ec_check_result);
 
+static int cros_ec_get_host_command_version_mask(struct cros_ec_device *ec_dev,
+						 struct cros_ec_command *msg,
+						 uint16_t cmd, uint32_t *mask)
+{
+	struct ec_params_get_cmd_versions *pver;
+	struct ec_response_get_cmd_versions *rver;
+	int ret;
+
+	msg->command = EC_CMD_GET_CMD_VERSIONS;
+	msg->version = 0;
+	msg->outsize = sizeof(*pver);
+	msg->insize = sizeof(*rver);
+
+	pver = (struct ec_params_get_cmd_versions *)msg->data;
+	rver = (struct ec_response_get_cmd_versions *)msg->data;
+	pver->cmd = cmd;
+	ret = cros_ec_cmd_xfer(ec_dev, msg);
+	if (ret > 0)
+		*mask = rver->version_mask;
+	return ret;
+}
+
 static int cros_ec_host_command_proto_query(struct cros_ec_device *ec_dev,
 					    int devidx,
 					    struct cros_ec_command *msg)
@@ -239,6 +261,7 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev)
 	struct device *dev = ec_dev->dev;
 	struct cros_ec_command *proto_msg;
 	struct ec_response_get_protocol_info *proto_info;
+	uint32_t ver_mask;
 	int ret;
 
 	proto_msg = kzalloc(sizeof(*proto_msg) + sizeof(*proto_info),
@@ -328,6 +351,15 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev)
 		goto exit;
 	}
 
+	/* Probe if MKBP event is supported */
+	ret = cros_ec_get_host_command_version_mask(ec_dev, proto_msg,
+						    EC_CMD_GET_NEXT_EVENT,
+						    &ver_mask);
+	if (ret < 0 || ver_mask == 0)
+		ec_dev->mkbp_event_supported = 0;
+	else	
+		ec_dev->mkbp_event_supported = 1;
+
 exit:
 	kfree(proto_msg);
 	return ret;
@@ -380,3 +412,17 @@ int cros_ec_cmd_xfer(struct cros_ec_device *ec_dev,
 	return ret;
 }
 EXPORT_SYMBOL(cros_ec_cmd_xfer);
+
+int cros_ec_cmd_xfer_status(struct cros_ec_device *ec_dev,
+			    struct cros_ec_command *msg)
+{
+	int ret = cros_ec_cmd_xfer(ec_dev, msg);
+
+	if (ret < 0)
+		dev_err(ec_dev->dev, "Command xfer error (err:%d)\n", ret);
+	else if (msg->result)
+		return -EECRESULT - msg->result;
+
+	return ret;
+}
+EXPORT_SYMBOL(cros_ec_cmd_xfer_status);
