@@ -491,6 +491,7 @@ of_ramoops_platform_data(struct device *dev)
 
 	/* TODO(bfreed): add a console-size of property. */
 	pdata->console_size = val;
+	pdata->pmsg_size = val;
 
 	if (of_get_property(node, "dump-oops", NULL))
 		pdata->dump_oops = 1;
