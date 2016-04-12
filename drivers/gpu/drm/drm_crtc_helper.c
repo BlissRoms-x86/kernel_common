@@ -325,9 +325,12 @@ bool drm_crtc_helper_set_mode(struct drm_crtc *crtc,
 		}
 	}
 
-	if (!(ret = crtc_funcs->mode_fixup(crtc, mode, adjusted_mode))) {
-		DRM_DEBUG_KMS("CRTC fixup failed\n");
-		goto done;
+	if (crtc_funcs->mode_fixup) {
+		if (!(ret = crtc_funcs->mode_fixup(crtc, mode,
+						adjusted_mode))) {
+			DRM_DEBUG_KMS("CRTC fixup failed\n");
+			goto done;
+		}
 	}
 	DRM_DEBUG_KMS("[CRTC:%d]\n", crtc->base.id);
 
@@ -818,7 +821,7 @@ EXPORT_SYMBOL(drm_helper_connector_dpms);
  * metadata fields.
  */
 void drm_helper_mode_fill_fb_struct(struct drm_framebuffer *fb,
-				    struct drm_mode_fb_cmd2 *mode_cmd)
+				    const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	int i;
 
