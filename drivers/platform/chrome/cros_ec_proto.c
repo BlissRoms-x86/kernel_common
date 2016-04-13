@@ -261,7 +261,7 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev)
 	struct device *dev = ec_dev->dev;
 	struct cros_ec_command *proto_msg;
 	struct ec_response_get_protocol_info *proto_info;
-	uint32_t ver_mask;
+	uint32_t ver_mask = 0;
 	int ret;
 
 	proto_msg = kzalloc(sizeof(*proto_msg) + sizeof(*proto_info),
