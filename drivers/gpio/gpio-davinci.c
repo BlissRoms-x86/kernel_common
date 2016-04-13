@@ -179,8 +179,8 @@ static int davinci_gpio_of_xlate(struct gpio_chip *gc,
 			     const struct of_phandle_args *gpiospec,
 			     u32 *flags)
 {
-	struct davinci_gpio_controller *chips = dev_get_drvdata(gc->dev);
-	struct davinci_gpio_platform_data *pdata = dev_get_platdata(gc->dev);
+	struct davinci_gpio_controller *chips = dev_get_drvdata(gc->parent);
+	struct davinci_gpio_platform_data *pdata = dev_get_platdata(gc->parent);
 
 	if (gpiospec->args[0] > pdata->ngpio)
 		return -EINVAL;
@@ -254,7 +254,7 @@ static int davinci_gpio_probe(struct platform_device *pdev)
 #ifdef CONFIG_OF_GPIO
 		chips[i].chip.of_gpio_n_cells = 2;
 		chips[i].chip.of_xlate = davinci_gpio_of_xlate;
-		chips[i].chip.dev = dev;
+		chips[i].chip.parent = dev;
 		chips[i].chip.of_node = dev->of_node;
 #endif
 		spin_lock_init(&chips[i].lock);
