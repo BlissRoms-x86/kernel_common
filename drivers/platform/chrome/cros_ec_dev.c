@@ -308,6 +308,7 @@ static void cros_ec_sensors_register(struct cros_ec_dev *ec)
 		goto error;
 	}
 
+	resp = (struct ec_response_motion_sense *)msg->data;
 	sensor_num = resp->dump.sensor_count;
 	/* Allocate 2 extra sensors in case lid angle or FIFO are needed */
 	sensor_cells = kzalloc(sizeof(struct mfd_cell) * (sensor_num + 2),
