@@ -266,16 +266,6 @@ static void hsw_psr_enable_source(struct intel_dp *intel_dp)
 	uint32_t val = 0x0;
 	const uint32_t link_entry_time = EDP_PSR_MIN_LINK_ENTRY_TIME_8_LINES;
 
-	if (intel_dp->psr_dpcd[1] & DP_PSR_NO_TRAIN_ON_EXIT) {
-		/* It doesn't mean we shouldn't send TPS patters, so let's
-		   send the minimal TP1 possible and skip TP2. */
-		val |= EDP_PSR_TP1_TIME_100us;
-		val |= EDP_PSR_TP2_TP3_TIME_0us;
-		val |= EDP_PSR_SKIP_AUX_EXIT;
-		/* Sink should be able to train with the 5 or 6 idle patterns */
-		idle_frames += 4;
-	}
-
 	I915_WRITE(EDP_PSR_CTL(dev), val |
 		   (IS_BROADWELL(dev) ? 0 : link_entry_time) |
 		   max_sleep_time << EDP_PSR_MAX_SLEEP_TIME_SHIFT |
