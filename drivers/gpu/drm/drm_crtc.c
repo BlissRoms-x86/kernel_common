@@ -5407,6 +5407,7 @@ int drm_mode_mmap_dumb_ioctl(struct drm_device *dev,
 
 	return dev->driver->dumb_map_offset(file_priv, dev, args->handle, &args->offset);
 }
+EXPORT_SYMBOL(drm_mode_mmap_dumb_ioctl);
 
 /**
  * drm_mode_destroy_dumb_ioctl - destroy a dumb backing strage buffer
