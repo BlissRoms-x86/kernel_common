@@ -312,6 +312,7 @@ static struct drm_driver vgem_driver = {
 	.gem_free_object		= vgem_gem_free_object,
 	.gem_vm_ops			= &vgem_gem_vm_ops,
 	.ioctls				= vgem_ioctls,
+	.num_ioctls			= ARRAY_SIZE(vgem_ioctls),
 	.fops				= &vgem_driver_fops,
 	.dumb_create			= vgem_gem_dumb_create,
 	.dumb_map_offset		= vgem_gem_dumb_map,
