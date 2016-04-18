@@ -472,12 +472,11 @@ static const struct tpm_input_header tpm_getcap_header = {
 	.ordinal = TPM_ORD_GET_CAP
 };
 
-ssize_t tpm_getcap(struct device *dev, __be32 subcap_id, cap_t *cap,
+ssize_t tpm_getcap(struct tpm_chip *chip, __be32 subcap_id, cap_t *cap,
 		   const char *desc)
 {
 	struct tpm_cmd_t tpm_cmd;
 	int rc;
-	struct tpm_chip *chip = dev_get_drvdata(dev);
 
 	tpm_cmd.header.in = tpm_getcap_header;
 	if (subcap_id == CAP_VERSION_1_1 || subcap_id == CAP_VERSION_1_2) {
@@ -984,7 +983,7 @@ static struct tpm_input_header savestate_header = {
  */
 int tpm_pm_suspend(struct device *dev)
 {
-	struct tpm_chip *chip = dev_get_drvdata(dev);
+	struct tpm_chip *chip = to_tpm_chip(dev);
 	struct tpm_cmd_t cmd;
 	int rc, try;
 
@@ -1045,7 +1044,7 @@ EXPORT_SYMBOL_GPL(tpm_pm_suspend);
  */
 int tpm_pm_resume(struct device *dev)
 {
-	struct tpm_chip *chip = dev_get_drvdata(dev);
+	struct tpm_chip *chip = to_tpm_chip(dev);
 
 	if (chip == NULL)
 		return -ENODEV;
