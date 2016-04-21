@@ -3366,6 +3366,9 @@ static int mwifiex_cfg80211_resume(struct wiphy *wiphy)
 		}
 	}
 
+	if (!wiphy->wowlan_config)
+		goto done;
+
 	priv = mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_STA);
 	mwifiex_get_wakeup_reason(priv, HostCmd_ACT_GEN_GET, MWIFIEX_SYNC_CMD,
 				  &wakeup_reason);
@@ -3411,6 +3414,7 @@ static int mwifiex_cfg80211_resume(struct wiphy *wiphy)
 		cfg80211_report_wowlan_wakeup(&priv->wdev, &wakeup_report,
 					      GFP_KERNEL);
 
+done:
 	if (adapter->nd_info) {
 		for (i = 0 ; i < adapter->nd_info->n_matches ; i++)
 			kfree(adapter->nd_info->matches[i]);
