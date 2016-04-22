@@ -20,6 +20,7 @@ enum analogix_dp_devtype {
 
 enum analogix_dp_sub_devtype {
 	RK3288_DP,
+	RK3399_EDP,
 };
 
 struct analogix_dp_plat_data {
