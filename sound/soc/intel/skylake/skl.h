@@ -48,6 +48,9 @@
 #define AZX_REG_VS_SDXEFIFOS_XBASE	0x1094
 #define AZX_REG_VS_SDXEFIFOS_XINTERVAL	0x20
 
+#define AZX_PCIREG_CGCTL		0x48
+#define AZX_CGCTL_MISCBDCGE_MASK	(1 << 6)
+
 struct skl_dsp_resource {
 	u32 max_mcps;
 	u32 max_mem;
@@ -61,15 +64,20 @@ struct skl {
 
 	unsigned int init_failed:1; /* delayed init failed */
 	struct platform_device *dmic_dev;
+	struct platform_device *i2s_dev;
 
 	void *nhlt; /* nhlt ptr */
 	struct skl_sst *skl_sst; /* sst skl ctx */
 
 	struct skl_dsp_resource resource;
 	struct list_head ppl_list;
-	struct list_head dapm_path_list;
 
+	const char *fw_name;
+	char tplg_name[64];
+	unsigned short pci_id;
 	const struct firmware *tplg;
+
+	int supend_active;
 };
 
 #define skl_to_ebus(s)	(&(s)->ebus)
@@ -90,6 +98,7 @@ void skl_nhlt_free(void *addr);
 struct nhlt_specific_cfg *skl_get_ep_blob(struct skl *skl, u32 instance,
 			u8 link_type, u8 s_fmt, u8 no_ch, u32 s_rate, u8 dirn);
 
+int skl_nhlt_update_topology_bin(struct skl *skl);
 int skl_init_dsp(struct skl *skl);
 void skl_free_dsp(struct skl *skl);
 int skl_suspend_dsp(struct skl *skl);
