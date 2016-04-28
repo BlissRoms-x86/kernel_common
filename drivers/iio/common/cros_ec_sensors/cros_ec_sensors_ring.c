@@ -103,6 +103,11 @@ static s64 cros_ec_get_time_ns(void)
 	return timespec_to_ns(&ts);
 }
 
+
+static const struct iio_trigger_ops cros_ec_ring_trigger_ops = {
+	.owner = THIS_MODULE,
+};
+
 /*
  * cros_ec_ring_process_event: process one EC FIFO event
  *
@@ -155,6 +160,7 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 		out->vector[axis] = in->data[axis];
 	return true;
 }
+
 /*
  * cros_ec_ring_handler - the trigger handler function
  *
@@ -469,6 +475,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	if (!state->trig)
 		return -ENOMEM;
 	state->trig->dev.parent = &pdev->dev;
+	state->trig->ops = &cros_ec_ring_trigger_ops;
 	iio_trigger_set_drvdata(state->trig, indio_dev);
 
 	ret = iio_trigger_register(state->trig);
