@@ -476,6 +476,10 @@
 	cpu-supply = <&ppvar_bigcpu>;
 };
 
+&emmc_phy {
+	status = "okay";
+};
+
 &i2s0 {
 	status = "okay";
 };
@@ -493,6 +497,13 @@
 };
 
 &pwm3 {
+	status = "okay";
+};
+
+&sdhci {
+	bus-width = <8>;
+	mmc-hs400-1_8v;
+	non-removable;
 	status = "okay";
 };
 
