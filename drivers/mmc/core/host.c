@@ -320,10 +320,25 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 {
 	int err;
 	struct mmc_host *host;
+	int id;
 
 	host = kzalloc(sizeof(struct mmc_host) + extra, GFP_KERNEL);
 	if (!host)
 		return NULL;
+
+	/* If OF aliases exist, start dynamic assignment after highest */
+	id = of_alias_get_highest_id("mmc");
+	id = (id < 0) ? 0 : id + 1;
+
+	/* If this devices has OF node, maybe it has an alias */
+	if (dev->of_node) {
+		int of_id = of_alias_get_id(dev->of_node, "mmc");
+
+		if (of_id < 0)
+			dev_warn(dev, "/aliases ID not available\n");
+		else
+			id = of_id;
+	}
 
 	/* scanning will be enabled when we're ready */
 	host->rescan_disable = 1;
@@ -335,7 +350,7 @@ again:
 	}
 
 	spin_lock(&mmc_host_lock);
-	err = ida_get_new(&mmc_host_ida, &host->index);
+	err = ida_get_new_above(&mmc_host_ida, id, &host->index);
 	spin_unlock(&mmc_host_lock);
 
 	if (err == -EAGAIN) {
