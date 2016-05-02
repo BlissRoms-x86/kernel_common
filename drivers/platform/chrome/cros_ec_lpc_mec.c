@@ -129,13 +129,16 @@ done:
 	mutex_unlock(&io_mutex);
 	return sum;
 }
+EXPORT_SYMBOL(cros_ec_lpc_io_bytes_mec);
 
 void cros_ec_lpc_mec_init(void)
 {
 	mutex_init(&io_mutex);
 }
+EXPORT_SYMBOL(cros_ec_lpc_mec_init);
 
 void cros_ec_lpc_mec_destroy(void)
 {
 	mutex_destroy(&io_mutex);
 }
+EXPORT_SYMBOL(cros_ec_lpc_mec_destroy);
