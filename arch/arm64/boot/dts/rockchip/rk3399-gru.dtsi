@@ -529,7 +529,6 @@
 	//sd-uhs-sdr50;
 	//sd-uhs-sdr104;
 
-	// Comment out until we turn on gpio-regulator config
 	vmmc-supply = <&pp3000_sd_slot>;
 	vqmmc-supply = <&ppvar_sd_card_io>;
 };
