@@ -196,7 +196,7 @@ static ssize_t cros_ec_sensors_loc(struct iio_dev *indio_dev,
 }
 
 const struct iio_chan_spec_ext_info cros_ec_sensors_ext_info[] = {
-#ifdef CONFIG_IIO_CROS_EC_SENSORS_RING
+#if IS_ENABLED(CONFIG_IIO_CROS_EC_SENSORS_RING)
 	{
 		.name = "flush",
 		.shared = IIO_SHARED_BY_ALL,
