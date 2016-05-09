@@ -418,6 +418,7 @@ static void dwc3_cache_hwparams(struct dwc3 *dwc)
 static int dwc3_phy_setup(struct dwc3 *dwc)
 {
 	u32 reg;
+	u32 usbtrdtim;
 	int ret;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB3PIPECTL(0));
@@ -512,6 +513,15 @@ static int dwc3_phy_setup(struct dwc3 *dwc)
 
 	if (dwc->dis_u2_freeclk_exists_quirk)
 		reg &= ~DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS;
+
+	if (dwc->phyif_utmi_16_bits)
+		reg |= DWC3_GUSB2PHYCFG_PHYIF;
+
+	usbtrdtim = (reg & DWC3_GUSB2PHYCFG_PHYIF) ?
+		    USBTRDTIM_UTMI_16_BIT : USBTRDTIM_UTMI_8_BIT;
+
+	reg &= ~DWC3_GUSB2PHYCFG_USBTRDTIM_MASK;
+	reg |= (usbtrdtim << DWC3_GUSB2PHYCFG_USBTRDTIM_SHIFT);
 
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 
@@ -887,6 +897,8 @@ static int dwc3_probe(struct platform_device *pdev)
 				&hird_threshold);
 	dwc->usb3_lpm_capable = device_property_read_bool(dev,
 				"snps,usb3_lpm_capable");
+	dwc->phyif_utmi_16_bits = device_property_read_bool(dev,
+				  "snps,phyif_utmi_16_bits");
 
 	dwc->disable_scramble_quirk = device_property_read_bool(dev,
 				"snps,disable_scramble_quirk");
@@ -934,6 +946,7 @@ static int dwc3_probe(struct platform_device *pdev)
 			hird_threshold = pdata->hird_threshold;
 
 		dwc->usb3_lpm_capable = pdata->usb3_lpm_capable;
+		dwc->phyif_utmi_16_bits = pdata->phyif_utmi_16_bits;
 		dwc->dr_mode = pdata->dr_mode;
 
 		dwc->disable_scramble_quirk = pdata->disable_scramble_quirk;

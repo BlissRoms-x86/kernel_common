@@ -24,6 +24,7 @@ struct dwc3_platform_data {
 	enum usb_device_speed maximum_speed;
 	enum usb_dr_mode dr_mode;
 	bool usb3_lpm_capable;
+	bool phyif_utmi_16_bits;
 
 	unsigned is_utmi_l1_suspend:1;
 	u8 hird_threshold;
