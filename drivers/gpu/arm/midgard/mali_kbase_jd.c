@@ -215,7 +215,7 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 	long i;
 	int err = -ENOMEM;
 	unsigned long address;
-	struct task_struct *owner;
+	struct mm_struct *mm;
 	struct device *dev;
 	unsigned long offset;
 	unsigned long local_size;
@@ -223,19 +223,19 @@ static int kbase_jd_user_buf_map(struct kbase_context *kctx,
 	alloc = reg->gpu_alloc;
 	pa = kbase_get_gpu_phy_pages(reg);
 	address = alloc->imported.user_buf.address;
-	owner = alloc->imported.user_buf.owner;
+	mm = alloc->imported.user_buf.mm;
 
 	KBASE_DEBUG_ASSERT(alloc->type == KBASE_MEM_TYPE_IMPORTED_USER_BUF);
 
 	pages = alloc->imported.user_buf.pages;
 
-	down_read(&owner->mm->mmap_sem);
-	pinned_pages = get_user_pages(owner, owner->mm,
+	down_read(&mm->mmap_sem);
+	pinned_pages = get_user_pages(NULL, mm,
 			address,
 			alloc->imported.user_buf.nr_pages,
 			reg->flags & KBASE_REG_GPU_WR,
 			0, pages, NULL);
-	up_read(&owner->mm->mmap_sem);
+	up_read(&mm->mmap_sem);
 
 	if (pinned_pages <= 0)
 		return pinned_pages;
