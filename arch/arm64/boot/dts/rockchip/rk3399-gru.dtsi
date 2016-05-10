@@ -511,23 +511,16 @@
 	pinctrl-0 = <&sdmmc_clk &sdmmc_cmd &sdmmc_cd &sdmmc_cd_gpio
 		     &sdmmc_bus4>;
 
-	// HACK: Limit freq for now
-	// ...as of 160330 confirmed that things break if you remove this.
-	clock-frequency = <37500000>;
-	clock-freq-min-max = <400000 37500000>;
-
 	bus-width = <4>;
 	cd-gpios = <&gpio4 24 GPIO_ACTIVE_LOW>;
 	disable-wp;
 
 	cap-mmc-highspeed;
 	cap-sd-highspeed;
-
-	// TODO: enable once tested...
-	//sd-uhs-sdr12;
-	//sd-uhs-sdr25;
-	//sd-uhs-sdr50;
-	//sd-uhs-sdr104;
+	sd-uhs-sdr12;
+	sd-uhs-sdr25;
+	sd-uhs-sdr50;
+	sd-uhs-sdr104;
 
 	vmmc-supply = <&pp3000_sd_slot>;
 	vqmmc-supply = <&ppvar_sd_card_io>;
@@ -614,6 +607,11 @@
 		output-high;
 	};
 
+	pcfg_pull_none_8ma: pcfg-pull-none-8ma {
+		bias-disable;
+		drive-strength = <8>;
+	};
+
 	cros-ec {
 		ec_ap_int_l: ec-ap-int-l {
 			rockchip,pins = <RK_GPIO0 1 RK_FUNC_GPIO &pcfg_pull_up>;
@@ -676,28 +674,25 @@
 
 	sdmmc {
 		/*
-		 * We have external pulls on SDMMC, so disable internals
-		 *
-		 * TODO:
-		 * - On veyron we found that we needed to drive at 8mA.  Do we
-		 *   need to that here?  If so, 8mA or 12mA?
+		 * We run sdmmc at max speed; bump up drive strength.
+		 * We also have external pulls, so disable the internal ones.
 		 */
 		sdmmc_bus4: sdmmc-bus4 {
 			rockchip,pins =
-				<4 8 RK_FUNC_1 &pcfg_pull_none>,
-				<4 9 RK_FUNC_1 &pcfg_pull_none>,
-				<4 10 RK_FUNC_1 &pcfg_pull_none>,
-				<4 11 RK_FUNC_1 &pcfg_pull_none>;
+				<4 8 RK_FUNC_1 &pcfg_pull_none_8ma>,
+				<4 9 RK_FUNC_1 &pcfg_pull_none_8ma>,
+				<4 10 RK_FUNC_1 &pcfg_pull_none_8ma>,
+				<4 11 RK_FUNC_1 &pcfg_pull_none_8ma>;
 		};
 
 		sdmmc_clk: sdmmc-clk {
 			rockchip,pins =
-				<4 12 RK_FUNC_1 &pcfg_pull_none>;
+				<4 12 RK_FUNC_1 &pcfg_pull_none_8ma>;
 		};
 
 		sdmmc_cmd: sdmmc-cmd {
 			rockchip,pins =
-				<4 13 RK_FUNC_1 &pcfg_pull_none>;
+				<4 13 RK_FUNC_1 &pcfg_pull_none_8ma>;
 		};
 
 		/*

@@ -51,6 +51,14 @@
 		     "google,kevin", "google,gru", "rockchip,rk3399";
 };
 
+/* Most rev-0s won't work so well with UHS.  Disable */
+&sdmmc {
+	/delete-property/sd-uhs-sdr12;
+	/delete-property/sd-uhs-sdr25;
+	/delete-property/sd-uhs-sdr50;
+	/delete-property/sd-uhs-sdr104;
+};
+
 /* GPIO overrides for -r0; in same order as parent */
 
 &pp3000 {
