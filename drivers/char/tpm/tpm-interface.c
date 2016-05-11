@@ -983,7 +983,7 @@ static struct tpm_input_header savestate_header = {
  */
 int tpm_pm_suspend(struct device *dev)
 {
-	struct tpm_chip *chip = to_tpm_chip(dev);
+	struct tpm_chip *chip = dev_get_drvdata(dev);
 	struct tpm_cmd_t cmd;
 	int rc, try;
 
@@ -1044,7 +1044,7 @@ EXPORT_SYMBOL_GPL(tpm_pm_suspend);
  */
 int tpm_pm_resume(struct device *dev)
 {
-	struct tpm_chip *chip = to_tpm_chip(dev);
+	struct tpm_chip *chip = dev_get_drvdata(dev);
 
 	if (chip == NULL)
 		return -ENODEV;
