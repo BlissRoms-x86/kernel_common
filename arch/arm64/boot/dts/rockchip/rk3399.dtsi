@@ -54,7 +54,7 @@
 	#size-cells = <2>;
 
 	aliases {
-		//mmc0 = &sdhci;
+		mmc0 = &sdhci;
 		mmc1 = &sdmmc;
 		mmc2 = &sdio0;
 		serial0 = &uart0;
