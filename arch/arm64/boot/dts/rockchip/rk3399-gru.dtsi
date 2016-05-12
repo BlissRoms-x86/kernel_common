@@ -566,7 +566,7 @@
 
 		i2c_tunnel: i2c-tunnel {
 			compatible = "google,cros-ec-i2c-tunnel";
-			google,remote-bus = <0>;
+			google,remote-bus = <4>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -612,6 +612,7 @@
 };
 
 #include "common/cros-ec-keyboard.dtsi"
+#include "common/cros-ec-sbs.dtsi"
 
 /* PINCTRL: always below everything else */
 
