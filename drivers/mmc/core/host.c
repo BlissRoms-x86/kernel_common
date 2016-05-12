@@ -34,14 +34,14 @@
 
 #define cls_dev_to_mmc_host(d)	container_of(d, struct mmc_host, class_dev)
 
-static DEFINE_IDR(mmc_host_idr);
+static DEFINE_IDA(mmc_host_ida);
 static DEFINE_SPINLOCK(mmc_host_lock);
 
 static void mmc_host_classdev_release(struct device *dev)
 {
 	struct mmc_host *host = cls_dev_to_mmc_host(dev);
 	spin_lock(&mmc_host_lock);
-	idr_remove(&mmc_host_idr, host->index);
+	ida_remove(&mmc_host_ida, host->index);
 	spin_unlock(&mmc_host_lock);
 	kfree(host);
 }
@@ -87,6 +87,12 @@ void mmc_retune_hold(struct mmc_host *host)
 {
 	if (!host->hold_retune)
 		host->retune_now = 1;
+	host->hold_retune += 1;
+}
+
+void mmc_retune_hold_now(struct mmc_host *host)
+{
+	host->retune_now = 0;
 	host->hold_retune += 1;
 }
 
@@ -314,21 +320,42 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 {
 	int err;
 	struct mmc_host *host;
+	int id;
 
 	host = kzalloc(sizeof(struct mmc_host) + extra, GFP_KERNEL);
 	if (!host)
 		return NULL;
 
+	/* If OF aliases exist, start dynamic assignment after highest */
+	id = of_alias_get_highest_id("mmc");
+	id = (id < 0) ? 0 : id + 1;
+
+	/* If this devices has OF node, maybe it has an alias */
+	if (dev->of_node) {
+		int of_id = of_alias_get_id(dev->of_node, "mmc");
+
+		if (of_id < 0)
+			dev_warn(dev, "/aliases ID not available\n");
+		else
+			id = of_id;
+	}
+
 	/* scanning will be enabled when we're ready */
 	host->rescan_disable = 1;
-	idr_preload(GFP_KERNEL);
+
+again:
+	if (!ida_pre_get(&mmc_host_ida, GFP_KERNEL)) {
+		kfree(host);
+		return NULL;
+	}
+
 	spin_lock(&mmc_host_lock);
-	err = idr_alloc(&mmc_host_idr, host, 0, 0, GFP_NOWAIT);
-	if (err >= 0)
-		host->index = err;
+	err = ida_get_new_above(&mmc_host_ida, id, &host->index);
 	spin_unlock(&mmc_host_lock);
-	idr_preload_end();
-	if (err < 0) {
+
+	if (err == -EAGAIN) {
+		goto again;
+	} else if (err) {
 		kfree(host);
 		return NULL;
 	}
@@ -395,7 +422,8 @@ int mmc_add_host(struct mmc_host *host)
 #endif
 
 	mmc_start_host(host);
-	register_pm_notifier(&host->pm_notify);
+	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
+		register_pm_notifier(&host->pm_notify);
 
 	return 0;
 }
@@ -412,7 +440,9 @@ EXPORT_SYMBOL(mmc_add_host);
  */
 void mmc_remove_host(struct mmc_host *host)
 {
-	unregister_pm_notifier(&host->pm_notify);
+	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
+		unregister_pm_notifier(&host->pm_notify);
+
 	mmc_stop_host(host);
 
 #ifdef CONFIG_DEBUG_FS

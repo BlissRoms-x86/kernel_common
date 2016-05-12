@@ -205,8 +205,8 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 	if (pos != &gpio_chips && pos->prev != &gpio_chips) {
 		_chip = list_entry(pos->prev, struct gpio_chip, list);
 		if (_chip->base + _chip->ngpio > chip->base) {
-			dev_err(chip->dev,
-			       "GPIO integer space overlap, cannot add chip\n");
+			dev_err(chip->parent,
+				"GPIO integer space overlap, cannot add chip\n");
 			err = -EBUSY;
 		}
 	}
@@ -267,7 +267,7 @@ static int gpiochip_set_desc_names(struct gpio_chip *gc)
 
 		gpio = gpio_name_to_desc(gc->names[i]);
 		if (gpio)
-			dev_warn(gc->dev, "Detected name collision for "
+			dev_warn(gc->parent, "Detected name collision for "
 				 "GPIO name '%s'\n",
 				 gc->names[i]);
 	}
@@ -280,7 +280,7 @@ static int gpiochip_set_desc_names(struct gpio_chip *gc)
 }
 
 /**
- * gpiochip_add() - register a gpio_chip
+ * gpiochip_add_data() - register a gpio_chip
  * @chip: the chip to register, with chip->base initialized
  * Context: potentially before irqs will work
  *
@@ -288,15 +288,15 @@ static int gpiochip_set_desc_names(struct gpio_chip *gc)
  * because the chip->base is invalid or already associated with a
  * different chip.  Otherwise it returns zero as a success code.
  *
- * When gpiochip_add() is called very early during boot, so that GPIOs
- * can be freely used, the chip->dev device must be registered before
+ * When gpiochip_add_data() is called very early during boot, so that GPIOs
+ * can be freely used, the chip->parent device must be registered before
  * the gpio framework's arch_initcall().  Otherwise sysfs initialization
  * for GPIOs will fail rudely.
  *
  * If chip->base is negative, this requests dynamic assignment of
  * a range of valid GPIOs.
  */
-int gpiochip_add(struct gpio_chip *chip)
+int gpiochip_add_data(struct gpio_chip *chip, void *data)
 {
 	unsigned long	flags;
 	int		status = 0;
@@ -307,6 +307,13 @@ int gpiochip_add(struct gpio_chip *chip)
 	descs = kcalloc(chip->ngpio, sizeof(descs[0]), GFP_KERNEL);
 	if (!descs)
 		return -ENOMEM;
+
+	chip->data = data;
+
+	if (chip->ngpio == 0) {
+		chip_err(chip, "tried to insert a GPIO chip with zero lines\n");
+		return -EINVAL;
+	}
 
 	spin_lock_irqsave(&gpio_lock, flags);
 
@@ -348,8 +355,8 @@ int gpiochip_add(struct gpio_chip *chip)
 	INIT_LIST_HEAD(&chip->pin_ranges);
 #endif
 
-	if (!chip->owner && chip->dev && chip->dev->driver)
-		chip->owner = chip->dev->driver->owner;
+	if (!chip->owner && chip->parent && chip->parent->driver)
+		chip->owner = chip->parent->driver->owner;
 
 	status = gpiochip_set_desc_names(chip);
 	if (status)
@@ -389,7 +396,7 @@ err_free_descs:
 		chip->label ? : "generic");
 	return status;
 }
-EXPORT_SYMBOL_GPL(gpiochip_add);
+EXPORT_SYMBOL_GPL(gpiochip_add_data);
 
 /**
  * gpiochip_remove() - unregister a gpio_chip
@@ -424,7 +431,8 @@ void gpiochip_remove(struct gpio_chip *chip)
 	spin_unlock_irqrestore(&gpio_lock, flags);
 
 	if (requested)
-		dev_crit(chip->dev, "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
+		dev_crit(chip->parent,
+			 "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
 
 	kfree(chip->desc);
 	chip->desc = NULL;
@@ -683,15 +691,16 @@ int _gpiochip_irqchip_add(struct gpio_chip *gpiochip,
 	if (!gpiochip || !irqchip)
 		return -EINVAL;
 
-	if (!gpiochip->dev) {
+	if (!gpiochip->parent) {
 		pr_err("missing gpiochip .dev parent pointer\n");
 		return -EINVAL;
 	}
-	of_node = gpiochip->dev->of_node;
+	of_node = gpiochip->parent->of_node;
 #ifdef CONFIG_OF_GPIO
 	/*
 	 * If the gpiochip has an assigned OF node this takes precedence
-	 * FIXME: get rid of this and use gpiochip->dev->of_node everywhere
+	 * FIXME: get rid of this and use gpiochip->parent->of_node
+	 * everywhere
 	 */
 	if (gpiochip->of_node)
 		of_node = gpiochip->of_node;
@@ -2509,7 +2518,7 @@ static int gpiolib_seq_show(struct seq_file *s, void *v)
 
 	seq_printf(s, "%sGPIOs %d-%d", (char *)s->private,
 			chip->base, chip->base + chip->ngpio - 1);
-	dev = chip->dev;
+	dev = chip->parent;
 	if (dev)
 		seq_printf(s, ", %s/%s", dev->bus ? dev->bus->name : "no-bus",
 			dev_name(dev));

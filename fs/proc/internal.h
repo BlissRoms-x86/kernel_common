@@ -58,6 +58,9 @@ union proc_op {
 		struct task_struct *task);
 };
 
+
+extern const struct file_operations proc_totmaps_operations;
+
 struct proc_inode {
 	struct pid *pid;
 	int fd;
@@ -281,6 +284,7 @@ struct proc_maps_private {
 	struct mm_struct *mm;
 #ifdef CONFIG_MMU
 	struct vm_area_struct *tail_vma;
+	struct mem_size_stats *mss;
 #endif
 #ifdef CONFIG_NUMA
 	struct mempolicy *task_mempolicy;

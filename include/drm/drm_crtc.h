@@ -992,7 +992,7 @@ struct drm_mode_set {
 struct drm_mode_config_funcs {
 	struct drm_framebuffer *(*fb_create)(struct drm_device *dev,
 					     struct drm_file *file_priv,
-					     struct drm_mode_fb_cmd2 *mode_cmd);
+					     const struct drm_mode_fb_cmd2 *mode_cmd);
 	void (*output_poll_changed)(struct drm_device *dev);
 
 	int (*atomic_check)(struct drm_device *dev,
@@ -1183,11 +1183,13 @@ struct drm_prop_enum_list {
 	char *name;
 };
 
-extern int drm_crtc_init_with_planes(struct drm_device *dev,
-				     struct drm_crtc *crtc,
-				     struct drm_plane *primary,
-				     struct drm_plane *cursor,
-				     const struct drm_crtc_funcs *funcs);
+extern __printf(6, 7)
+int drm_crtc_init_with_planes(struct drm_device *dev,
+			      struct drm_crtc *crtc,
+			      struct drm_plane *primary,
+			      struct drm_plane *cursor,
+			      const struct drm_crtc_funcs *funcs,
+			      const char *name, ...);
 extern void drm_crtc_cleanup(struct drm_crtc *crtc);
 extern unsigned int drm_crtc_index(struct drm_crtc *crtc);
 
@@ -1233,10 +1235,11 @@ void drm_bridge_mode_set(struct drm_bridge *bridge,
 void drm_bridge_pre_enable(struct drm_bridge *bridge);
 void drm_bridge_enable(struct drm_bridge *bridge);
 
-extern int drm_encoder_init(struct drm_device *dev,
-			    struct drm_encoder *encoder,
-			    const struct drm_encoder_funcs *funcs,
-			    int encoder_type);
+extern __printf(5, 6)
+int drm_encoder_init(struct drm_device *dev,
+		     struct drm_encoder *encoder,
+		     const struct drm_encoder_funcs *funcs,
+		     int encoder_type, const char *name, ...);
 
 /**
  * drm_encoder_crtc_ok - can a given crtc drive a given encoder?
@@ -1251,13 +1254,15 @@ static inline bool drm_encoder_crtc_ok(struct drm_encoder *encoder,
 	return !!(encoder->possible_crtcs & drm_crtc_mask(crtc));
 }
 
-extern int drm_universal_plane_init(struct drm_device *dev,
-				    struct drm_plane *plane,
-				    unsigned long possible_crtcs,
-				    const struct drm_plane_funcs *funcs,
-				    const uint32_t *formats,
-				    unsigned int format_count,
-				    enum drm_plane_type type);
+extern __printf(8, 9)
+int drm_universal_plane_init(struct drm_device *dev,
+			     struct drm_plane *plane,
+			     unsigned long possible_crtcs,
+			     const struct drm_plane_funcs *funcs,
+			     const uint32_t *formats,
+			     unsigned int format_count,
+			     enum drm_plane_type type,
+			     const char *name, ...);
 extern int drm_plane_init(struct drm_device *dev,
 			  struct drm_plane *plane,
 			  unsigned long possible_crtcs,

@@ -247,7 +247,8 @@ EXPORT_SYMBOL(dump_trace);
 
 void
 show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
-		   unsigned long *sp, unsigned long bp, char *log_lvl)
+		   unsigned long *sp, unsigned long bp, char *log_lvl,
+		   pid_t dup_stack_pid)
 {
 	unsigned long *irq_stack_end;
 	unsigned long *irq_stack;
@@ -294,7 +295,7 @@ show_stack_log_lvl(struct task_struct *task, struct pt_regs *regs,
 	preempt_enable();
 
 	pr_cont("\n");
-	show_trace_log_lvl(task, regs, sp, bp, log_lvl);
+	show_trace_log_lvl(task, regs, sp, bp, log_lvl, dup_stack_pid);
 }
 
 void show_regs(struct pt_regs *regs)
@@ -318,7 +319,7 @@ void show_regs(struct pt_regs *regs)
 
 		printk(KERN_DEFAULT "Stack:\n");
 		show_stack_log_lvl(NULL, regs, (unsigned long *)sp,
-				   0, KERN_DEFAULT);
+				   0, KERN_DEFAULT, 0);
 
 		printk(KERN_DEFAULT "Code: ");
 

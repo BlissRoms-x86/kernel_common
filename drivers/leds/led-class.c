@@ -20,6 +20,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/timer.h>
+#include <linux/pm_dark_resume.h>
 #include "leds.h"
 
 static struct class *leds_class;
@@ -143,6 +144,11 @@ static int led_resume(struct device *dev)
 {
 	struct led_classdev *led_cdev = dev_get_drvdata(dev);
 
+	if (dev_dark_resume_active(dev)) {
+		dev_info(dev, "disabled for dark resume\n");
+		return 0;
+	}
+
 	if (led_cdev->flags & LED_CORE_SUSPENDRESUME)
 		led_classdev_resume(led_cdev);
 
@@ -221,6 +227,8 @@ int led_classdev_register(struct device *parent, struct led_classdev *led_cdev)
 
 	led_init_core(led_cdev);
 
+	dev_dark_resume_add_consumer(led_cdev->dev);
+
 #ifdef CONFIG_LEDS_TRIGGERS
 	led_trigger_set_default(led_cdev);
 #endif
@@ -253,6 +261,7 @@ void led_classdev_unregister(struct led_classdev *led_cdev)
 	led_stop_software_blink(led_cdev);
 	led_set_brightness(led_cdev, LED_OFF);
 
+	dev_dark_resume_remove_consumer(led_cdev->dev);
 	device_unregister(led_cdev->dev);
 
 	down_write(&leds_list_lock);

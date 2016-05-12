@@ -2192,10 +2192,6 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		}
 	/* Fast path - was this the last TRB in the TD for this URB? */
 	} else if (event_trb == td->last_trb) {
-		if (td->urb_length_set && trb_comp_code == COMP_SHORT_TX)
-			return finish_td(xhci, td, event_trb, event, ep,
-					 status, false);
-
 		if (EVENT_TRB_LEN(le32_to_cpu(event->transfer_len)) != 0) {
 			td->urb->actual_length =
 				td->urb->transfer_buffer_length -
@@ -2247,12 +2243,6 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_td *td,
 			td->urb->actual_length +=
 				TRB_LEN(le32_to_cpu(cur_trb->generic.field[2])) -
 				EVENT_TRB_LEN(le32_to_cpu(event->transfer_len));
-
-		if (trb_comp_code == COMP_SHORT_TX) {
-			xhci_dbg(xhci, "mid bulk/intr SP, wait for last TRB event\n");
-			td->urb_length_set = true;
-			return 0;
-		}
 	}
 
 	return finish_td(xhci, td, event_trb, event, ep, status, false);
@@ -3567,7 +3557,7 @@ static unsigned int xhci_get_burst_count(struct xhci_hcd *xhci,
 {
 	unsigned int max_burst;
 
-	if (xhci->hci_version < 0x100 || udev->speed != USB_SPEED_SUPER)
+	if (xhci->hci_version < 0x100 || udev->speed < USB_SPEED_SUPER)
 		return 0;
 
 	max_burst = urb->ep->ss_ep_comp.bMaxBurst;
@@ -3593,6 +3583,7 @@ static unsigned int xhci_get_last_burst_packet_count(struct xhci_hcd *xhci,
 		return 0;
 
 	switch (udev->speed) {
+	case USB_SPEED_SUPER_PLUS:
 	case USB_SPEED_SUPER:
 		/* bMaxBurst is zero based: 0 means 1 packet per burst */
 		max_burst = urb->ep->ss_ep_comp.bMaxBurst;

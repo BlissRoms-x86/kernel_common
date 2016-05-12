@@ -763,21 +763,25 @@ static int vmw_create_dmabuf_proxy(struct drm_device *dev,
 	uint32_t format;
 	struct drm_vmw_size content_base_size;
 	struct vmw_resource *res;
+	unsigned int bytes_pp;
 	int ret;
 
 	switch (mode_cmd->depth) {
 	case 32:
 	case 24:
 		format = SVGA3D_X8R8G8B8;
+		bytes_pp = 4;
 		break;
 
 	case 16:
 	case 15:
 		format = SVGA3D_R5G6B5;
+		bytes_pp = 2;
 		break;
 
 	case 8:
 		format = SVGA3D_P8;
+		bytes_pp = 1;
 		break;
 
 	default:
@@ -785,7 +789,7 @@ static int vmw_create_dmabuf_proxy(struct drm_device *dev,
 		return -EINVAL;
 	}
 
-	content_base_size.width  = mode_cmd->width;
+	content_base_size.width  = mode_cmd->pitch / bytes_pp;
 	content_base_size.height = mode_cmd->height;
 	content_base_size.depth  = 1;
 
@@ -968,7 +972,7 @@ vmw_kms_new_framebuffer(struct vmw_private *dev_priv,
 
 static struct drm_framebuffer *vmw_kms_fb_create(struct drm_device *dev,
 						 struct drm_file *file_priv,
-						 struct drm_mode_fb_cmd2 *mode_cmd2)
+						 const struct drm_mode_fb_cmd2 *mode_cmd2)
 {
 	struct vmw_private *dev_priv = vmw_priv(dev);
 	struct ttm_object_file *tfile = vmw_fpriv(file_priv)->tfile;

@@ -28,6 +28,9 @@
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
 
+/* Machine specific panic information string */
+char *mach_panic_string;
+
 int panic_on_oops = CONFIG_PANIC_ON_OOPS_VALUE;
 static unsigned long tainted_mask;
 static int pause_on_oops;
@@ -157,8 +160,7 @@ void panic(const char *fmt, ...)
 	 * panic() is not being callled from OOPS.
 	 */
 	debug_locks_off();
-	console_trylock();
-	console_unlock();
+	console_flush_on_panic();
 
 	if (!panic_blink)
 		panic_blink = no_blink;
@@ -413,6 +415,11 @@ late_initcall(init_oops_id);
 void print_oops_end_marker(void)
 {
 	init_oops_id();
+
+	if (mach_panic_string)
+		printk(KERN_WARNING "Board Information: %s\n",
+		       mach_panic_string);
+
 	pr_warn("---[ end trace %016llx ]---\n", (unsigned long long)oops_id);
 }
 

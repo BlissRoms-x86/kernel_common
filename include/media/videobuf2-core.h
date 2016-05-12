@@ -379,6 +379,9 @@ struct vb2_buf_ops {
  * @fileio_read_once:		report EOF after reading the first buffer
  * @fileio_write_immediately:	queue buffer after each write() call
  * @allow_zero_bytesused:	allow bytesused == 0 to be passed to the driver
+ * @use_dma_bidirectional:	use DMA_BIDIRECTIONAL for CAPTURE buffers; this
+ *				allows HW to read from the CAPTURE buffers in
+ *				addition to writing; ignored for OUTPUT queues
  * @lock:	pointer to a mutex that protects the vb2_queue struct. The
  *		driver can set this to a mutex to let the v4l2 core serialize
  *		the queuing ioctls. If the driver wants to handle locking
@@ -434,6 +437,7 @@ struct vb2_buf_ops {
  *		when a buffer with the V4L2_BUF_FLAG_LAST is dequeued.
  * @fileio:	file io emulator internal data, used only if emulator is active
  * @threadio:	thread io internal data, used only if thread is active
+ * @dma_dir:	DMA direction to use for buffers on this queue
  */
 struct vb2_queue {
 	unsigned int			type;
@@ -441,6 +445,7 @@ struct vb2_queue {
 	unsigned			fileio_read_once:1;
 	unsigned			fileio_write_immediately:1;
 	unsigned			allow_zero_bytesused:1;
+	unsigned			use_dma_bidirectional:1;
 
 	struct mutex			*lock;
 	void				*owner;
@@ -482,6 +487,7 @@ struct vb2_queue {
 
 	struct vb2_fileio_data		*fileio;
 	struct vb2_threadio_data	*threadio;
+	enum dma_data_direction		dma_dir;
 
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	/*

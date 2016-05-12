@@ -380,9 +380,6 @@ struct drm_minor *drm_minor_acquire(unsigned int minor_id)
 
 	if (!minor) {
 		return ERR_PTR(-ENODEV);
-	} else if (drm_device_is_unplugged(minor->dev)) {
-		drm_dev_unref(minor->dev);
-		return ERR_PTR(-ENODEV);
 	}
 
 	return minor;
@@ -468,8 +465,6 @@ void drm_unplug_dev(struct drm_device *dev)
 	drm_minor_unregister(dev, DRM_MINOR_CONTROL);
 
 	mutex_lock(&drm_global_mutex);
-
-	drm_device_set_unplugged(dev);
 
 	if (dev->open_count == 0) {
 		drm_put_dev(dev);
@@ -633,8 +628,17 @@ struct drm_device *drm_dev_alloc(struct drm_driver *driver,
 		}
 	}
 
+	if (parent) {
+		ret = drm_dev_set_unique(dev, dev_name(parent));
+		if (ret)
+			goto err_setunique;
+	}
+
 	return dev;
 
+err_setunique:
+	if (drm_core_check_feature(dev, DRIVER_GEM))
+		drm_gem_destroy(dev);
 err_ctxbitmap:
 	drm_legacy_ctxbitmap_cleanup(dev);
 	drm_ht_remove(&dev->map_hash);
@@ -797,23 +801,18 @@ EXPORT_SYMBOL(drm_dev_unregister);
 /**
  * drm_dev_set_unique - Set the unique name of a DRM device
  * @dev: device of which to set the unique name
- * @fmt: format string for unique name
+ * @name: unique name
  *
- * Sets the unique name of a DRM device using the specified format string and
- * a variable list of arguments. Drivers can use this at driver probe time if
- * the unique name of the devices they drive is static.
+ * Sets the unique name of a DRM device using the specified string. Drivers
+ * can use this at driver probe time if the unique name of the devices they
+ * drive is static.
  *
  * Return: 0 on success or a negative error code on failure.
  */
-int drm_dev_set_unique(struct drm_device *dev, const char *fmt, ...)
+int drm_dev_set_unique(struct drm_device *dev, const char *name)
 {
-	va_list ap;
-
 	kfree(dev->unique);
-
-	va_start(ap, fmt);
-	dev->unique = kvasprintf(GFP_KERNEL, fmt, ap);
-	va_end(ap);
+	dev->unique = kstrdup(name, GFP_KERNEL);
 
 	return dev->unique ? 0 : -ENOMEM;
 }
@@ -873,6 +872,9 @@ out_unlock:
 	return err;
 }
 
+/* When set to true, allow set/drop master ioctls as normal user */
+bool drm_master_relax;
+
 static const struct file_operations drm_stub_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_stub_open,
@@ -903,6 +905,12 @@ static int __init drm_core_init(void)
 		goto err_p3;
 	}
 
+	if (!debugfs_create_bool("drm_master_relax", S_IRUSR | S_IWUSR,
+				drm_debugfs_root, &drm_master_relax)) {
+		DRM_ERROR(
+			  "Cannot create /sys/kernel/debug/dri/drm_master_relax\n");
+	}
+
 	DRM_INFO("Initialized %s %d.%d.%d %s\n",
 		 CORE_NAME, CORE_MAJOR, CORE_MINOR, CORE_PATCHLEVEL, CORE_DATE);
 	return 0;
@@ -918,7 +926,7 @@ err_p1:
 
 static void __exit drm_core_exit(void)
 {
-	debugfs_remove(drm_debugfs_root);
+	debugfs_remove_recursive(drm_debugfs_root);
 	drm_sysfs_destroy();
 
 	unregister_chrdev(DRM_MAJOR, "drm");

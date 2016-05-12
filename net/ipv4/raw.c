@@ -547,8 +547,10 @@ static int raw_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 
 	if (msg->msg_controllen) {
 		err = ip_cmsg_send(net, msg, &ipc, false);
-		if (err)
+		if (unlikely(err)) {
+			kfree(ipc.opt);
 			goto out;
+		}
 		if (ipc.opt)
 			free = 1;
 	}
@@ -599,7 +601,8 @@ static int raw_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 			   inet->hdrincl ? IPPROTO_RAW : sk->sk_protocol,
 			   inet_sk_flowi_flags(sk) |
 			    (inet->hdrincl ? FLOWI_FLAG_KNOWN_NH : 0),
-			   daddr, saddr, 0, 0);
+			   daddr, saddr, 0, 0,
+			   sock_i_uid(sk));
 
 	if (!saddr && ipc.oif) {
 		err = l3mdev_get_saddr(net, ipc.oif, &fl4);

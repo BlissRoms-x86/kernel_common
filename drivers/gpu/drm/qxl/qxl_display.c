@@ -521,7 +521,7 @@ static const struct drm_framebuffer_funcs qxl_fb_funcs = {
 int
 qxl_framebuffer_init(struct drm_device *dev,
 		     struct qxl_framebuffer *qfb,
-		     struct drm_mode_fb_cmd2 *mode_cmd,
+		     const struct drm_mode_fb_cmd2 *mode_cmd,
 		     struct drm_gem_object *obj)
 {
 	int ret;
@@ -980,7 +980,7 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 			   &qxl_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 
 	drm_encoder_init(dev, &qxl_output->enc, &qxl_enc_funcs,
-			 DRM_MODE_ENCODER_VIRTUAL);
+			 DRM_MODE_ENCODER_VIRTUAL, NULL);
 
 	/* we get HPD via client monitors config */
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
@@ -1003,7 +1003,7 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 static struct drm_framebuffer *
 qxl_user_framebuffer_create(struct drm_device *dev,
 			    struct drm_file *file_priv,
-			    struct drm_mode_fb_cmd2 *mode_cmd)
+			    const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_gem_object *obj;
 	struct qxl_framebuffer *qxl_fb;

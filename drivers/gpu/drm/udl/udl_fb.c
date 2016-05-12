@@ -322,12 +322,6 @@ static void udl_fb_imageblit(struct fb_info *info, const struct fb_image *image)
 static int udl_fb_open(struct fb_info *info, int user)
 {
 	struct udl_fbdev *ufbdev = info->par;
-	struct drm_device *dev = ufbdev->ufb.base.dev;
-	struct udl_device *udl = dev->dev_private;
-
-	/* If the USB device is gone, we don't accept new opens */
-	if (drm_device_is_unplugged(udl->ddev))
-		return -ENODEV;
 
 	ufbdev->fb_count++;
 
@@ -410,7 +404,6 @@ static int udl_user_framebuffer_dirty(struct drm_framebuffer *fb,
 
 	if (ufb->obj->base.import_attach) {
 		ret = dma_buf_begin_cpu_access(ufb->obj->base.import_attach->dmabuf,
-					       0, ufb->obj->base.size,
 					       DMA_FROM_DEVICE);
 		if (ret)
 			goto unlock;
@@ -425,9 +418,8 @@ static int udl_user_framebuffer_dirty(struct drm_framebuffer *fb,
 	}
 
 	if (ufb->obj->base.import_attach) {
-		dma_buf_end_cpu_access(ufb->obj->base.import_attach->dmabuf,
-				       0, ufb->obj->base.size,
-				       DMA_FROM_DEVICE);
+		ret = dma_buf_end_cpu_access(ufb->obj->base.import_attach->dmabuf,
+					     DMA_FROM_DEVICE);
 	}
 
  unlock:
@@ -456,7 +448,7 @@ static const struct drm_framebuffer_funcs udlfb_funcs = {
 static int
 udl_framebuffer_init(struct drm_device *dev,
 		     struct udl_framebuffer *ufb,
-		     struct drm_mode_fb_cmd2 *mode_cmd,
+		     const struct drm_mode_fb_cmd2 *mode_cmd,
 		     struct udl_gem_object *obj)
 {
 	int ret;
@@ -624,7 +616,7 @@ void udl_fbdev_unplug(struct drm_device *dev)
 struct drm_framebuffer *
 udl_fb_user_fb_create(struct drm_device *dev,
 		   struct drm_file *file,
-		   struct drm_mode_fb_cmd2 *mode_cmd)
+		   const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_gem_object *obj;
 	struct udl_framebuffer *ufb;

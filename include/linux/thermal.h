@@ -28,6 +28,7 @@
 #include <linux/of.h>
 #include <linux/idr.h>
 #include <linux/device.h>
+#include <linux/notifier.h>
 #include <linux/workqueue.h>
 #include <uapi/linux/thermal.h>
 
@@ -42,6 +43,9 @@
 
 /* Default weight of a bound cooling device */
 #define THERMAL_WEIGHT_DEFAULT 0
+
+/* use value, which < 0K, to indicate an invalid/uninitialized temperature */
+#define THERMAL_TEMP_INVALID	-274000
 
 /* Unit conversion macros */
 #define DECI_KELVIN_TO_CELSIUS(t)	({			\
@@ -167,6 +171,7 @@ struct thermal_attr {
  * @forced_passive:	If > 0, temperature at which to switch on all ACPI
  *			processor cooling devices.  Currently only used by the
  *			step-wise governor.
+ * @need_update:	if equals 1, thermal_zone_device_update needs to be invoked.
  * @ops:	operations this &thermal_zone_device supports
  * @tzp:	thermal zone parameters
  * @governor:	pointer to the governor for this thermal zone
@@ -194,6 +199,7 @@ struct thermal_zone_device {
 	int emul_temperature;
 	int passive;
 	unsigned int forced_passive;
+	atomic_t need_update;
 	struct thermal_zone_device_ops *ops;
 	struct thermal_zone_params *tzp;
 	struct thermal_governor *governor;
@@ -357,6 +363,11 @@ thermal_zone_of_sensor_register(struct device *dev, int id, void *data,
 				const struct thermal_zone_of_device_ops *ops);
 void thermal_zone_of_sensor_unregister(struct device *dev,
 				       struct thermal_zone_device *tz);
+struct thermal_zone_device *devm_thermal_zone_of_sensor_register(
+		struct device *dev, int id, void *data,
+		const struct thermal_zone_of_device_ops *ops);
+void devm_thermal_zone_of_sensor_unregister(struct device *dev,
+					    struct thermal_zone_device *tz);
 #else
 static inline struct thermal_zone_device *
 thermal_zone_of_sensor_register(struct device *dev, int id, void *data,
@@ -368,6 +379,19 @@ thermal_zone_of_sensor_register(struct device *dev, int id, void *data,
 static inline
 void thermal_zone_of_sensor_unregister(struct device *dev,
 				       struct thermal_zone_device *tz)
+{
+}
+
+static inline struct thermal_zone_device *devm_thermal_zone_of_sensor_register(
+		struct device *dev, int id, void *data,
+		const struct thermal_zone_of_device_ops *ops)
+{
+	return ERR_PTR(-ENODEV);
+}
+
+static inline
+void devm_thermal_zone_of_sensor_unregister(struct device *dev,
+					    struct thermal_zone_device *tz)
 {
 }
 
@@ -487,5 +511,8 @@ static inline int thermal_generate_netlink_event(struct thermal_zone_device *tz,
 	return 0;
 }
 #endif
+
+extern int register_thermal_notifier(struct notifier_block *);
+extern int unregister_thermal_notifier(struct notifier_block *);
 
 #endif /* __THERMAL_H__ */

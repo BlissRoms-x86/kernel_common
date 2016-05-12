@@ -32,6 +32,10 @@
 #include <drm/drmP.h>
 #include <drm/drm_gem.h>
 
+#define DRM_VGEM_MODE_MAP_DUMB 0x00
+#define DRM_IOCTL_VGEM_MODE_MAP_DUMB DRM_IOWR(DRM_COMMAND_BASE + \
+		DRM_VGEM_MODE_MAP_DUMB, struct drm_mode_map_dumb)
+
 #define to_vgem_bo(x) container_of(x, struct drm_vgem_gem_object, base)
 struct drm_vgem_gem_object {
 	struct drm_gem_object base;
@@ -42,5 +46,16 @@ struct drm_vgem_gem_object {
 /* vgem_drv.c */
 extern void vgem_gem_put_pages(struct drm_vgem_gem_object *obj);
 extern int vgem_gem_get_pages(struct drm_vgem_gem_object *obj);
+
+/* vgem_dma_buf.c */
+extern struct sg_table *vgem_gem_prime_get_sg_table(
+			struct drm_gem_object *gobj);
+extern int vgem_gem_prime_pin(struct drm_gem_object *gobj);
+extern void vgem_gem_prime_unpin(struct drm_gem_object *gobj);
+extern void *vgem_gem_prime_vmap(struct drm_gem_object *gobj);
+extern void vgem_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr);
+extern struct drm_gem_object *vgem_gem_prime_import(struct drm_device *dev,
+						    struct dma_buf *dma_buf);
+
 
 #endif

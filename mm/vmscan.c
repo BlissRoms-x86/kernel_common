@@ -46,6 +46,7 @@
 #include <linux/oom.h>
 #include <linux/prefetch.h>
 #include <linux/printk.h>
+#include <linux/debugfs.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -146,6 +147,11 @@ int vm_swappiness = 60;
  */
 unsigned long vm_total_pages;
 
+/*
+ * Low watermark used to prevent fscache thrashing during low memory.
+ */
+int min_filelist_kbytes;
+
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
 
@@ -194,10 +200,15 @@ static bool sane_reclaim(struct scan_control *sc)
 
 static unsigned long zone_reclaimable_pages(struct zone *zone)
 {
+	unsigned long pages_min;
 	unsigned long nr;
 
 	nr = zone_page_state(zone, NR_ACTIVE_FILE) +
 	     zone_page_state(zone, NR_INACTIVE_FILE);
+
+	pages_min = min_filelist_kbytes >> (PAGE_SHIFT - 10);
+	if (nr < pages_min)
+		nr = 0;
 
 	if (get_nr_swap_pages() > 0)
 		nr += zone_page_state(zone, NR_ACTIVE_ANON) +
@@ -219,6 +230,39 @@ static unsigned long get_lru_size(struct lruvec *lruvec, enum lru_list lru)
 
 	return zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru);
 }
+
+struct dentry *debug_file;
+
+static int debug_shrinker_show(struct seq_file *s, void *unused)
+{
+	struct shrinker *shrinker;
+	struct shrink_control sc = {
+		.gfp_mask = -1,
+		.nr_to_scan = 0,
+	};
+
+	down_read(&shrinker_rwsem);
+	list_for_each_entry(shrinker, &shrinker_list, list) {
+		int num_objs;
+
+		num_objs = shrinker->count_objects(shrinker, &sc);
+		seq_printf(s, "%pf %d\n", shrinker->scan_objects, num_objs);
+	}
+	up_read(&shrinker_rwsem);
+	return 0;
+}
+
+static int debug_shrinker_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, debug_shrinker_show, inode->i_private);
+}
+
+static const struct file_operations debug_shrinker_fops = {
+        .open = debug_shrinker_open,
+        .read = seq_read,
+        .llseek = seq_lseek,
+        .release = single_release,
+};
 
 /*
  * Add a shrinker callback to be called from the vm.
@@ -248,6 +292,15 @@ int register_shrinker(struct shrinker *shrinker)
 	return 0;
 }
 EXPORT_SYMBOL(register_shrinker);
+
+static int __init add_shrinker_debug(void)
+{
+	debugfs_create_file("shrinker", 0644, NULL, NULL,
+			    &debug_shrinker_fops);
+	return 0;
+}
+
+late_initcall(add_shrinker_debug);
 
 /*
  * Remove one
@@ -1930,9 +1983,32 @@ static bool inactive_list_is_low(struct lruvec *lruvec, enum lru_list lru)
 		return inactive_anon_is_low(lruvec);
 }
 
+/*
+ * Check low watermark used to prevent fscache thrashing during low memory.
+ */
+static int file_is_low(struct lruvec *lruvec)
+{
+	unsigned long pages_min, active, inactive;
+	struct zone *zone = lruvec_zone(lruvec);
+
+	if (!mem_cgroup_disabled())
+		return false;
+
+	pages_min = min_filelist_kbytes >> (PAGE_SHIFT - 10);
+	active = zone_page_state(zone, NR_ACTIVE_FILE);
+	inactive = zone_page_state(zone, NR_INACTIVE_FILE);
+
+	return ((active + inactive) < pages_min);
+}
+
 static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 				 struct lruvec *lruvec, struct scan_control *sc)
 {
+	int file = is_file_lru(lru);
+
+	if (file && file_is_low(lruvec))
+		return 0;
+
 	if (is_active_lru(lru)) {
 		if (inactive_list_is_low(lruvec, lru))
 			shrink_active_list(nr_to_scan, lruvec, sc, lru);

@@ -477,8 +477,6 @@ static void hid_ctrl(struct urb *urb)
 	struct usbhid_device *usbhid = hid->driver_data;
 	int unplug = 0, status = urb->status;
 
-	spin_lock(&usbhid->lock);
-
 	switch (status) {
 	case 0:			/* success */
 		if (usbhid->ctrl[usbhid->ctrltail].dir == USB_DIR_IN)
@@ -497,6 +495,8 @@ static void hid_ctrl(struct urb *urb)
 	default:		/* error */
 		hid_warn(urb->dev, "ctrl urb status %d received\n", status);
 	}
+
+	spin_lock(&usbhid->lock);
 
 	if (unplug) {
 		usbhid->ctrltail = usbhid->ctrlhead;
@@ -734,8 +734,15 @@ void usbhid_close(struct hid_device *hid)
 		spin_unlock_irq(&usbhid->lock);
 		hid_cancel_delayed_stuff(usbhid);
 		if (!(hid->quirks & HID_QUIRK_ALWAYS_POLL)) {
+			int autopm_error;
+
+			autopm_error = usb_autopm_get_interface(usbhid->intf);
+
 			usb_kill_urb(usbhid->urbin);
 			usbhid->intf->needs_remote_wakeup = 0;
+
+			if (!autopm_error)
+				usb_autopm_put_interface(usbhid->intf);
 		}
 	} else {
 		spin_unlock_irq(&usbhid->lock);
@@ -1179,8 +1186,16 @@ static void usbhid_stop(struct hid_device *hid)
 	if (WARN_ON(!usbhid))
 		return;
 
-	if (hid->quirks & HID_QUIRK_ALWAYS_POLL)
+	if (hid->quirks & HID_QUIRK_ALWAYS_POLL) {
+		int autopm_error;
+
+		autopm_error = usb_autopm_get_interface(usbhid->intf);
+
 		usbhid->intf->needs_remote_wakeup = 0;
+
+		if (!autopm_error)
+			usb_autopm_put_interface(usbhid->intf);
+	}
 
 	clear_bit(HID_STARTED, &usbhid->iofl);
 	spin_lock_irq(&usbhid->lock);	/* Sync with error and led handlers */

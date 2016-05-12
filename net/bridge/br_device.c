@@ -28,6 +28,8 @@
 const struct nf_br_ops __rcu *nf_br_ops __read_mostly;
 EXPORT_SYMBOL_GPL(nf_br_ops);
 
+static struct lock_class_key bridge_netdev_addr_lock_key;
+
 /* net device transmit always called with BH disabled */
 netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 {
@@ -46,15 +48,16 @@ netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 		return NETDEV_TX_OK;
 	}
 
-	u64_stats_update_begin(&brstats->syncp);
-	brstats->tx_packets++;
-	brstats->tx_bytes += skb->len;
-	u64_stats_update_end(&brstats->syncp);
-
 	BR_INPUT_SKB_CB(skb)->brdev = dev;
 
 	skb_reset_mac_header(skb);
 	skb_pull(skb, ETH_HLEN);
+
+	u64_stats_update_begin(&brstats->syncp);
+	brstats->tx_packets++;
+	/* Exclude ETH_HLEN from byte stats for consistency with Rx chain */
+	brstats->tx_bytes += skb->len;
+	u64_stats_update_end(&brstats->syncp);
 
 	if (!br_allowed_ingress(br, br_vlan_group_rcu(br), skb, &vid))
 		goto out;
@@ -87,6 +90,11 @@ out:
 	return NETDEV_TX_OK;
 }
 
+static void br_set_lockdep_class(struct net_device *dev)
+{
+	lockdep_set_class(&dev->addr_list_lock, &bridge_netdev_addr_lock_key);
+}
+
 static int br_dev_init(struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);
@@ -99,6 +107,7 @@ static int br_dev_init(struct net_device *dev)
 	err = br_vlan_init(br);
 	if (err)
 		free_percpu(br->stats);
+	br_set_lockdep_class(dev);
 
 	return err;
 }

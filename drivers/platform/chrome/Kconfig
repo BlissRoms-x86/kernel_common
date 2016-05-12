@@ -4,7 +4,6 @@
 
 menuconfig CHROME_PLATFORMS
 	bool "Platform support for Chrome hardware"
-	depends on X86 || ARM || ARM64 || COMPILE_TEST
 	---help---
 	  Say Y here to get to see options for platform support for
 	  various Chromebooks and Chromeboxes. This option alone does
@@ -13,6 +12,25 @@ menuconfig CHROME_PLATFORMS
 	  If you say N, all options in this submenu will be skipped and disabled.
 
 if CHROME_PLATFORMS
+
+config CHROMEOS
+	bool
+	depends on CHROMEOS_OF_FIRMWARE || (NVRAM && ACPI_CHROMEOS)
+
+	---help---
+	  Provides abstracted interfaces to the firmware features provided on
+	  ChromeOS devices. It depends on a lowlevel driver to implement the
+	  firmware interface on the platform.
+
+config CHROMEOS_OF_FIRMWARE
+	bool "ChromeOS firmware interface driver"
+	depends on OF && MFD_CROS_EC
+	select CHROMEOS
+	select CHROMEOS_VBC_EC
+	---help---
+	  This driver provides an interface to ChromeOS firmware.
+
+	  Say Y here if you are building for a ChromeOS device.
 
 config CHROMEOS_LAPTOP
 	tristate "Chrome OS Laptop"
@@ -58,6 +76,15 @@ config CROS_EC_LPC
 
           To compile this driver as a module, choose M here: the
           module will be called cros_ec_lpc.
+
+config CROS_EC_LPC_MEC
+	bool "ChromeOS Embedded Controller LPC Microchip EC (MEC) variant"
+	depends on CROS_EC_LPC
+	default n
+	help
+	  If you say Y here, a variant LPC protocol for the Microchip EC
+	  will be used. Note that this variant is not backward compatible
+	  with non-Microchip ECs.
 
 config CROS_EC_PROTO
         bool

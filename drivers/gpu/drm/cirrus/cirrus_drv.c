@@ -16,11 +16,11 @@
 #include "cirrus_drv.h"
 
 int cirrus_modeset = -1;
-int cirrus_bpp = 24;
+int cirrus_bpp = 32;
 
 MODULE_PARM_DESC(modeset, "Disable/Enable modesetting");
 module_param_named(modeset, cirrus_modeset, int, 0400);
-MODULE_PARM_DESC(bpp, "Max bits-per-pixel (default:24)");
+MODULE_PARM_DESC(bpp, "Max bits-per-pixel (default:32)");
 module_param_named(bpp, cirrus_bpp, int, 0400);
 
 /*
@@ -121,6 +121,7 @@ static int cirrus_pm_resume(struct device *dev)
 static const struct file_operations cirrus_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
+	.read = drm_read,
 	.release = drm_release,
 	.unlocked_ioctl = drm_ioctl,
 	.mmap = cirrus_mmap,
@@ -130,7 +131,7 @@ static const struct file_operations cirrus_driver_fops = {
 #endif
 };
 static struct drm_driver driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM,
+	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME,
 	.load = cirrus_driver_load,
 	.unload = cirrus_driver_unload,
 	.set_busid = drm_pci_set_busid,
@@ -145,6 +146,15 @@ static struct drm_driver driver = {
 	.dumb_create = cirrus_dumb_create,
 	.dumb_map_offset = cirrus_dumb_mmap_offset,
 	.dumb_destroy = drm_gem_dumb_destroy,
+	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
+	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
+	.gem_prime_export = drm_gem_prime_export,
+	.gem_prime_import = drm_gem_prime_import,
+	.gem_prime_pin = cirrus_gem_prime_pin,
+	.gem_prime_get_sg_table = cirrus_gem_prime_get_sg_table,
+	.gem_prime_vmap = cirrus_gem_prime_vmap,
+	.gem_prime_vunmap = cirrus_gem_prime_vunmap,
+	.gem_prime_mmap = cirrus_gem_prime_mmap
 };
 
 static const struct dev_pm_ops cirrus_pm_ops = {

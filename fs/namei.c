@@ -865,8 +865,55 @@ static inline void put_link(struct nameidata *nd)
 		path_put(&last->link);
 }
 
-int sysctl_protected_symlinks __read_mostly = 0;
-int sysctl_protected_hardlinks __read_mostly = 0;
+int sysctl_protected_symlinks __read_mostly = 1;
+int sysctl_protected_hardlinks __read_mostly = 1;
+
+/**
+ * nameidata_set_temporary - Used by Chromium OS LSM to check
+ * whether a mount point includes traversing symlinks.
+ */
+int nameidata_set_temporary(const char __user *dir_name)
+{
+	struct nameidata *tmp;
+
+	tmp = kmalloc(sizeof(*tmp), GFP_KERNEL);
+	if (unlikely(!tmp))
+		return -ENOMEM;
+	set_nameidata(tmp, AT_FDCWD,
+		      getname_flags(dir_name, LOOKUP_FOLLOW, NULL));
+	return 0;
+}
+
+/**
+ * nameidata_restore_temporary - Used by Chromium OS LSM to check
+ * whether a mount point includes traversing symlinks.
+ */
+void nameidata_restore_temporary(void)
+{
+	struct nameidata *tmp = current->nameidata;
+
+	restore_nameidata();
+	kfree(tmp);
+}
+
+/**
+ * nameidata_get_total_link_count - Used by security/chromiumos/lsm.c to check
+ * whether a mount point includes traversing symlinks.
+ */
+int nameidata_get_total_link_count(void)
+{
+	struct nameidata *tmp = current->nameidata;
+
+	if (unlikely(!tmp)) {
+		WARN(1, "Unexpectedly got here with current->nameidata == NULL");
+		/* Pretend we did traverse symlinks, that is the safe/sane
+		 * result here from a security point of view...
+		 */
+		return MAXSYMLINKS;
+	}
+	return tmp->total_link_count;
+}
+EXPORT_SYMBOL(nameidata_get_total_link_count);
 
 /**
  * may_follow_link - Check symlink following for unsafe situations
@@ -1711,6 +1758,11 @@ static inline int should_follow_link(struct nameidata *nd, struct path *link,
 		return 0;
 	if (!follow)
 		return 0;
+	/* make sure that d_is_symlink above matches inode */
+	if (nd->flags & LOOKUP_RCU) {
+		if (read_seqcount_retry(&link->dentry->d_seq, seq))
+			return -ECHILD;
+	}
 	return pick_link(nd, link, inode, seq);
 }
 
@@ -1742,11 +1794,11 @@ static int walk_component(struct nameidata *nd, int flags)
 		if (err < 0)
 			return err;
 
-		inode = d_backing_inode(path.dentry);
 		seq = 0;	/* we are already out of RCU mode */
 		err = -ENOENT;
 		if (d_is_negative(path.dentry))
 			goto out_path_put;
+		inode = d_backing_inode(path.dentry);
 	}
 
 	if (flags & WALK_PUT)
@@ -3130,12 +3182,12 @@ retry_lookup:
 		return error;
 
 	BUG_ON(nd->flags & LOOKUP_RCU);
-	inode = d_backing_inode(path.dentry);
 	seq = 0;	/* out of RCU mode, so the value doesn't matter */
 	if (unlikely(d_is_negative(path.dentry))) {
 		path_to_nameidata(&path, nd);
 		return -ENOENT;
 	}
+	inode = d_backing_inode(path.dentry);
 finish_lookup:
 	if (nd->depth)
 		put_link(nd);
@@ -3143,11 +3195,6 @@ finish_lookup:
 				   inode, seq);
 	if (unlikely(error))
 		return error;
-
-	if (unlikely(d_is_symlink(path.dentry)) && !(open_flag & O_PATH)) {
-		path_to_nameidata(&path, nd);
-		return -ELOOP;
-	}
 
 	if ((nd->flags & LOOKUP_RCU) || nd->path.mnt != path.mnt) {
 		path_to_nameidata(&path, nd);
@@ -3167,6 +3214,10 @@ finish_open:
 		return error;
 	}
 	audit_inode(nd->name, nd->path.dentry, 0);
+	if (unlikely(d_is_symlink(nd->path.dentry)) && !(open_flag & O_PATH)) {
+		error = -ELOOP;
+		goto out;
+	}
 	error = -EISDIR;
 	if ((open_flag & O_CREAT) && d_is_dir(nd->path.dentry))
 		goto out;
@@ -3210,6 +3261,10 @@ opened:
 			goto exit_fput;
 	}
 out:
+	if (unlikely(error > 0)) {
+		WARN_ON(1);
+		error = -EINVAL;
+	}
 	if (got_write)
 		mnt_drop_write(nd->path.mnt);
 	path_put(&save_parent);

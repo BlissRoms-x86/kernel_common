@@ -235,27 +235,96 @@ unlock:
 	return ret;
 }
 
+int vgem_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	struct drm_file *priv = filp->private_data;
+	struct drm_device *dev = priv->minor->dev;
+	struct drm_vma_offset_node *node;
+	struct drm_gem_object *obj;
+	struct drm_vgem_gem_object *vgem_obj;
+	int ret = 0;
+
+	mutex_lock(&dev->struct_mutex);
+
+	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
+					   vma->vm_pgoff,
+					   vma_pages(vma));
+	if (!node) {
+		ret = -EINVAL;
+		goto out_unlock;
+	} else if (!drm_vma_node_is_allowed(node, filp)) {
+		ret = -EACCES;
+		goto out_unlock;
+	}
+
+	obj = container_of(node, struct drm_gem_object, vma_node);
+
+	vgem_obj = to_vgem_bo(obj);
+
+	if (obj->dma_buf && vgem_obj->use_dma_buf) {
+		ret = dma_buf_mmap(obj->dma_buf, vma, 0);
+		goto out_unlock;
+	}
+
+	if (!obj->dev->driver->gem_vm_ops) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+
+	vma->vm_flags |= VM_IO | VM_MIXEDMAP | VM_DONTEXPAND | VM_DONTDUMP;
+	vma->vm_ops = obj->dev->driver->gem_vm_ops;
+	vma->vm_private_data = vgem_obj;
+	vma->vm_page_prot =
+		pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
+
+	mutex_unlock(&dev->struct_mutex);
+	drm_gem_vm_open(vma);
+	return ret;
+
+out_unlock:
+	mutex_unlock(&dev->struct_mutex);
+
+	return ret;
+}
+
+
 static struct drm_ioctl_desc vgem_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(VGEM_MODE_MAP_DUMB, drm_mode_mmap_dumb_ioctl,
+			  DRM_CONTROL_ALLOW|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
 
 static const struct file_operations vgem_driver_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
-	.mmap		= drm_gem_mmap,
+	.mmap		= vgem_drm_gem_mmap,
 	.poll		= drm_poll,
 	.read		= drm_read,
 	.unlocked_ioctl = drm_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= drm_compat_ioctl,
+#endif
 	.release	= drm_release,
 };
 
 static struct drm_driver vgem_driver = {
-	.driver_features		= DRIVER_GEM,
+	.driver_features		=
+		DRIVER_GEM | DRIVER_PRIME | DRIVER_RENDER,
 	.gem_free_object		= vgem_gem_free_object,
 	.gem_vm_ops			= &vgem_gem_vm_ops,
 	.ioctls				= vgem_ioctls,
+	.num_ioctls			= ARRAY_SIZE(vgem_ioctls),
 	.fops				= &vgem_driver_fops,
 	.dumb_create			= vgem_gem_dumb_create,
 	.dumb_map_offset		= vgem_gem_dumb_map,
+	.prime_handle_to_fd		= drm_gem_prime_handle_to_fd,
+	.prime_fd_to_handle		= drm_gem_prime_fd_to_handle,
+	.gem_prime_export		= drm_gem_prime_export,
+	.gem_prime_import		= vgem_gem_prime_import,
+	.gem_prime_pin			= vgem_gem_prime_pin,
+	.gem_prime_unpin		= vgem_gem_prime_unpin,
+	.gem_prime_get_sg_table		= vgem_gem_prime_get_sg_table,
+	.gem_prime_vmap			= vgem_gem_prime_vmap,
+	.gem_prime_vunmap		= vgem_gem_prime_vunmap,
 	.name	= DRIVER_NAME,
 	.desc	= DRIVER_DESC,
 	.date	= DRIVER_DATE,
@@ -263,37 +332,65 @@ static struct drm_driver vgem_driver = {
 	.minor	= DRIVER_MINOR,
 };
 
-struct drm_device *vgem_device;
+static int vgem_platform_probe(struct platform_device *pdev)
+{
+	vgem_driver.num_ioctls = ARRAY_SIZE(vgem_ioctls);
+
+	return drm_platform_init(&vgem_driver, pdev);
+}
+
+static int vgem_platform_remove(struct platform_device *pdev)
+{
+	drm_put_dev(platform_get_drvdata(pdev));
+	return 0;
+}
+
+static struct platform_driver vgem_platform_driver = {
+	.probe		= vgem_platform_probe,
+	.remove		= vgem_platform_remove,
+	.driver		= {
+		.owner	= THIS_MODULE,
+		.name	= DRIVER_NAME,
+	},
+};
+
+static struct platform_device *vgem_device;
 
 static int __init vgem_init(void)
 {
 	int ret;
 
-	vgem_device = drm_dev_alloc(&vgem_driver, NULL);
+	ret = platform_driver_register(&vgem_platform_driver);
+	if (ret)
+		goto out;
+
+	vgem_device = platform_device_alloc("vgem", -1);
 	if (!vgem_device) {
 		ret = -ENOMEM;
-		goto out;
+		goto unregister_out;
 	}
 
-	drm_dev_set_unique(vgem_device, "vgem");
+	vgem_device->dev.coherent_dma_mask = ~0ULL;
+	vgem_device->dev.dma_mask = &vgem_device->dev.coherent_dma_mask;
 
-	ret  = drm_dev_register(vgem_device, 0);
-
+	ret = platform_device_add(vgem_device);
 	if (ret)
-		goto out_unref;
+		goto put_out;
 
 	return 0;
 
-out_unref:
-	drm_dev_unref(vgem_device);
+put_out:
+	platform_device_put(vgem_device);
+unregister_out:
+	platform_driver_unregister(&vgem_platform_driver);
 out:
 	return ret;
 }
 
 static void __exit vgem_exit(void)
 {
-	drm_dev_unregister(vgem_device);
-	drm_dev_unref(vgem_device);
+	platform_device_unregister(vgem_device);
+	platform_driver_unregister(&vgem_platform_driver);
 }
 
 module_init(vgem_init);

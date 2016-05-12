@@ -585,6 +585,13 @@ struct drm_driver {
 	int (*gem_open_object) (struct drm_gem_object *, struct drm_file *);
 	void (*gem_close_object) (struct drm_gem_object *, struct drm_file *);
 
+	/**
+	 * Hook for allocating the GEM object struct, for use by core
+	 * helpers.
+	 */
+	struct drm_gem_object *(*gem_create_object)(struct drm_device *dev,
+						    size_t size);
+
 	/* prime: */
 	/* export handle -> fd (see drm_gem_prime_handle_to_fd() helper) */
 	int (*prime_handle_to_fd)(struct drm_device *dev, struct drm_file *file_priv,
@@ -870,19 +877,6 @@ static __inline__ int drm_core_check_feature(struct drm_device *dev,
 	return ((dev->driver->driver_features & feature) ? 1 : 0);
 }
 
-static inline void drm_device_set_unplugged(struct drm_device *dev)
-{
-	smp_wmb();
-	atomic_set(&dev->unplugged, 1);
-}
-
-static inline int drm_device_is_unplugged(struct drm_device *dev)
-{
-	int ret = atomic_read(&dev->unplugged);
-	smp_rmb();
-	return ret;
-}
-
 static inline bool drm_is_render_client(const struct drm_file *file_priv)
 {
 	return file_priv->minor->type == DRM_MINOR_RENDER;
@@ -1005,6 +999,7 @@ extern void drm_put_dev(struct drm_device *dev);
 extern void drm_unplug_dev(struct drm_device *dev);
 extern unsigned int drm_debug;
 extern bool drm_atomic;
+extern bool drm_master_relax;
 
 				/* Debugfs support */
 #if defined(CONFIG_DEBUG_FS)
@@ -1059,7 +1054,7 @@ void drm_dev_ref(struct drm_device *dev);
 void drm_dev_unref(struct drm_device *dev);
 int drm_dev_register(struct drm_device *dev, unsigned long flags);
 void drm_dev_unregister(struct drm_device *dev);
-int drm_dev_set_unique(struct drm_device *dev, const char *fmt, ...);
+int drm_dev_set_unique(struct drm_device *dev, const char *name);
 
 struct drm_minor *drm_minor_acquire(unsigned int minor_id);
 void drm_minor_release(struct drm_minor *minor);

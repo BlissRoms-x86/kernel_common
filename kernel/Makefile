@@ -30,6 +30,8 @@ obj-y += irq/
 obj-y += rcu/
 obj-y += livepatch/
 
+obj-$(CONFIG_ALT_SYSCALL) += alt-syscall.o
+
 obj-$(CONFIG_CHECKPOINT_RESTORE) += kcmp.o
 obj-$(CONFIG_FREEZER) += freezer.o
 obj-$(CONFIG_PROFILING) += profile.o
@@ -47,6 +49,7 @@ endif
 obj-$(CONFIG_UID16) += uid16.o
 obj-$(CONFIG_MODULES) += module.o
 obj-$(CONFIG_MODULE_SIG) += module_signing.o
+obj-$(CONFIG_TEST_MODULE) += test_module.o
 obj-$(CONFIG_KALLSYMS) += kallsyms.o
 obj-$(CONFIG_BSD_PROCESS_ACCT) += acct.o
 obj-$(CONFIG_KEXEC_CORE) += kexec_core.o

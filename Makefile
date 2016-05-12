@@ -1,6 +1,6 @@
 VERSION = 4
 PATCHLEVEL = 4
-SUBLEVEL = 0
+SUBLEVEL = 4
 EXTRAVERSION =
 NAME = Blurry Fish Butt
 
@@ -745,6 +745,10 @@ endif
 # arch Makefile may override CC so keep this after arch Makefile is included
 NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
 CHECKFLAGS     += $(NOSTDINC_FLAGS)
+
+ifdef CONFIG_ERROR_ON_WARNING
+KBUILD_CFLAGS += -Werror
+endif
 
 # warn about C99 declaration after statement
 KBUILD_CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)

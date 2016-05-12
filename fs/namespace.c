@@ -749,7 +749,12 @@ static struct mountpoint *new_mountpoint(struct dentry *dentry)
 	struct mountpoint *mp;
 	int ret;
 
-	mp = kmalloc(sizeof(struct mountpoint), GFP_KERNEL);
+	/*
+	 * We are allocating as GFP_NOFS to appease lockdep:
+	 * since we are holding i_mutex we should not try to
+	 * recurse into filesystem code.
+	 */
+	mp = kmalloc(sizeof(struct mountpoint), GFP_NOFS);
 	if (!mp)
 		return ERR_PTR(-ENOMEM);
 
@@ -1562,6 +1567,7 @@ void __detach_mounts(struct dentry *dentry)
 		goto out_unlock;
 
 	lock_mount_hash();
+	event++;
 	while (!hlist_empty(&mp->m_list)) {
 		mnt = hlist_entry(mp->m_list.first, struct mount, mnt_mp_list);
 		if (mnt->mnt.mnt_flags & MNT_UMOUNT) {
@@ -1576,7 +1582,7 @@ out_unlock:
 	namespace_unlock();
 }
 
-/* 
+/*
  * Is the caller allowed to modify his namespace?
  */
 static inline bool may_mount(void)
@@ -2669,12 +2675,19 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		((char *)data_page)[PAGE_SIZE - 1] = 0;
 
 	/* ... and get the mountpoint */
-	retval = user_path(dir_name, &path);
+	retval = nameidata_set_temporary(dir_name);
 	if (retval)
 		return retval;
 
+	retval = user_path(dir_name, &path);
+	if (retval) {
+		nameidata_restore_temporary();
+		return retval;
+	}
+
 	retval = security_sb_mount(dev_name, &path,
 				   type_page, flags, data_page);
+	nameidata_restore_temporary();
 	if (!retval && !may_mount())
 		retval = -EPERM;
 	if (retval)

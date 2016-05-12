@@ -108,7 +108,7 @@ config MFD_CROS_EC
 	select MFD_CORE
 	select CHROME_PLATFORMS
 	select CROS_EC_PROTO
-	depends on X86 || ARM || COMPILE_TEST
+	depends on X86 || ARM || ARM64 || COMPILE_TEST
 	help
 	  If you say Y here you get support for the ChromeOS Embedded
 	  Controller (EC) providing keyboard, battery and power services.
@@ -134,6 +134,17 @@ config MFD_CROS_EC_SPI
 	  through a SPI bus, using a byte-level protocol. Since the EC's
 	  response time cannot be guaranteed, we support ignoring
 	  'pre-amble' bytes before the response actually starts.
+
+config MFD_CROS_EC_PD_UPDATE
+	tristate "ChromeOS Embedded Controller PD device update driver"
+	depends on CROS_EC_CHARDEV && (ACPI || OF)
+
+	help
+	  If you say Y here, you get support for updating ChromeOS
+	  PD device firmware.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called cros_ec_pd_update.
 
 config MFD_ASIC3
 	bool "Compaq ASIC3"

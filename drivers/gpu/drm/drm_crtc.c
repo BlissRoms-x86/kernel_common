@@ -45,7 +45,7 @@
 
 static struct drm_framebuffer *
 internal_framebuffer_create(struct drm_device *dev,
-			    struct drm_mode_fb_cmd2 *r,
+			    const struct drm_mode_fb_cmd2 *r,
 			    struct drm_file *file_priv);
 
 /* Avoid boilerplate.  I'm tired of typing. */
@@ -657,6 +657,7 @@ DEFINE_WW_CLASS(crtc_ww_class);
  * @primary: Primary plane for CRTC
  * @cursor: Cursor plane for CRTC
  * @funcs: callbacks for the new CRTC
+ * @name: printf style format string for the CRTC name, or NULL for default name
  *
  * Inits a new object created as base part of a driver crtc object.
  *
@@ -666,7 +667,8 @@ DEFINE_WW_CLASS(crtc_ww_class);
 int drm_crtc_init_with_planes(struct drm_device *dev, struct drm_crtc *crtc,
 			      struct drm_plane *primary,
 			      struct drm_plane *cursor,
-			      const struct drm_crtc_funcs *funcs)
+			      const struct drm_crtc_funcs *funcs,
+			      const char *name, ...)
 {
 	struct drm_mode_config *config = &dev->mode_config;
 	int ret;
@@ -1075,6 +1077,7 @@ EXPORT_SYMBOL(drm_connector_unplug_all);
  * @encoder: the encoder to init
  * @funcs: callbacks for this encoder
  * @encoder_type: user visible type of the encoder
+ * @name: printf style format string for the encoder name, or NULL for default name
  *
  * Initialises a preallocated encoder. Encoder should be
  * subclassed as part of driver encoder objects.
@@ -1085,7 +1088,7 @@ EXPORT_SYMBOL(drm_connector_unplug_all);
 int drm_encoder_init(struct drm_device *dev,
 		      struct drm_encoder *encoder,
 		      const struct drm_encoder_funcs *funcs,
-		      int encoder_type)
+		      int encoder_type, const char *name, ...)
 {
 	int ret;
 
@@ -1150,6 +1153,7 @@ EXPORT_SYMBOL(drm_encoder_cleanup);
  * @formats: array of supported formats (%DRM_FORMAT_*)
  * @format_count: number of elements in @formats
  * @type: type of plane (overlay, primary, cursor)
+ * @name: printf style format string for the plane name, or NULL for default name
  *
  * Initializes a plane object of type @type.
  *
@@ -1160,7 +1164,8 @@ int drm_universal_plane_init(struct drm_device *dev, struct drm_plane *plane,
 			     unsigned long possible_crtcs,
 			     const struct drm_plane_funcs *funcs,
 			     const uint32_t *formats, unsigned int format_count,
-			     enum drm_plane_type type)
+			     enum drm_plane_type type,
+			     const char *name, ...)
 {
 	struct drm_mode_config *config = &dev->mode_config;
 	int ret;
@@ -1240,7 +1245,7 @@ int drm_plane_init(struct drm_device *dev, struct drm_plane *plane,
 
 	type = is_primary ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 	return drm_universal_plane_init(dev, plane, possible_crtcs, funcs,
-					formats, format_count, type);
+					formats, format_count, type, NULL);
 }
 EXPORT_SYMBOL(drm_plane_init);
 
@@ -3235,7 +3240,7 @@ static int framebuffer_check(const struct drm_mode_fb_cmd2 *r)
 
 static struct drm_framebuffer *
 internal_framebuffer_create(struct drm_device *dev,
-			    struct drm_mode_fb_cmd2 *r,
+			    const struct drm_mode_fb_cmd2 *r,
 			    struct drm_file *file_priv)
 {
 	struct drm_mode_config *config = &dev->mode_config;
@@ -5402,6 +5407,7 @@ int drm_mode_mmap_dumb_ioctl(struct drm_device *dev,
 
 	return dev->driver->dumb_map_offset(file_priv, dev, args->handle, &args->offset);
 }
+EXPORT_SYMBOL(drm_mode_mmap_dumb_ioctl);
 
 /**
  * drm_mode_destroy_dumb_ioctl - destroy a dumb backing strage buffer

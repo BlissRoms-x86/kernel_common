@@ -357,8 +357,19 @@ static void mt_feature_mapping(struct hid_device *hdev,
 			break;
 		}
 
-		td->inputmode = field->report->id;
-		td->inputmode_index = usage->usage_index;
+		if (td->inputmode < 0) {
+			td->inputmode = field->report->id;
+			td->inputmode_index = usage->usage_index;
+		} else {
+			/*
+			 * Some elan panels wrongly declare 2 input mode
+			 * features, and silently ignore when we set the
+			 * value in the second field. Skip the second feature
+			 * and hope for the best.
+			 */
+			dev_info(&hdev->dev,
+				 "Ignoring the extra HID_DG_INPUTMODE\n");
+		}
 
 		break;
 	case HID_DG_CONTACTMAX:
@@ -433,6 +444,16 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	/* count the buttons on touchpads */
 	if ((usage->hid & HID_USAGE_PAGE) == HID_UP_BUTTON)
 		td->buttons_count++;
+
+	/* Only map fields from TouchScreen or TouchPad collections.
+         * We need to ignore fields that belong to other collections
+         * such as Mouse that might have the same GenericDesktop usages. */
+	if (field->application == HID_DG_TOUCHSCREEN)
+		set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
+	else if (field->application == HID_DG_TOUCHPAD)
+		set_bit(INPUT_PROP_POINTER, hi->input->propbit);
+	else
+		return 0;
 
 	if (usage->usage_index)
 		prev_usage = &field->usage[usage->usage_index - 1];
@@ -1128,11 +1149,32 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	return 0;
 }
 
+static int mt_release_touches(struct hid_device *hid)
+{
+	struct hid_input *hidinput;
+
+	list_for_each_entry(hidinput, &hid->inputs, list) {
+		struct input_dev *input_dev = hidinput->input;
+		struct input_mt *mt = input_dev->mt;
+		int i;
+
+		for (i = 0; i < mt->num_slots; i++) {
+			input_mt_slot(input_dev, i);
+			input_mt_report_slot_state(input_dev, MT_TOOL_FINGER,
+						   false);
+		}
+		input_sync(input_dev);
+	}
+
+	return 0;
+}
+
 #ifdef CONFIG_PM
 static int mt_reset_resume(struct hid_device *hdev)
 {
 	mt_set_maxcontacts(hdev);
 	mt_set_input_mode(hdev);
+	mt_release_touches(hdev);
 	return 0;
 }
 

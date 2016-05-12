@@ -402,7 +402,7 @@ static irqreturn_t atmel_hlcdc_dc_irq_handler(int irq, void *data)
 }
 
 static struct drm_framebuffer *atmel_hlcdc_fb_create(struct drm_device *dev,
-		struct drm_file *file_priv, struct drm_mode_fb_cmd2 *mode_cmd)
+		struct drm_file *file_priv, const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	return drm_fb_cma_create(dev, file_priv, mode_cmd);
 }
@@ -732,10 +732,6 @@ static int atmel_hlcdc_dc_drm_probe(struct platform_device *pdev)
 	ddev = drm_dev_alloc(&atmel_hlcdc_dc_driver, &pdev->dev);
 	if (!ddev)
 		return -ENOMEM;
-
-	ret = drm_dev_set_unique(ddev, dev_name(ddev->dev));
-	if (ret)
-		goto err_unref;
 
 	ret = atmel_hlcdc_dc_load(ddev);
 	if (ret)

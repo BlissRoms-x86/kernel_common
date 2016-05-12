@@ -341,8 +341,9 @@ static int cros_ec_i2c_resume(struct device *dev)
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(cros_ec_i2c_pm_ops, cros_ec_i2c_suspend,
-			  cros_ec_i2c_resume);
+const struct dev_pm_ops cros_ec_i2c_pm_ops = {
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(cros_ec_i2c_suspend, cros_ec_i2c_resume)
+};
 
 static const struct of_device_id cros_ec_i2c_of_match[] = {
 	{ .compatible = "google,cros-ec-i2c", },
@@ -367,7 +368,17 @@ static struct i2c_driver cros_ec_driver = {
 	.id_table	= cros_ec_i2c_id,
 };
 
-module_i2c_driver(cros_ec_driver);
+static int __init cros_ec_init(void)
+{
+	return i2c_add_driver(&cros_ec_driver);
+}
+subsys_initcall(cros_ec_init);
+
+static void __exit cros_ec_exit(void)
+{
+	i2c_del_driver(&cros_ec_driver);
+}
+module_exit(cros_ec_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("ChromeOS EC multi function device");

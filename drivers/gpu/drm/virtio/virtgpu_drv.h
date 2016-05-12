@@ -62,6 +62,7 @@ struct virtio_gpu_object {
 	struct ttm_placement		placement;
 	struct ttm_buffer_object	tbo;
 	struct ttm_bo_kmap_obj		kmap;
+	struct ttm_bo_kmap_obj		dma_buf_vmap;
 };
 #define gem_to_virtio_gpu_obj(gobj) \
 	container_of((gobj), struct virtio_gpu_object, gem_base)
@@ -328,7 +329,7 @@ void virtio_gpu_dequeue_fence_func(struct work_struct *work);
 /* virtio_gpu_display.c */
 int virtio_gpu_framebuffer_init(struct drm_device *dev,
 				struct virtio_gpu_framebuffer *vgfb,
-				struct drm_mode_fb_cmd2 *mode_cmd,
+				const struct drm_mode_fb_cmd2 *mode_cmd,
 				struct drm_gem_object *obj);
 int virtio_gpu_modeset_init(struct virtio_gpu_device *vgdev);
 void virtio_gpu_modeset_fini(struct virtio_gpu_device *vgdev);
