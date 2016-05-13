@@ -1593,10 +1593,10 @@ found:
 		switch (pipe_config->port_clock / 2) {
 		case 108000:
 		case 216000:
-			vco = 8640;
+			vco = 8640000;
 			break;
 		default:
-			vco = 8100;
+			vco = 8100000;
 			break;
 		}
 
