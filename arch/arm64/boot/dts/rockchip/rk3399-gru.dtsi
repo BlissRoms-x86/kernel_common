@@ -480,6 +480,61 @@
 	status = "okay";
 };
 
+ap_i2c_mic: &i2c1 {
+	status = "okay";
+
+	// TODO: device can handle 1MHz, can the bus?
+	// http://crosbug.com/p/53683
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+	// TODO: Put realtek,rt5514 here
+};
+
+ap_i2c_ts: &i2c3 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+};
+
+ap_i2c_tp: &i2c5 {
+	status = "okay";
+
+	/*
+	 * Note strange pullup enable.  Apparently this avoids leakage but
+	 * still allows us to get nice 4.7K pullups for high speed i2c
+	 * transfers.  Basically we want the pullup on whenever the ap is
+	 * alive, so the "en" pin just gets set to output high.
+	 */
+	pinctrl-0 = <&i2c5_xfer &ap_i2c_tp_pu_en>;
+
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+};
+
+ap_i2c_audio: &i2c8 {
+	status = "okay";
+
+	// TODO: device can handle 1MHz, can the bus?  Probably...
+	// http://crosbug.com/p/53683
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+
+	// TODO: Put dlg,da7219 here
+};
+
 &i2s0 {
 	status = "okay";
 };
