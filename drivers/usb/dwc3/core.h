@@ -788,9 +788,6 @@ struct dwc3 {
 
 	enum usb_dr_mode	dr_mode;
 
-	/* used for suspend/resume */
-	u32			gctl;
-
 	u32			fladj;
 	u32			nr_scratch;
 	u32			num_event_buffers;
