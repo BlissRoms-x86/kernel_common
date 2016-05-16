@@ -673,6 +673,7 @@ struct dwc3_scratchpad_array {
  * @gadget_driver: pointer to the gadget driver
  * @regs: base address for our registers
  * @regs_size: address space size
+ * @fladj: frame length adjustment
  * @nr_scratch: number of scratch buffers
  * @num_event_buffers: calculated number of event buffers
  * @u1u2: only used on revisions <1.83a for workaround
@@ -790,6 +791,7 @@ struct dwc3 {
 	/* used for suspend/resume */
 	u32			gctl;
 
+	u32			fladj;
 	u32			nr_scratch;
 	u32			num_event_buffers;
 	u32			u1u2;
