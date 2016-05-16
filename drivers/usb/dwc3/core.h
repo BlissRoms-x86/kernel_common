@@ -674,6 +674,7 @@ struct dwc3_scratchpad_array {
  * @regs: base address for our registers
  * @regs_size: address space size
  * @fladj: frame length adjustment
+ * @irq_gadget: peripheral controller's IRQ number
  * @nr_scratch: number of scratch buffers
  * @num_event_buffers: calculated number of event buffers
  * @u1u2: only used on revisions <1.83a for workaround
@@ -789,6 +790,7 @@ struct dwc3 {
 	enum usb_dr_mode	dr_mode;
 
 	u32			fladj;
+	u32			irq_gadget;
 	u32			nr_scratch;
 	u32			num_event_buffers;
 	u32			u1u2;
