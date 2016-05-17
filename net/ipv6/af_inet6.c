@@ -43,6 +43,7 @@
 #include <linux/netdevice.h>
 #include <linux/icmpv6.h>
 #include <linux/netfilter_ipv6.h>
+#include <linux/android_aid.h>
 
 #include <net/ip.h>
 #include <net/ipv6.h>
@@ -63,20 +64,6 @@
 
 #include <asm/uaccess.h>
 #include <linux/mroute6.h>
-
-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
-#include <linux/android_aid.h>
-
-static inline int current_has_network(struct net *net)
-{
-	return in_egroup_p(AID_INET) || ns_capable(net->user_ns, CAP_NET_RAW);
-}
-#else
-static inline int current_has_network(struct net *net)
-{
-	return 1;
-}
-#endif
 
 MODULE_AUTHOR("Cast of dozens");
 MODULE_DESCRIPTION("IPv6 protocol stack for Linux");
@@ -126,7 +113,7 @@ static int inet6_create(struct net *net, struct socket *sock, int protocol,
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
 
-	if (!current_has_network(net))
+	if (!inet_sk_allowed(net, AID_INET))
 		return -EACCES;
 
 	/* Look for the requested type/protocol pair. */

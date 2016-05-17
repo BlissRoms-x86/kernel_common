@@ -34,7 +34,6 @@ your .config or defconfig if they are not already. Based off the msm_defconfig.
 You should keep the rest of the default options enabled in the defconfig
 unless you know what you are doing.
 
-ANDROID_PARANOID_NETWORK
 ASHMEM
 CONFIG_FB_MODE_HELPERS
 CONFIG_FONT_8x16

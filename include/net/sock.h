@@ -58,6 +58,7 @@
 #include <linux/memcontrol.h>
 #include <linux/static_key.h>
 #include <linux/sched.h>
+#include <linux/user_namespace.h>
 
 #include <linux/filter.h>
 #include <linux/rculist_nulls.h>
@@ -2283,6 +2284,7 @@ bool sk_ns_capable(const struct sock *sk,
 		   struct user_namespace *user_ns, int cap);
 bool sk_capable(const struct sock *sk, int cap);
 bool sk_net_capable(const struct sock *sk, int cap);
+bool inet_sk_allowed(struct net *net, gid_t gid);
 
 extern __u32 sysctl_wmem_max;
 extern __u32 sysctl_rmem_max;
