@@ -669,6 +669,13 @@ struct pwm_device *of_pwm_get(struct device_node *np, const char *con_id)
 
 	pwm->label = con_id;
 
+	/*
+	 * FIXME: This should be removed once all PWM users properly make use
+	 * of struct pwm_args to initialize the PWM device. As long as this is
+	 * here, the PWM state and hardware state can get out of sync.
+	 */
+	pwm_apply_args(pwm);
+
 put:
 	of_node_put(args.np);
 
@@ -796,12 +803,19 @@ struct pwm_device *pwm_get(struct device *dev, const char *con_id)
 	if (!chip)
 		goto out;
 
-	pwm->args.period = chosen->period;
-	pwm->args.polarity = chosen->polarity;
-
 	pwm = pwm_request_from_chip(chip, chosen->index, con_id ?: dev_id);
 	if (IS_ERR(pwm))
 		goto out;
+
+	pwm->args.period = chosen->period;
+	pwm->args.polarity = chosen->polarity;
+
+	/*
+	 * FIXME: This should be removed once all PWM users properly make use
+	 * of struct pwm_args to initialize the PWM device. As long as this is
+	 * here, the PWM state and hardware state can get out of sync.
+	 */
+	pwm_apply_args(pwm);
 
 out:
 	mutex_unlock(&pwm_lookup_lock);
