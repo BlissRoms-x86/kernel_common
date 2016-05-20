@@ -3695,12 +3695,18 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		}
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)) && defined(CONFIG_OF) \
-			&& defined(CONFIG_PM_OPP)
+#if defined(CONFIG_OF) && defined(CONFIG_PM_OPP)
 	/* Register the OPPs if they are available in device tree */
-	if (of_init_opp_table(kbdev->dev) < 0)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+	err = dev_pm_opp_of_add_table(kbdev->dev);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
+	err = of_init_opp_table(kbdev->dev);
+#else
+	err = 0;
+#endif /* LINUX_VERSION_CODE */
+	if (err)
 		dev_dbg(kbdev->dev, "OPP table not found\n");
-#endif
+#endif /* CONFIG_OF && CONFIG_PM_OPP */
 
 
 	err = kbase_common_device_init(kbdev);
@@ -3737,9 +3743,12 @@ out_bl_core_register:
 out_sysfs:
 	kbase_common_device_remove(kbdev);
 out_common_init:
-#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && defined(CONFIG_OF) \
-			&& defined(CONFIG_PM_OPP))
+#if defined(CONFIG_OF) && defined(CONFIG_PM_OPP)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+	dev_pm_opp_of_remove_table(kbdev->dev);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0))
 	of_free_opp_table(kbdev->dev);
+#endif
 #endif
 	clk_disable_unprepare(kbdev->clock);
 out_clock_prepare:
