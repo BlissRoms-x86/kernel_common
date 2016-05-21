@@ -43,7 +43,7 @@
  */
 
 /dts-v1/;
-#include "rk3399-gru.dtsi"
+#include "rk3399-gru-gru-early.dtsi"
 
 / {
 	model = "Google Gru";

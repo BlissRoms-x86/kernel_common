@@ -176,9 +176,6 @@
 
 		pwms = <&pwm1 0 3333 0>;
 
-		// TODO: where's the mapping of duty cycle to voltage???
-		// TODO: we probably need in-flight PWM regulator series?
-
 		/* EC turns on w/ ap_core_en; always on for AP */
 		regulator-always-on;
 		regulator-boot-on;
@@ -187,6 +184,8 @@
 		regulator-max-microvolt = <1500000>;
 
 		pwm-supply = <&ppvar_sys>;
+		pwm-dutycycle-range = <100 0>;
+		pwm-dutycycle-unit = <100>;
 	};
 
 	ppvar_litcpu: ppvar-litcpu {
@@ -204,6 +203,8 @@
 		regulator-max-microvolt = <1500000>;
 
 		pwm-supply = <&ppvar_sys>;
+		pwm-dutycycle-range = <100 0>;
+		pwm-dutycycle-unit = <100>;
 	};
 
 	ppvar_gpu: ppvar-gpu {
@@ -221,6 +222,8 @@
 		regulator-max-microvolt = <1500000>;
 
 		pwm-supply = <&ppvar_sys>;
+		pwm-dutycycle-range = <100 0>;
+		pwm-dutycycle-unit = <100>;
 	};
 
 	ppvar_centerlogic: ppvar-centerlogic {

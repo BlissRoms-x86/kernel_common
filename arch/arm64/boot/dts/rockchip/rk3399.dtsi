@@ -110,7 +110,6 @@
 			enable-method = "psci";
 			#cooling-cells = <2>; /* min followed by max */
 			clocks = <&cru ARMCLKL>;
-			operating-points-v2 = <&cluster0_opp>;
 		};
 
 		cpu_l1: cpu@1 {
@@ -119,7 +118,6 @@
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			operating-points-v2 = <&cluster0_opp>;
 		};
 
 		cpu_l2: cpu@2 {
@@ -128,7 +126,6 @@
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			operating-points-v2 = <&cluster0_opp>;
 		};
 
 		cpu_l3: cpu@3 {
@@ -137,7 +134,6 @@
 			reg = <0x0 0x3>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			operating-points-v2 = <&cluster0_opp>;
 		};
 
 		cpu_b0: cpu@100 {
@@ -147,7 +143,6 @@
 			enable-method = "psci";
 			#cooling-cells = <2>; /* min followed by max */
 			clocks = <&cru ARMCLKB>;
-			operating-points-v2 = <&cluster1_opp>;
 		};
 
 		cpu_b1: cpu@101 {
@@ -156,80 +151,7 @@
 			reg = <0x0 0x101>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKB>;
-			operating-points-v2 = <&cluster1_opp>;
 		};
-	};
-
-	// HACK: these are not validated by Rockchip, and we should
-	// be getting another spin of silicon anyway.
-	cluster0_opp: opp_table0 {
-		compatible = "operating-points-v2";
-		opp-shared;
-
-		opp00 {
-			opp-hz = /bits/ 64 <408000000>;
-			opp-microvolt = <900000>;
-			clock-latency-ns = <40000>;
-		};
-		opp01 {
-			opp-hz = /bits/ 64 <600000000>;
-			opp-microvolt = <900000>;
-		};
-		opp02 {
-			opp-hz = /bits/ 64 <816000000>;
-			opp-microvolt = <900000>;
-		};
-		opp03 {
-			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <900000>;
-		};
-/*
-		// HACK: these are commented out because we're using
-		// a fixed 900 mV voltage, while we straighten out
-		// the PWM regulators.
-		opp04 {
-			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <925000>;
-		};
-		opp05 {
-			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <1025000>;
-		};
-*/
-	};
-
-	// HACK: these are not validated by Rockchip, and we should
-	// be getting another spin of silicon anyway.
-	cluster1_opp: opp_table1 {
-		compatible = "operating-points-v2";
-		opp-shared;
-
-		opp00 {
-			opp-hz = /bits/ 64 <408000000>;
-			opp-microvolt = <900000>;
-			clock-latency-ns = <40000>;
-		};
-		opp01 {
-			opp-hz = /bits/ 64 <600000000>;
-			opp-microvolt = <900000>;
-		};
-		opp02 {
-			opp-hz = /bits/ 64 <816000000>;
-			opp-microvolt = <900000>;
-		};
-		opp03 {
-			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <900000>;
-		};
-/*
-		// HACK: this is commented out because we're using a
-		// fixed 900 mV voltage, while we straighten out the
-		// PWM regulators.
-		opp04 {
-			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <925000>;
-		};
-*/
 	};
 
 	psci {
