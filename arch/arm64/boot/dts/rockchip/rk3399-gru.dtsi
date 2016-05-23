@@ -632,6 +632,13 @@ ap_i2c_audio: &i2c8 {
 	};
 };
 
+&tsadc {
+	status = "okay";
+
+	rockchip,hw-tshut-mode = <1>; /* tshut mode 0:CRU 1:GPIO */
+	rockchip,hw-tshut-polarity = <1>; /* tshut polarity 0:LOW 1:HIGH */
+};
+
 &uart2 {
 	status = "okay";
 };
