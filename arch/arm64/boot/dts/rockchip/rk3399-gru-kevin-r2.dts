@@ -1,5 +1,5 @@
 /*
- * Google Gru-Kevin Rev 1 board device tree source
+ * Google Gru-Kevin Rev 2+ board device tree source
  *
  * Copyright 2016 Google, Inc
  *
@@ -46,9 +46,16 @@
 #include "rk3399-gru.dtsi"
 
 / {
-	model = "Google Kevin Rev 1";
-	compatible = "google,kevin-rev1", "google,kevin",
-		     "google,gru", "rockchip,rk3399";
+	model = "Google Kevin";
+	compatible = "google,kevin-rev15", "google,kevin-rev14",
+		     "google,kevin-rev13", "google,kevin-rev12",
+		     "google,kevin-rev11", "google,kevin-rev10",
+		     "google,kevin-rev9", "google,kevin-rev8",
+		     "google,kevin-rev7", "google,kevin-rev6",
+		     "google,kevin-rev5", "google,kevin-rev4",
+		     "google,kevin-rev3", "google,kevin-rev2",
+		     "google,kevin", "google,gru",
+		     "rockchip,rk3399";
 };
 
 /* PINCTRL: always below everything else */
