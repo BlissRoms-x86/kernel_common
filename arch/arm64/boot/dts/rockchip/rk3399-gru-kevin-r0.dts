@@ -49,6 +49,9 @@
 	model = "Google Kevin Rev 0";
 	compatible = "google,kevin-rev0",
 		     "google,kevin", "google,gru", "rockchip,rk3399";
+
+	/* Top level deletions */
+	/delete-node/p3_3_v_dig;
 };
 
 /* Most rev-0s won't work so well with UHS.  Disable */
@@ -57,6 +60,16 @@
 	/delete-property/sd-uhs-sdr25;
 	/delete-property/sd-uhs-sdr50;
 	/delete-property/sd-uhs-sdr104;
+};
+
+/* Turn off some busses */
+
+&ap_i2c_dig {
+	status = "disabled";
+
+	/* Don't bother deleting the freq/rise/fall; bus is disabled anyway. */
+
+	/delete-node/digitizer@9;
 };
 
 /* GPIO overrides for -r0; in same order as parent */
@@ -111,5 +124,6 @@
 };
 
 &pinctrl {
+	/delete-node/digitizer;
 	/delete-node/pen;
 };

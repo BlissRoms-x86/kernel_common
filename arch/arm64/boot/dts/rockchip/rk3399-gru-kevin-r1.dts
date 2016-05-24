@@ -50,3 +50,20 @@
 	compatible = "google,kevin-rev1", "google,kevin",
 		     "google,gru", "rockchip,rk3399";
 };
+
+/* GPIO overrides for -r1; in same order as parent */
+
+&digitizer {
+	interrupt-parent = <&gpio3>;
+	interrupts = <15 IRQ_TYPE_LEVEL_LOW>;
+};
+
+/* Pinctrl overrides for -r1; in same order as parent */
+
+&cpu1_dig_irq_l {
+	rockchip,pins = <3 15 RK_FUNC_GPIO &pcfg_pull_up>;
+};
+
+&cpu1_dig_pdct_l {
+	rockchip,pins = <3 16 RK_FUNC_GPIO &pcfg_pull_up>;
+};

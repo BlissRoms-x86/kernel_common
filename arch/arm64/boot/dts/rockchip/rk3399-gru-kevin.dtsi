@@ -50,9 +50,111 @@
 
 #include "rk3399-gru.dtsi"
 
+/*
+ * Kevin-specific things
+ *
+ * Things in this section should use names from Kevin schematic since no
+ * equivalent exists in Gru schematic.  If referring to signals that exist
+ * in Gru we use the Gru names, though.  Confusing enough for you?
+ */
+
+/ {
+	/* Power tree */
+
+	/* pp3300 children */
+
+	p3_3v_dig: p3-3v-dig {
+		compatible = "regulator-fixed";
+		regulator-name = "p3.3v_dig";
+		pinctrl-names = "default";
+		pinctrl-0 = <&cpu3_pen_pwr_en>;
+
+		// TODO: Add support in hid-over-i2c for powering off?
+		regulator-always-on;
+		regulator-boot-on;
+
+		enable-active-high;
+		gpio = <&gpio4 30 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&pp3300>;
+	};
+};
+
+ap_i2c_dig: &i2c2 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+
+	digitizer: digitizer@9 {
+		compatible = "hid-over-i2c";
+		reg = <0x9>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cpu1_dig_irq_l &cpu1_dig_pdct_l>;
+
+		// TODO: hid-over-i2c should probably have regulator support?
+		// See "p3_3v_dig"
+
+		interrupt-parent = <&gpio2>;
+		interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+
+		hid-descr-addr = <0x1>;
+	};
+};
+
+/* Adjustments to things in the gru baseboard */
+
+&ap_i2c_tp {
+	trackpad@4a {
+		compatible = "atmel,atmel_mxt_tp";
+		reg = <0x4a>;
+		pinctrl-names = "default";
+		/*
+		 * Note strange pullup enable.  Apparently this avoids leakage
+		 * but still allows us to get nice 4.7K pullups for high speed
+		 * i2c transfers.  Basically we want the pullup on whenever the
+		 * ap is alive, so the "en" pin just gets set to output high.
+		*/
+		pinctrl-0 = <&trackpad_int_l &ap_i2c_tp_pu_en>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+	};
+};
+
+&ap_i2c_ts {
+	touchscreen@4b {
+		compatible = "atmel,atmel_mxt_ts";
+		reg = <0x4b>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&touch_int_l>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <13 IRQ_TYPE_LEVEL_LOW>;
+	};
+};
+
 /* PINCTRL: always below everything else */
 
 &pinctrl {
+	digitizer {
+		/* Has external pullup */
+		cpu1_dig_irq_l: cpu1-dig-irq-l {
+			rockchip,pins = <2 4 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		/* Has external pullup */
+		cpu1_dig_pdct_l: cpu1-dig-pdct-l {
+			rockchip,pins = <2 5 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	discrete-regulators {
+		cpu3_pen_pwr_en: cpu3-pen-pwr-en {
+			rockchip,pins = <4 30 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
 	pen {
 		// TODO: Need pull?
 		// TODO: Active high or active low?
