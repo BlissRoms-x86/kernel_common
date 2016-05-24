@@ -461,11 +461,28 @@
 		gpio1830-supply = <&pp3000_ap>;		/* APIO4_VDD;  4c 4d */
 	};
 
+	max98357a: max98357a {
+		#sound-dai-cells = <0>;
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&sdmode_en>;
+
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+	};
+
 	pmu-io-domains {
 		compatible = "rockchip,rk3399-pmu-io-voltage-domain";
 		rockchip,grf = <&pmugrf>;
 
 		pmu1830-supply = <&pp1800_pmu>;		/* PMUIO2_VDD */
+	};
+
+	sound {
+		compatible = "rockchip,rk3399-gru-sound";
+		rockchip,cpu = <&i2s0>;
+		rockchip,codec = <&max98357a &headsetcodec &codec>;
 	};
 };
 
@@ -521,6 +538,19 @@ ap_i2c_mic: &i2c1 {
 	i2c-scl-falling-time-ns = <50>;
 	i2c-scl-rising-time-ns = <300>;
 	// TODO: Put realtek,rt5514 here
+	headsetcodec: rt5514@57 {
+		compatible = "realtek,rt5514";
+		reg = <0x57>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&mic_int>;
+
+		/*
+		 * NOTE: Interrupts aren't part of the binding and driver
+		 * doesn't support it, but throw it in anyway.
+		 */
+		interrupt-parent = <&gpio1>;
+		interrupts = <13 IRQ_TYPE_LEVEL_HIGH>;
+	};
 };
 
 ap_i2c_ts: &i2c3 {
@@ -563,6 +593,45 @@ ap_i2c_audio: &i2c8 {
 	i2c-scl-rising-time-ns = <300>;
 
 	// TODO: Put dlg,da7219 here
+	codec: da7219@1a {
+		compatible = "dlg,da7219";
+		reg = <0x1a>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&headset_int_l>;
+
+		interrupt-parent = <&gpio1>;
+		interrupts = <23 IRQ_TYPE_LEVEL_LOW>;
+
+		VDD-supply = <&pp1800>;
+		VDDMIC-supply = <&pp3300>;
+		VDDIO-supply = <&pp1800>;
+
+		// TODO: I THINK this is right, but it's a bit of a guess.
+		clocks = <&cru SCLK_I2S_8CH_OUT>;
+		clock-names = "mclk";
+
+// Below is from bindings; we need to adjust for our SoC / board.
+		dlg,ldo-lvl = <1200>;
+		dlg,micbias-lvl = <2600>;
+		dlg,mic-amp-in-sel = "diff";
+
+		da7219_aad {
+			dlg,btn-cfg = <50>;
+			dlg,mic-det-thr = <500>;
+			dlg,jack-ins-deb = <20>;
+			dlg,jack-det-rate = "32ms_64ms";
+			dlg,jack-rem-deb = <1>;
+
+			dlg,a-d-btn-thr = <0xa>;
+			dlg,d-b-btn-thr = <0x16>;
+			dlg,b-c-btn-thr = <0x21>;
+			dlg,c-mic-btn-thr = <0x3E>;
+
+			dlg,btn-avg = <4>;
+			dlg,adc-1bit-rpt = <1>;
+		};
+	};
 };
 
 &i2s0 {
@@ -650,6 +719,19 @@ ap_i2c_audio: &i2c8 {
 		// TODO: add rx-sample-delay-ns.
 		spi-max-frequency = <10000000>;
 		reg = <0>;
+	};
+};
+
+&spi2 {
+	status = "okay";
+
+	wacky_spi_audio: spi2@0 {
+		compatible = "realtek,rt5514";
+		reg = <0>;
+
+		// TODO: can run faster once verified.
+		// TODO: add rx-sample-delay-ns.
+		spi-max-frequency = <10000000>;
 	};
 };
 
@@ -829,6 +911,12 @@ ap_i2c_audio: &i2c8 {
 		// TODO: check pull.  From signal name assume active high.
 		mic_int: mic-int {
 			rockchip,pins = <1 13 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	max98357a {
+		sdmode_en: sdmode-en {
+			rockchip,pins = <1 2 RK_FUNC_GPIO &pcfg_pull_down>;
 		};
 	};
 
