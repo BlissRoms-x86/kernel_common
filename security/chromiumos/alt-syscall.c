@@ -338,6 +338,7 @@ static asmlinkage long alt_sys_prctl(int option, unsigned long arg2,
 #define __NR_compat_vfork	__NR_ia32_vfork
 #define __NR_compat_vmsplice	__NR_ia32_vmsplice
 #define __NR_compat_wait4	__NR_ia32_wait4
+#define __NR_compat_waitid	__NR_ia32_waitid
 #define __NR_compat_waitpid	__NR_ia32_waitpid
 #define __NR_compat_write	__NR_ia32_write
 #define __NR_compat_writev	__NR_ia32_writev
@@ -620,6 +621,7 @@ static struct syscall_whitelist_entry android_whitelist[] = {
 	SYSCALL_ENTRY(utimensat),
 	SYSCALL_ENTRY(vmsplice),
 	SYSCALL_ENTRY(wait4),
+	SYSCALL_ENTRY(waitid),
 	SYSCALL_ENTRY(write),
 	SYSCALL_ENTRY(writev),
 
@@ -979,6 +981,7 @@ static struct syscall_whitelist_entry android_compat_whitelist[] = {
 	COMPAT_SYSCALL_ENTRY(vfork),
 	COMPAT_SYSCALL_ENTRY(vmsplice),
 	COMPAT_SYSCALL_ENTRY(wait4),
+	COMPAT_SYSCALL_ENTRY(waitid),
 	COMPAT_SYSCALL_ENTRY(write),
 	COMPAT_SYSCALL_ENTRY(writev),
 	COMPAT_SYSCALL_ENTRY(chown32),
