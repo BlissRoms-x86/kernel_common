@@ -1,7 +1,13 @@
 /*
- * Google Gru-Kevin Rev 1 board device tree source
+ * Google Gru-Kevin board device tree source
  *
  * Copyright 2016 Google, Inc
+ *
+ * This file should generally contain things related to the latest
+ * revision of Kevin hardware that is not part of the gru base.
+ * Revisions earlier than the latest should generally override
+ * things that happen here on the presumption that support for
+ * earlier versions will eventually be deleted.
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -42,11 +48,20 @@
  *     OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/dts-v1/;
-#include "rk3399-gru-kevin.dtsi"
+#include "rk3399-gru.dtsi"
 
-/ {
-	model = "Google Kevin Rev 1";
-	compatible = "google,kevin-rev1", "google,kevin",
-		     "google,gru", "rockchip,rk3399";
+/* PINCTRL: always below everything else */
+
+&pinctrl {
+	pen {
+		// TODO: Need pull?
+		// TODO: Active high or active low?
+		cpu1_pen_eject: cpu1-pen-eject {
+			rockchip,pins = <0 13 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
 };
+
+/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
+/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
+/* DON'T PUT ANYTHING BELOW HERE.  PUT IT ABOVE PINCTRL */
