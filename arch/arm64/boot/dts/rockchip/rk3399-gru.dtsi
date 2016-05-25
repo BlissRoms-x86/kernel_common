@@ -437,8 +437,6 @@
 		regulator-name = "pp3300_wifi_bt";
 		/* NOTE: wlan_module_pd_l pinctrl in pp1800_pcie */
 
-		regulator-always-on;			// TODO: for bringup???
-		regulator-boot-on;			// TODO: for bringup???
 		enable-active-high;
 
 		// TODO: I _think_ it's OK to specify the same GPIO in two
@@ -635,6 +633,21 @@ ap_i2c_audio: &i2c8 {
 };
 
 &i2s0 {
+	status = "okay";
+};
+
+&pcie0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&wifi_perst_l>;
+	ep-gpios = <&gpio2 27 GPIO_ACTIVE_HIGH>;
+
+	vpcie3v3-supply = <&pp3300_wifi_bt>;
+	vpcie1v8-supply = <&pp1800_pcie>;
+	vpcie0v9-supply = <&pp900_pcie>;
+};
+
+&pcie_phy {
 	status = "okay";
 };
 
@@ -980,6 +993,12 @@ ap_i2c_audio: &i2c8 {
 
 		touch_reset_l: touch-reset-l {
 			rockchip,pins = <4 26 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	wifi {
+		wifi_perst_l: wifi-perst-l {
+			rockchip,pins = <2 27 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 
