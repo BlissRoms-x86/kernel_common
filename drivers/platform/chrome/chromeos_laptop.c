@@ -462,6 +462,8 @@ static struct chromeos_laptop toshiba_cb35 = {
 
 static struct chromeos_laptop wolf = {
 	.i2c_peripherals = {
+		/* Light Sensor. */
+		{ .add = setup_isl29018_als, I2C_ADAPTER_DESIGNWARE_1 },
 		/* Touchpad. */
 		{ .add = setup_cyapa_tp, I2C_ADAPTER_DESIGNWARE_0 },
 	},
