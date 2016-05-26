@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 
 #include "sst-acpi.h"
+#include <linux/module.h>
 
 static acpi_status sst_acpi_mach_match(acpi_handle handle, u32 level,
 				       void *context, void **ret)
