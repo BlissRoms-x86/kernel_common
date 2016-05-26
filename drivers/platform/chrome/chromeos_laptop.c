@@ -460,15 +460,6 @@ static struct chromeos_laptop toshiba_cb35 = {
 	},
 };
 
-static struct chromeos_laptop wolf = {
-	.i2c_peripherals = {
-		/* Light Sensor. */
-		{ .add = setup_isl29018_als, I2C_ADAPTER_DESIGNWARE_1 },
-		/* Touchpad. */
-		{ .add = setup_cyapa_tp, I2C_ADAPTER_DESIGNWARE_0 },
-	},
-};
-
 static struct chromeos_laptop acer_c7_chromebook = {
 	.i2c_peripherals = {
 		/* Touchpad. */
@@ -571,14 +562,6 @@ static struct dmi_system_id chromeos_laptop_dmi_table[] __initdata = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Leon"),
 		},
 		_CBDD(toshiba_cb35),
-	},
-	{
-		.ident = "Wolf",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR, "coreboot"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Wolf"),
-		},
-		_CBDD(wolf),
 	},
 	{
 		.ident = "Acer C7 Chromebook",
