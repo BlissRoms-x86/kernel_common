@@ -830,6 +830,10 @@ regulator-max-microvolt = <900000>;
 		touch_int_l: touch-int-l {
 			rockchip,pins = <3 13 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
+
+		touch_reset_l: touch-reset-l {
+			rockchip,pins = <4 26 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
 	};
 
 	backlight-enable {
