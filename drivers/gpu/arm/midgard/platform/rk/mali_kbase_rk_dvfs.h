@@ -59,7 +59,7 @@ static inline void kbase_rk_dvfs_disable(struct kbase_device *kbdev)
 {
 }
 
-unsigned int kbase_rk_dvfs_utilisation(struct kbase_device *kbdev)
+static inline unsigned int kbase_rk_dvfs_utilisation(struct kbase_device *kbdev)
 {
 	return 0;
 }
