@@ -1492,6 +1492,9 @@ int pm_runtime_force_resume(struct device *dev)
 		goto out;
 	}
 
+	if (!pm_runtime_status_suspended(dev))
+		goto out;
+
 	ret = pm_runtime_set_active(dev);
 	if (ret)
 		goto out;
