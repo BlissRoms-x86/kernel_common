@@ -635,6 +635,11 @@ ap_i2c_audio: &i2c8 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
+
+		cros_ec_pwm: ec-pwm {
+			compatible = "google,cros-ec-pwm";
+			#pwm-cells = <1>;
+		};
 	};
 };
 
