@@ -145,7 +145,6 @@ enum rk3288_vpu_state {
  * @base:		Mapped address of VPU registers.
  * @enc_base:		Mapped address of VPU encoder register for convenience.
  * @dec_base:		Mapped address of VPU decoder register for convenience.
- * @mapping:		DMA IOMMU mapping.
  * @vpu_mutex:		Mutex to synchronize V4L2 calls.
  * @irqlock:		Spinlock to synchronize access to data structures
  *			shared with interrupt handlers.
@@ -174,7 +173,6 @@ struct rk3288_vpu_dev {
 	void __iomem *base;
 	void __iomem *enc_base;
 	void __iomem *dec_base;
-	struct dma_iommu_mapping *mapping;
 
 	struct mutex vpu_mutex;	/* video_device lock */
 	spinlock_t irqlock;

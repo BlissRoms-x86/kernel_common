@@ -28,8 +28,6 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 
-#include <asm/dma-iommu.h>
-
 #include "rk3288_vpu_regs.h"
 
 /**
@@ -198,51 +196,6 @@ static void rk3288_vpu_watchdog(struct work_struct *work)
  * Initialization/clean-up.
  */
 
-#if defined(CONFIG_ROCKCHIP_IOMMU)
-static int rk3288_vpu_iommu_init(struct rk3288_vpu_dev *vpu)
-{
-	int ret;
-
-	vpu->mapping = arm_iommu_create_mapping(&platform_bus_type,
-						0x10000000, SZ_2G);
-	if (IS_ERR(vpu->mapping)) {
-		ret = PTR_ERR(vpu->mapping);
-		return ret;
-	}
-
-	vpu->dev->dma_parms = devm_kzalloc(vpu->dev,
-				sizeof(*vpu->dev->dma_parms), GFP_KERNEL);
-	if (!vpu->dev->dma_parms)
-		goto err_release_mapping;
-
-	dma_set_max_seg_size(vpu->dev, 0xffffffffu);
-
-	ret = arm_iommu_attach_device(vpu->dev, vpu->mapping);
-	if (ret)
-		goto err_release_mapping;
-
-	return 0;
-
-err_release_mapping:
-	arm_iommu_release_mapping(vpu->mapping);
-
-	return ret;
-}
-
-static void rk3288_vpu_iommu_cleanup(struct rk3288_vpu_dev *vpu)
-{
-	arm_iommu_detach_device(vpu->dev);
-	arm_iommu_release_mapping(vpu->mapping);
-}
-#else
-static inline int rk3288_vpu_iommu_init(struct rk3288_vpu_dev *vpu)
-{
-	return 0;
-}
-
-static inline void rk3288_vpu_iommu_cleanup(struct rk3288_vpu_dev *vpu) { }
-#endif
-
 int rk3288_vpu_hw_probe(struct rk3288_vpu_dev *vpu)
 {
 	struct resource *res;
@@ -295,36 +248,32 @@ int rk3288_vpu_hw_probe(struct rk3288_vpu_dev *vpu)
 		goto err_power;
 	}
 
-	ret = rk3288_vpu_iommu_init(vpu);
-	if (ret)
-		goto err_power;
-
 	irq_enc = platform_get_irq_byname(vpu->pdev, "vepu");
 	if (irq_enc <= 0) {
 		dev_err(vpu->dev, "could not get vepu IRQ\n");
 		ret = -ENXIO;
-		goto err_iommu;
+		goto err_power;
 	}
 
 	ret = devm_request_threaded_irq(vpu->dev, irq_enc, NULL, vepu_irq,
 					IRQF_ONESHOT, dev_name(vpu->dev), vpu);
 	if (ret) {
 		dev_err(vpu->dev, "could not request vepu IRQ\n");
-		goto err_iommu;
+		goto err_power;
 	}
 
 	irq_dec = platform_get_irq_byname(vpu->pdev, "vdpu");
 	if (irq_dec <= 0) {
 		dev_err(vpu->dev, "could not get vdpu IRQ\n");
 		ret = -ENXIO;
-		goto err_iommu;
+		goto err_power;
 	}
 
 	ret = devm_request_threaded_irq(vpu->dev, irq_dec, NULL, vdpu_irq,
 					IRQF_ONESHOT, dev_name(vpu->dev), vpu);
 	if (ret) {
 		dev_err(vpu->dev, "could not request vdpu IRQ\n");
-		goto err_iommu;
+		goto err_power;
 	}
 
 	pm_runtime_set_autosuspend_delay(vpu->dev, 100);
@@ -333,8 +282,6 @@ int rk3288_vpu_hw_probe(struct rk3288_vpu_dev *vpu)
 
 	return 0;
 
-err_iommu:
-	rk3288_vpu_iommu_cleanup(vpu);
 err_power:
 	clk_disable_unprepare(vpu->hclk_vcodec);
 	clk_disable_unprepare(vpu->aclk_vcodec);
@@ -344,8 +291,6 @@ err_power:
 
 void rk3288_vpu_hw_remove(struct rk3288_vpu_dev *vpu)
 {
-	rk3288_vpu_iommu_cleanup(vpu);
-
 	pm_runtime_disable(vpu->dev);
 
 	clk_disable_unprepare(vpu->hclk_vcodec);
