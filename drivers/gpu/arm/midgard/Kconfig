@@ -17,8 +17,6 @@
 menuconfig MALI_MIDGARD
 	tristate "Mali Midgard series support"
 	depends on ARM || ARM64
-	# DEBUG_OBJECTS_TIMERS requires missing export
-	depends on !DEBUG_OBJECTS_TIMERS
 	default n
 	help
 	  Enable this option to build support for a ARM Mali Midgard GPU.
