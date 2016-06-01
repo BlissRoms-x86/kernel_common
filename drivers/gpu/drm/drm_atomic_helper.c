@@ -1209,7 +1209,8 @@ static int drm_atomic_add_implicit_fences(struct drm_device *dev,
 			(struct fence *)fence_array_create(num_in_fences,
 				in_fences,
 				dev->atomic_in_fence_context,
-				 atomic_add_return(1, &dev->atomic_in_fence_seqno));
+				atomic_add_return(1, &dev->atomic_in_fence_seqno),
+				false);
 
 	if (!in_fence) {
 		ret = -1;
