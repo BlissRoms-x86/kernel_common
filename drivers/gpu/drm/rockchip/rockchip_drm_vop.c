@@ -863,7 +863,7 @@ static void vop_crtc_cancel_pending_vblank(struct drm_crtc *crtc,
 		if (test_and_clear_bit(VOP_PENDING_EVENT, &vop->pending))
 			drm_crtc_vblank_put(crtc);
 
-		e->base.destroy(&e->base);
+		kfree(&e->base);
 		file_priv->event_space += sizeof(e->event);
 	}
 	spin_unlock_irqrestore(&drm->event_lock, flags);

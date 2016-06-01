@@ -1415,7 +1415,8 @@ EXPORT_SYMBOL(drm_atomic_async_commit);
  */
 
 static struct drm_pending_vblank_event *create_vblank_event(
-		struct drm_device *dev, struct drm_file *file_priv, uint64_t user_data)
+		struct drm_device *dev, struct drm_file *file_priv,
+		struct fence *fence, uint64_t user_data)
 {
 	struct drm_pending_vblank_event *e = NULL;
 	int ret;
@@ -1428,11 +1429,16 @@ static struct drm_pending_vblank_event *create_vblank_event(
 	e->event.base.length = sizeof(e->event);
 	e->event.user_data = user_data;
 
-	ret = drm_event_reserve_init(dev, file_priv, &e->base, &e->event.base);
-	if (ret) {
-		kfree(e);
-		return NULL;
+	if (file_priv) {
+		ret = drm_event_reserve_init(dev, file_priv, &e->base,
+					     &e->event.base);
+		if (ret) {
+			kfree(e);
+			return NULL;
+		}
 	}
+
+	e->base.fence = fence;
 
 	return e;
 }
@@ -1660,7 +1666,8 @@ retry:
 		for_each_crtc_in_state(state, crtc, crtc_state, i) {
 			struct drm_pending_vblank_event *e;
 
-			e = create_vblank_event(dev, file_priv, arg->user_data);
+			e = create_vblank_event(dev, file_priv, NULL,
+						arg->user_data);
 			if (!e) {
 				ret = -ENOMEM;
 				goto out;

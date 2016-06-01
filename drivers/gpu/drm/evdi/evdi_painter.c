@@ -214,8 +214,6 @@ static void evdi_painter_send_update_ready(struct evdi_painter *painter)
 		event->update_ready.base.length = sizeof(*event);
 		event->base.event = &event->update_ready.base;
 		event->base.file_priv = painter->drm_filp;
-		event->base.destroy =
-		    (void (*)(struct drm_pending_event *))kfree;
 		evdi_painter_send_event(painter->drm_filp, &event->base.link);
 	} else {
 		EVDI_WARN("Painter is not connected!");
@@ -233,8 +231,6 @@ static void evdi_painter_send_dpms(struct evdi_painter *painter, int mode)
 		event->dpms.mode = mode;
 		event->base.event = &event->dpms.base;
 		event->base.file_priv = painter->drm_filp;
-		event->base.destroy =
-		    (void (*)(struct drm_pending_event *))kfree;
 		evdi_painter_send_event(painter->drm_filp, &event->base.link);
 	} else {
 		EVDI_WARN("Painter is not connected!");
@@ -253,8 +249,6 @@ static void evdi_painter_send_crtc_state(struct evdi_painter *painter,
 		event->crtc_state.state = state;
 		event->base.event = &event->crtc_state.base;
 		event->base.file_priv = painter->drm_filp;
-		event->base.destroy =
-		    (void (*)(struct drm_pending_event *))kfree;
 		evdi_painter_send_event(painter->drm_filp, &event->base.link);
 	} else {
 		 EVDI_WARN("Painter is not connected!");
@@ -296,8 +290,6 @@ static void evdi_painter_send_mode_changed(struct evdi_painter *painter,
 
 		event->base.event = &event->mode_changed.base;
 		event->base.file_priv = painter->drm_filp;
-		event->base.destroy =
-		    (void (*)(struct drm_pending_event *))kfree;
 		evdi_painter_send_event(painter->drm_filp, &event->base.link);
 	} else {
 		 EVDI_WARN("Painter is not connected!");
