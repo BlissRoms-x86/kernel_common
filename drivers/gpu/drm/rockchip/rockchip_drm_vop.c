@@ -1298,7 +1298,7 @@ static int vop_initial(struct vop *vop)
 {
 	const struct vop_data *vop_data = vop->data;
 	const struct vop_reg_data *init_table = vop_data->init_table;
-	struct reset_control *ahb_rst;
+	struct reset_control *ahb_rst, *axi_rst;
 	int i, ret;
 
 	vop->hclk = devm_clk_get(vop->dev, "hclk_vop");
@@ -1335,6 +1335,19 @@ static int vop_initial(struct vop *vop)
 		dev_err(vop->dev, "failed to prepare/enable aclk\n");
 		goto err_disable_hclk;
 	}
+
+	/*
+	 * do aclk_reset, reset all vop registers.
+	 */
+	axi_rst = devm_reset_control_get(vop->dev, "axi");
+	if (IS_ERR(axi_rst)) {
+		dev_err(vop->dev, "failed to get axi reset\n");
+		ret = PTR_ERR(axi_rst);
+		goto err_disable_aclk;
+	}
+	reset_control_assert(axi_rst);
+	usleep_range(10, 20);
+	reset_control_deassert(axi_rst);
 
 	/*
 	 * do hclk_reset, reset all vop registers.
