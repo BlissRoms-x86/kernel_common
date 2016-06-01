@@ -63,6 +63,7 @@ struct rk3288_vpu_vp8e_ctrl_buf {
 void rk3288_vpu_vp8e_assemble_bitstream(struct rk3288_vpu_ctx *ctx,
 					struct rk3288_vpu_buf *dst_buf)
 {
+	struct vb2_v4l2_buffer *vb2_dst = &dst_buf->b;
 	size_t ext_hdr_size = dst_buf->vp8e.ext_hdr_size;
 	size_t dct_size = dst_buf->vp8e.dct_size;
 	size_t hdr_size = dst_buf->vp8e.hdr_size;
@@ -71,8 +72,8 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rk3288_vpu_ctx *ctx,
 	void *dst;
 	u32 *tag;
 
-	dst_size = vb2_plane_size(&dst_buf->b, 0);
-	dst = vb2_plane_vaddr(&dst_buf->b, 0);
+	dst_size = vb2_plane_size(&vb2_dst->vb2_buf, 0);
+	dst = vb2_plane_vaddr(&vb2_dst->vb2_buf, 0);
 	tag = dst; /* To access frame tag words. */
 
 	if (WARN_ON(hdr_size + ext_hdr_size + dct_size > dst_size))
@@ -88,7 +89,7 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rk3288_vpu_ctx *ctx,
 	memcpy(dst, dst_buf->vp8e.header, hdr_size);
 
 	/* Patch frame tag at first 32-bit word of the frame. */
-	if (dst_buf->b.v4l2_buf.flags & V4L2_BUF_FLAG_KEYFRAME) {
+	if (vb2_dst->flags & V4L2_BUF_FLAG_KEYFRAME) {
 		tag_size = VP8_KEY_FRAME_HDR_SIZE;
 		tag[0] &= ~VP8_FRAME_TAG_KEY_FRAME_BIT;
 	} else {
@@ -100,7 +101,7 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rk3288_vpu_ctx *ctx,
 	tag[0] |= (hdr_size + ext_hdr_size - tag_size)
 						<< VP8_FRAME_TAG_LENGTH_SHIFT;
 
-	vb2_set_plane_payload(&dst_buf->b, 0,
+	vb2_set_plane_payload(&vb2_dst->vb2_buf, 0,
 				hdr_size + ext_hdr_size + dct_size);
 }
 
@@ -183,6 +184,8 @@ static inline u32 enc_in_img_ctrl(struct rk3288_vpu_ctx *ctx)
 static void rk3288_vpu_vp8e_set_buffers(struct rk3288_vpu_dev *vpu,
 					struct rk3288_vpu_ctx *ctx)
 {
+	struct vb2_v4l2_buffer *vb2_dst = &ctx->run.dst->b;
+	struct vb2_v4l2_buffer *vb2_src = &ctx->run.src->b;
 	const struct rk3288_vp8e_reg_params *params = ctx->run.vp8e.reg_params;
 	dma_addr_t ref_buf_dma, rec_buf_dma;
 	dma_addr_t stream_dma;
@@ -205,8 +208,8 @@ static void rk3288_vpu_vp8e_set_buffers(struct rk3288_vpu_dev *vpu,
 		dst_dma = vpu->dummy_encode_dst.dma;
 		dst_size = vpu->dummy_encode_dst.size;
 	} else {
-		dst_dma = vb2_dma_contig_plane_dma_addr(&ctx->run.dst->b, 0);
-		dst_size = vb2_plane_size(&ctx->run.dst->b, 0);
+		dst_dma = vb2_dma_contig_plane_dma_addr(&vb2_dst->vb2_buf, 0);
+		dst_size = vb2_plane_size(&vb2_dst->vb2_buf, 0);
 	}
 
 	/*
@@ -228,9 +231,9 @@ static void rk3288_vpu_vp8e_set_buffers(struct rk3288_vpu_dev *vpu,
 	ctx->run.dst->vp8e.hdr_size = params->hdr_len + (start_offset >> 3);
 
 	if (params->enc_ctrl & VEPU_REG_ENC_CTRL_KEYFRAME_BIT)
-		ctx->run.dst->b.v4l2_buf.flags |= V4L2_BUF_FLAG_KEYFRAME;
+		vb2_dst->flags |= V4L2_BUF_FLAG_KEYFRAME;
 	else
-		ctx->run.dst->b.v4l2_buf.flags &= ~V4L2_BUF_FLAG_KEYFRAME;
+		vb2_dst->flags &= ~V4L2_BUF_FLAG_KEYFRAME;
 
 	/*
 	 * We assume here that 1/10 of the buffer is enough for headers.
@@ -280,13 +283,13 @@ static void rk3288_vpu_vp8e_set_buffers(struct rk3288_vpu_dev *vpu,
 					VEPU_REG_ADDR_IN_CR);
 	} else {
 		vepu_write_relaxed(vpu, vb2_dma_contig_plane_dma_addr(
-					&ctx->run.src->b, PLANE_Y),
+					&vb2_src->vb2_buf, PLANE_Y),
 					VEPU_REG_ADDR_IN_LUMA);
 		vepu_write_relaxed(vpu, vb2_dma_contig_plane_dma_addr(
-					&ctx->run.src->b, PLANE_CB),
+					&vb2_src->vb2_buf, PLANE_CB),
 					VEPU_REG_ADDR_IN_CB);
 		vepu_write_relaxed(vpu, vb2_dma_contig_plane_dma_addr(
-					&ctx->run.src->b, PLANE_CR),
+					&vb2_src->vb2_buf, PLANE_CR),
 					VEPU_REG_ADDR_IN_CR);
 	}
 
@@ -365,6 +368,7 @@ static void rk3288_vpu_vp8e_set_params(struct rk3288_vpu_dev *vpu,
 
 void rk3288_vpu_vp8e_run(struct rk3288_vpu_ctx *ctx)
 {
+	struct vb2_v4l2_buffer *vb2_dst = &ctx->run.dst->b;
 	struct rk3288_vpu_dev *vpu = ctx->dev;
 	u32 reg;
 
@@ -408,7 +412,7 @@ void rk3288_vpu_vp8e_run(struct rk3288_vpu_ctx *ctx)
 		| VEPU_REG_ENC_CTRL_ENC_MODE_VP8
 		| VEPU_REG_ENC_CTRL_EN_BIT;
 
-	if (ctx->run.dst->b.v4l2_buf.flags & V4L2_BUF_FLAG_KEYFRAME)
+	if (vb2_dst->flags & V4L2_BUF_FLAG_KEYFRAME)
 		reg |= VEPU_REG_ENC_CTRL_KEYFRAME_BIT;
 
 	vepu_write(vpu, reg, VEPU_REG_ENC_CTRL);

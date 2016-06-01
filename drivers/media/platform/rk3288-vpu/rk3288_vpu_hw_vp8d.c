@@ -434,6 +434,7 @@ static void rk3288_vp8d_cfg_qp(struct rk3288_vpu_ctx *ctx)
  */
 static void rk3288_vp8d_cfg_parts(struct rk3288_vpu_ctx *ctx)
 {
+	struct vb2_v4l2_buffer *vb2_src = &ctx->run.src->b;
 	const struct v4l2_ctrl_vp8_frame_hdr *hdr = ctx->run.vp8d.frame_hdr;
 	struct rk3288_vpu_dev *vpu = ctx->dev;
 	u32 dct_part_total_len = 0;
@@ -448,7 +449,7 @@ static void rk3288_vp8d_cfg_parts(struct rk3288_vpu_ctx *ctx)
 	u32 count = 0;
 	u32 i;
 
-	src_dma = vb2_dma_contig_plane_dma_addr(&ctx->run.src->b, 0);
+	src_dma = vb2_dma_contig_plane_dma_addr(&vb2_src->vb2_buf, 0);
 
 	/*
 	 * Calculate control partition mb data info
@@ -574,6 +575,7 @@ static void rk3288_vp8d_cfg_tap(struct rk3288_vpu_ctx *ctx)
 /* set reference frame */
 static void rk3288_vp8d_cfg_ref(struct rk3288_vpu_ctx *ctx)
 {
+	struct vb2_v4l2_buffer *vb2_dst = &ctx->run.dst->b;
 	u32 reg;
 	struct vb2_buffer *buf;
 	struct rk3288_vpu_dev *vpu = ctx->dev;
@@ -581,7 +583,7 @@ static void rk3288_vp8d_cfg_ref(struct rk3288_vpu_ctx *ctx)
 
 	/* set last frame address */
 	if (hdr->last_frame >= ctx->vq_dst.num_buffers || !hdr->key_frame)
-		buf = &ctx->run.dst->b;
+		buf = &vb2_dst->vb2_buf;
 	else
 		buf = ctx->dst_bufs[hdr->last_frame];
 
@@ -590,7 +592,7 @@ static void rk3288_vp8d_cfg_ref(struct rk3288_vpu_ctx *ctx)
 
 	/* set golden reference frame buffer address */
 	if (hdr->golden_frame >= ctx->vq_dst.num_buffers)
-		buf = &ctx->run.dst->b;
+		buf = &vb2_dst->vb2_buf;
 	else
 		buf = ctx->dst_bufs[hdr->golden_frame];
 
@@ -601,7 +603,7 @@ static void rk3288_vp8d_cfg_ref(struct rk3288_vpu_ctx *ctx)
 
 	/* set alternate reference frame buffer address */
 	if (hdr->alt_frame >= ctx->vq_dst.num_buffers)
-		buf = &ctx->run.dst->b;
+		buf = &vb2_dst->vb2_buf;
 	else
 		buf = ctx->dst_bufs[hdr->alt_frame];
 
@@ -613,6 +615,7 @@ static void rk3288_vp8d_cfg_ref(struct rk3288_vpu_ctx *ctx)
 
 static void rk3288_vp8d_cfg_buffers(struct rk3288_vpu_ctx *ctx)
 {
+	struct vb2_v4l2_buffer *vb2_dst = &ctx->run.dst->b;
 	const struct v4l2_ctrl_vp8_frame_hdr *hdr = ctx->run.vp8d.frame_hdr;
 	struct rk3288_vpu_dev *vpu = ctx->dev;
 	u32 reg;
@@ -632,7 +635,7 @@ static void rk3288_vp8d_cfg_buffers(struct rk3288_vpu_ctx *ctx)
 
 	/* set output frame buffer address */
 	vdpu_write_relaxed(vpu,
-			vb2_dma_contig_plane_dma_addr(&ctx->run.dst->b, 0),
+			vb2_dma_contig_plane_dma_addr(&vb2_dst->vb2_buf, 0),
 			VDPU_REG_ADDR_DST);
 }
 
