@@ -42,7 +42,6 @@
 #include <linux/sched/sysctl.h>
 #include <linux/slab.h>
 #include <linux/compat.h>
-#include <linux/module.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -1667,9 +1666,6 @@ void __init init_timers(void)
 	open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
 }
 
-static int debug_msleep;
-module_param(debug_msleep, int, 0);
-
 /**
  * msleep - sleep safely even with waitqueue interruptions
  * @msecs: Time in milliseconds to sleep for
@@ -1677,9 +1673,6 @@ module_param(debug_msleep, int, 0);
 void msleep(unsigned int msecs)
 {
 	unsigned long timeout = msecs_to_jiffies(msecs) + 1;
-
-	if (debug_msleep && msecs >= debug_msleep)
-		WARN(1, "Long sleep detected (%d msec)\n", msecs);
 
 	while (timeout)
 		timeout = schedule_timeout_uninterruptible(timeout);
