@@ -512,7 +512,6 @@ static ssize_t wakeup_last_time_show(struct device *dev,
 
 static DEVICE_ATTR(wakeup_last_time_ms, 0444, wakeup_last_time_show, NULL);
 
-#ifdef CONFIG_PM_RUNTIME
 static ssize_t wakeup_type_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -551,7 +550,6 @@ static ssize_t wakeup_type_store(struct device *dev,
 
 static DEVICE_ATTR(wakeup_type, 0644, wakeup_type_show,
 		   wakeup_type_store);
-#endif /* CONFIG_PM_RUNTIME */
 
 #ifdef CONFIG_PM_AUTOSLEEP
 static ssize_t wakeup_prevent_sleep_time_show(struct device *dev,
@@ -690,9 +688,7 @@ static struct attribute *wakeup_attrs[] = {
 	&dev_attr_wakeup_total_time_ms.attr,
 	&dev_attr_wakeup_max_time_ms.attr,
 	&dev_attr_wakeup_last_time_ms.attr,
-#ifdef CONFIG_PM_RUNTIME
 	&dev_attr_wakeup_type.attr,
-#endif /* CONFIG_PM_RUNTIME */
 #ifdef CONFIG_PM_AUTOSLEEP
 	&dev_attr_wakeup_prevent_sleep_time_ms.attr,
 #endif
