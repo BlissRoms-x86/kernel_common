@@ -78,6 +78,10 @@
 	gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 };
 
+&pp1500_ap_io {
+	gpio = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+};
+
 &pp1800_audio {
 	gpio = <&gpio0 1 GPIO_ACTIVE_HIGH>;
 };

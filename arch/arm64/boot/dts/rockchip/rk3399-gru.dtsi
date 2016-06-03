@@ -312,7 +312,7 @@
 		pinctrl-0 = <&pp1500_en>;
 
 		enable-active-high;
-		gpio = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio0 10 GPIO_ACTIVE_HIGH>;
 
 		regulator-always-on;
 		regulator-boot-on;
