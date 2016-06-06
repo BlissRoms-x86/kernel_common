@@ -186,12 +186,6 @@ ap_i2c_nfc: &i2c7 {
 	// TODO: add NFC module
 };
 
-// TODO: For now disable hs400 until it works properly
-&sdhci {
-	/delete-property/mmc-hs400-1_8v;
-	/delete-property/mmc-hs400-enhanced-strobe;
-};
-
 &spi4 {
 	status = "okay";
 
