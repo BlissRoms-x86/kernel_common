@@ -273,6 +273,9 @@ int kbase_process_soft_job(struct kbase_jd_atom *katom)
 		return kbase_dump_cpu_gpu_time(katom);
 #ifdef CONFIG_SYNC
 	case BASE_JD_REQ_SOFT_FENCE_TRIGGER:
+#if defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)
+		katom->kctx->jctx.implicit_sync = false;
+#endif				/* CONFIG_KDS or CONFIG_DRM_DMA_SYNC */
 		KBASE_DEBUG_ASSERT(katom->fence != NULL);
 		katom->event_code = kbase_fence_trigger(katom, katom->event_code == BASE_JD_EVENT_DONE ? 0 : -EFAULT);
 		/* Release the reference as we don't need it any more */
@@ -280,6 +283,9 @@ int kbase_process_soft_job(struct kbase_jd_atom *katom)
 		katom->fence = NULL;
 		break;
 	case BASE_JD_REQ_SOFT_FENCE_WAIT:
+#if defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)
+		katom->kctx->jctx.implicit_sync = false;
+#endif				/* CONFIG_KDS or CONFIG_DRM_DMA_SYNC */
 		return kbase_fence_wait(katom);
 #endif				/* CONFIG_SYNC */
 	case BASE_JD_REQ_SOFT_REPLAY:

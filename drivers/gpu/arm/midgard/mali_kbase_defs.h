@@ -470,6 +470,9 @@ struct kbase_jd_context {
 	unsigned fence_context;
 	atomic_t fence_seqno;
 #endif				/* CONFIG_KDS */
+#if (defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)) && defined(CONFIG_SYNC)
+	bool implicit_sync;
+#endif				/* (CONFIG_KDS or CONFIG_DRM_DMA_SYNC) && CONFIG_SYNC */
 #ifdef CONFIG_GPU_TRACEPOINTS
 	atomic_t work_id;
 #endif

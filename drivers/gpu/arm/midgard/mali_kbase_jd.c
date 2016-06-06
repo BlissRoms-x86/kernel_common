@@ -754,13 +754,20 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom, const st
 				struct kds_resource *kds_res;
 
 				kds_res = get_dma_buf_kds_resource(reg->gpu_alloc->imported.umm.dma_buf);
-				if (kds_res)
+				if (kds_res
+#ifdef CONFIG_SYNC
+				    && katom->kctx->jctx.implicit_sync
+#endif
 					add_kds_resource(kds_res, kds_resources, &kds_res_count, kds_access_bitmap, res->ext_resource & BASE_EXT_RES_ACCESS_EXCLUSIVE);
 #endif
 #ifdef CONFIG_DRM_DMA_SYNC
 				struct reservation_object *resv =
 					reg->gpu_alloc->imported.umm.dma_buf->resv;
-				if (resv) {
+				if (resv
+#ifdef CONFIG_SYNC
+				    && katom->kctx->jctx.implicit_sync
+#endif
+				) {
 					drm_add_reservation(resv,
 						resvs, excl_resvs_bitmap,
 						&num_resvs,
@@ -2098,6 +2105,9 @@ int kbase_jd_init(struct kbase_context *kctx)
 	kctx->jctx.fence_context = fence_context_alloc(1);
 	atomic_set(&kctx->jctx.fence_seqno, 0);
 #endif
+#if (defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)) && defined(CONFIG_SYNC)
+	kctx->jctx.implicit_sync = true;
+#endif				/* CONFIG_KDS or CONFIG_DRM_DMA_SYNC */
 	kctx->jctx.job_nr = 0;
 	INIT_LIST_HEAD(&kctx->completed_jobs);
 	atomic_set(&kctx->work_count, 0);
