@@ -76,6 +76,8 @@ struct rockchip_drm_private {
 
 	struct list_head psr_list;
 	struct mutex psr_list_mutex;
+
+	struct drm_atomic_state *state;
 };
 
 void rockchip_drm_atomic_work(struct work_struct *work);
