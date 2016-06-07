@@ -970,6 +970,8 @@ enum ec_feature_code {
 	EC_FEATURE_VSTORE = 25,
 	/* EC decides on USB-C SS mux state, muxes configured by host */
 	EC_FEATURE_USBC_SS_MUX_VIRTUAL = 26,
+	/* EC has RTC feature that can be controlled by host commands */
+	EC_FEATURE_RTC = 27,
 };
 
 #define EC_FEATURE_MASK_0(event_code) (1UL << (event_code % 32))
@@ -2159,6 +2161,9 @@ struct ec_response_rtc {
 /* These all use ec_params_rtc */
 #define EC_CMD_RTC_SET_VALUE 0x46
 #define EC_CMD_RTC_SET_ALARM 0x47
+
+/* Pass as param to SET_ALARM to clear the current alarm */
+#define EC_RTC_ALARM_CLEAR 0
 
 /*****************************************************************************/
 /* Port80 log access */
