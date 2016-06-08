@@ -648,22 +648,20 @@ static int cros_usb_pd_charger_probe(struct platform_device *pd)
 
 	dev_dbg(dev, "cros_usb_pd_charger_probe\n");
 	if (!ec_dev) {
-		WARN(1, "%s: No EC dev found\n", dev_name(dev));
+		dev_err(dev, "No EC dev found\n");
 		return -EINVAL;
 	}
 
 	ec_device = ec_dev->ec_dev;
 	if (!ec_device) {
-		WARN(1, "%s: No EC device found\n", dev_name(dev));
+		dev_err(dev, "No EC device found.\n");
 		return -EINVAL;
 	}
 
 	charger = devm_kzalloc(dev, sizeof(struct charger_data),
 				    GFP_KERNEL);
-	if (!charger) {
-		dev_err(dev, "Failed to alloc charger. Failing probe.\n");
+	if (!charger)
 		return -ENOMEM;
-	}
 
 	charger->dev = dev;
 	charger->ec_dev = ec_dev;
