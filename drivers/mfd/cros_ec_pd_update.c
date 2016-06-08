@@ -913,6 +913,7 @@ struct attribute_group cros_ec_pd_attr_group = {
 	.attrs = __pd_attrs,
 	.is_visible = cros_ec_pd_attrs_are_visible,
 };
+EXPORT_SYMBOL(cros_ec_pd_attr_group);
 
 static SIMPLE_DEV_PM_OPS(cros_ec_pd_pm,
 	cros_ec_pd_suspend, cros_ec_pd_resume);

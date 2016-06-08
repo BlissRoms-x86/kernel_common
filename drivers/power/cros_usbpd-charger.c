@@ -44,6 +44,7 @@
 
 #define CHARGER_DIR_NAME		"CROS_USB_PD_CHARGER%d"
 #define CHARGER_DIR_NAME_LENGTH		sizeof(CHARGER_DIR_NAME)
+#define DRV_NAME "cros-usb-pd-charger"
 
 #define MANUFACTURER_MODEL_LENGTH	32
 
@@ -938,13 +939,14 @@ struct attribute_group cros_usb_pd_charger_attr_group = {
 	.name = "usb-pd-charger",
 	.attrs = __ext_power_cmds_attrs,
 };
+EXPORT_SYMBOL(cros_usb_pd_charger_attr_group);
 
 static SIMPLE_DEV_PM_OPS(cros_usb_pd_charger_pm_ops,
 	cros_usb_pd_charger_suspend, cros_usb_pd_charger_resume);
 
 static struct platform_driver cros_usb_pd_charger_driver = {
 	.driver = {
-		.name = "cros-usb-pd-charger",
+		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = &cros_usb_pd_charger_pm_ops,
 	},
@@ -956,4 +958,4 @@ module_platform_driver(cros_usb_pd_charger_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Chrome USB PD charger");
-MODULE_ALIAS("power_supply:cros-usb-pd-charger");
+MODULE_ALIAS("platform:" DRV_NAME);
