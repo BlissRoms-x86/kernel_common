@@ -134,6 +134,40 @@ ap_i2c_dig: &i2c2 {
 	};
 };
 
+/*
+ * HACK for -rev0, -rev1, -rev2 to bump up voltage
+ *
+ * There's some extra voltage drop on early revs of kevin due to board layout
+ * problems, so bump up all dvs voltage rails by 200mV.
+ *
+ * This 200mV is a bit of an estimate and hasn't been terribly well tuned but
+ * seems to work OK.
+ *
+ * Because we are bumping up 200mV we also need to lop off some operating
+ * points that would cause us to exceed the suggested 1.2V max.
+ *
+ * NOTE: The 'regulator-microvolt-offset' is not a terribly well-tested and
+ * has some quirks (like I think it doesn't necessarily validate constraints
+ * properly?), but seems to work and seems better than hardcoding every
+ * operating point everywhere.
+ */
+&cluster0_opp {
+	/delete-node/opp04;
+	/delete-node/opp05;
+};
+&ppvar_bigcpu {
+	regulator-microvolt-offset = <200000>;
+};
+&ppvar_centerlogic {
+	regulator-microvolt-offset = <200000>;
+};
+&ppvar_gpu {
+	regulator-microvolt-offset = <200000>;
+};
+&ppvar_litcpu {
+	regulator-microvolt-offset = <200000>;
+};
+
 /* PINCTRL: always below everything else */
 
 &pinctrl {

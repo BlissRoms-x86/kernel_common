@@ -43,7 +43,7 @@
  */
 
 /dts-v1/;
-#include "rk3399-gru-kevin-early.dtsi"
+#include "rk3399-gru-kevin.dtsi"
 
 / {
 	model = "Google Kevin Rev 0";
