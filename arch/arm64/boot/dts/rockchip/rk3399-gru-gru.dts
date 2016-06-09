@@ -85,13 +85,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&bl_en>;
 
-		// TODO: something should actually control this GPIO
-		// http://crosbug.com/p/53817
 		enable-active-high;
 		gpio = <&gpio1 17 GPIO_ACTIVE_HIGH>;
-
-		regulator-always-on;		// For bringup???
-		regulator-boot-on;		// For bringup???
 
 		vin-supply = <&pp1800>;
 	};
@@ -132,6 +127,7 @@ ap_i2c_dvs: &i2c0 {
 		dev-ctrl = /bits/ 8 <0x85>;
 		init-brt = /bits/ 8 <0x80>;
 
+		enable-supply = <&ppvar_bl_en>;
 		power-supply = <&pp3300_disp>;
 	};
 };
