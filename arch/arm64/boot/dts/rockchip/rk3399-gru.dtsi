@@ -416,6 +416,7 @@
 
 		gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
 
+		startup-delay-us = <2000>;
 		vin-supply = <&pp3300>;
 	};
 
