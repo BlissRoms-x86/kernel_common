@@ -194,6 +194,16 @@ config RTC_DRV_AS3722
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-as3722.
 
+config RTC_DRV_CROS_EC
+	tristate "Chrome OS EC RTC driver"
+	depends on MFD_CROS_EC
+	help
+	  If you say yes here you will get support for the
+	  Chrome OS Embedded Controller's RTC.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-cros-ec.
+
 config RTC_DRV_DS1307
 	tristate "Dallas/Maxim DS1307/37/38/39/40, ST M41T00, EPSON RX-8025"
 	help
