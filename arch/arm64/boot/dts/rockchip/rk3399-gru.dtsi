@@ -404,8 +404,6 @@
 
 	/* pp3300 children */
 
-	// TODO: this regulator should get referenced by the
-	// EC<-->AP backlight driver. See http://crosbug.com/p/52005
 	pp3300_disp: pp3300-disp {
 		compatible = "regulator-fixed";
 		regulator-name = "pp3300_disp";
