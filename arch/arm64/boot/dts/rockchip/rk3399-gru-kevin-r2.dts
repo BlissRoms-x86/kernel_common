@@ -1,5 +1,5 @@
 /*
- * Google Gru-Kevin Rev 2+ board device tree source
+ * Google Gru-Kevin Rev 2 board device tree source
  *
  * Copyright 2016 Google, Inc
  *
@@ -47,13 +47,40 @@
 
 / {
 	model = "Google Kevin";
-	compatible = "google,kevin-rev15", "google,kevin-rev14",
-		     "google,kevin-rev13", "google,kevin-rev12",
-		     "google,kevin-rev11", "google,kevin-rev10",
-		     "google,kevin-rev9", "google,kevin-rev8",
-		     "google,kevin-rev7", "google,kevin-rev6",
-		     "google,kevin-rev5", "google,kevin-rev4",
-		     "google,kevin-rev3", "google,kevin-rev2",
-		     "google,kevin", "google,gru",
-		     "rockchip,rk3399";
+	compatible = "google,kevin-rev2", "google,kevin",
+		     "google,gru", "rockchip,rk3399";
+};
+
+/*
+ * HACK for -rev0, -rev1, -rev2 to bump up voltage
+ *
+ * There's some extra voltage drop on early revs of kevin due to board layout
+ * problems, so bump up all dvs voltage rails by 200mV.
+ *
+ * This 200mV is a bit of an estimate and hasn't been terribly well tuned but
+ * seems to work OK.
+ *
+ * Because we are bumping up 200mV we also need to lop off some operating
+ * points that would cause us to exceed the suggested 1.2V max.
+ *
+ * NOTE: The 'regulator-microvolt-offset' is not a terribly well-tested and
+ * has some quirks (like I think it doesn't necessarily validate constraints
+ * properly?), but seems to work and seems better than hardcoding every
+ * operating point everywhere.
+ */
+&cluster0_opp {
+       /delete-node/opp04;
+       /delete-node/opp05;
+};
+&ppvar_bigcpu {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_centerlogic {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_gpu {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_litcpu {
+       regulator-microvolt-offset = <200000>;
 };

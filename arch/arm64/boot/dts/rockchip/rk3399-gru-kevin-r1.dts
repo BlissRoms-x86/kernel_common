@@ -51,6 +51,23 @@
 		     "google,gru", "rockchip,rk3399";
 };
 
+&cluster0_opp {
+       /delete-node/opp04;
+       /delete-node/opp05;
+};
+&ppvar_bigcpu {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_centerlogic {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_gpu {
+       regulator-microvolt-offset = <200000>;
+};
+&ppvar_litcpu {
+       regulator-microvolt-offset = <200000>;
+};
+
 /* GPIO overrides for -r1; in same order as parent */
 
 &digitizer {
