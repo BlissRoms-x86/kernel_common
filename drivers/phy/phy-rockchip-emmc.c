@@ -14,6 +14,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
@@ -78,14 +79,71 @@
 struct rockchip_emmc_phy {
 	unsigned int	reg_offset;
 	struct regmap	*reg_base;
+	struct clk	*emmcclk;
 };
 
-static int rockchip_emmc_phy_power(struct rockchip_emmc_phy *rk_phy,
-				   bool on_off)
+static int rockchip_emmc_phy_power(struct phy *phy, bool on_off)
 {
+	struct rockchip_emmc_phy *rk_phy = phy_get_drvdata(phy);
 	unsigned int caldone;
 	unsigned int dllrdy;
+	unsigned int freqsel = PHYCTRL_FREQSEL_200M;
 	unsigned long timeout;
+
+	/*
+	 * We purposely get the clock here and not in probe to avoid the
+	 * circular dependency problem.  We expect:
+	 * - PHY driver to probe
+	 * - SDHCI driver to start probe
+	 * - SDHCI driver to register it's clock
+	 * - SDHCI driver to get the PHY
+	 * - SDHCI driver to power on the PHY
+	 */
+	if (!rk_phy->emmcclk) {
+		rk_phy->emmcclk = devm_clk_get(&phy->dev, "emmcclk");
+
+		/* Don't expect defer at this point; try next time */
+		if (PTR_ERR(rk_phy->emmcclk) == -EPROBE_DEFER) {
+			dev_warn(&phy->dev, "Unexpected emmcclk defer\n");
+			rk_phy->emmcclk = NULL;
+		}
+	}
+
+	if (!IS_ERR_OR_NULL(rk_phy->emmcclk)) {
+		unsigned long rate = clk_get_rate(rk_phy->emmcclk);
+		unsigned long ideal_rate;
+		unsigned long diff;
+
+		switch (rate) {
+		case 0 ... 74999999:
+			ideal_rate = 50000000;
+			freqsel = PHYCTRL_FREQSEL_50M;
+			break;
+		case 75000000 ... 124999999:
+			ideal_rate = 100000000;
+			freqsel = PHYCTRL_FREQSEL_100M;
+			break;
+		case 125000000 ... 174999999:
+			ideal_rate = 150000000;
+			freqsel = PHYCTRL_FREQSEL_150M;
+			break;
+		default:
+			ideal_rate = 200000000;
+			break;
+		};
+
+		diff = (rate > ideal_rate) ?
+			rate - ideal_rate : ideal_rate - rate;
+
+		/*
+		 * In order for tuning delays to be accurate we need to be
+		 * pretty spot on for the DLL range, so warn if we're too
+		 * far off.  Also warn if we're above the 200 MHz max.  Don't
+		 * warn for really slow rates since we won't be tuning then.
+		 */
+		if ((rate > 50000000 && diff > 15000000) || (rate > 200000000))
+			dev_warn(&phy->dev, "Unsupported rate: %lu\n", rate);
+	}
 
 	/*
 	 * Keep phyctrl_pdb and phyctrl_endll low to allow
@@ -132,6 +190,13 @@ static int rockchip_emmc_phy_power(struct rockchip_emmc_phy *rk_phy,
 		return -ETIMEDOUT;
 	}
 
+	/* Set the frequency of the DLL operation */
+	regmap_write(rk_phy->reg_base,
+		     rk_phy->reg_offset + GRF_EMMCPHY_CON0,
+		     HIWORD_UPDATE(freqsel, PHYCTRL_FREQSEL_MASK,
+				   PHYCTRL_FREQSEL_SHIFT));
+
+	/* Turn on the DLL */
 	regmap_write(rk_phy->reg_base,
 		     rk_phy->reg_offset + GRF_EMMCPHY_CON6,
 		     HIWORD_UPDATE(PHYCTRL_ENDLL_ENABLE,
@@ -168,22 +233,13 @@ static int rockchip_emmc_phy_power(struct rockchip_emmc_phy *rk_phy,
 
 static int rockchip_emmc_phy_power_off(struct phy *phy)
 {
-	struct rockchip_emmc_phy *rk_phy = phy_get_drvdata(phy);
-
 	/* Power down emmc phy analog blocks */
-	return rockchip_emmc_phy_power(rk_phy, PHYCTRL_PDB_PWR_OFF);
+	return rockchip_emmc_phy_power(phy, PHYCTRL_PDB_PWR_OFF);
 }
 
 static int rockchip_emmc_phy_power_on(struct phy *phy)
 {
 	struct rockchip_emmc_phy *rk_phy = phy_get_drvdata(phy);
-
-	/* DLL operation: 200 MHz */
-	regmap_write(rk_phy->reg_base,
-		     rk_phy->reg_offset + GRF_EMMCPHY_CON0,
-		     HIWORD_UPDATE(PHYCTRL_FREQSEL_200M,
-				   PHYCTRL_FREQSEL_MASK,
-				   PHYCTRL_FREQSEL_SHIFT));
 
 	/* Drive impedance: 50 Ohm */
 	regmap_write(rk_phy->reg_base,
@@ -207,7 +263,7 @@ static int rockchip_emmc_phy_power_on(struct phy *phy)
 				   PHYCTRL_OTAPDLYSEL_SHIFT));
 
 	/* Power up emmc phy analog blocks */
-	return rockchip_emmc_phy_power(rk_phy, PHYCTRL_PDB_PWR_ON);
+	return rockchip_emmc_phy_power(phy, PHYCTRL_PDB_PWR_ON);
 }
 
 static const struct phy_ops ops = {
