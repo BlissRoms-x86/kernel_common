@@ -242,6 +242,8 @@
 		regulator-max-microvolt = <1500000>;
 
 		pwm-supply = <&ppvar_sys>;
+		pwm-dutycycle-range = <100 0>;
+		pwm-dutycycle-unit = <100>;
 	};
 
 	/* Schematics call this PPVAR even though it's fixed */
