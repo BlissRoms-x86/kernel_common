@@ -695,6 +695,17 @@ ap_i2c_audio: &i2c8 {
 /* PINCTRL: always below everything else */
 
 &pinctrl {
+	/*
+	 * pinctrl settings for pins that have no real owners.
+	 *
+	 * At the moment settings are identical for S0 and S3, but if we later
+	 * need to configure things differently for S3 we'll adjust here.
+	 */
+	pinctrl-names = "default";
+	pinctrl-0 = <
+		&ap_pwroff	/* AP will auto-assert this when in S3 */
+	>;
+
 	pcfg_output_high: pcfg-output-high {
 		output-high;
 	};
