@@ -8,8 +8,8 @@ The node for this device must be under a cros-ec node like google,cros-ec-spi
 or google,cros-ec-i2c.
 
 Required properties:
-- compatible: google,extcon-cros-ec
-
+- compatible:		Should be "google,extcon-cros-ec".
+- google,usb-port-id:	Specifies the USB port ID to use.
 
 Example:
 	cros-ec@0 {
@@ -19,6 +19,7 @@ Example:
 
 		extcon {
 			compatible = "google,extcon-cros-ec";
+			google,usb-port-id = <0>;
 		};
 	}
 

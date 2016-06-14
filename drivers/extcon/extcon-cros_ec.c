@@ -50,6 +50,8 @@ struct cros_ec_extcon_info {
 	struct device *dev;
 	struct extcon_dev *edev;
 
+	int port_id;
+
 	struct cros_ec_device *ec;
 
 	struct notifier_block notifier;
@@ -124,20 +126,18 @@ static int cros_ec_pd_command(struct cros_ec_extcon_info *info,
  * cros_ec_usb_get_power_type() - Get power type info about PD device attached to
  * given port.
  * @info: pointer to struct cros_ec_extcon_info
- * @port: Port # on device
  * @power_type: Holds a value of usb_chg_type on command success
  *
  * Return: 0 on success, <0 on failure.
  */
 static int cros_ec_usb_get_power_type(struct cros_ec_extcon_info *info,
-				      unsigned int port,
 				      unsigned int *power_type)
 {
 	struct ec_params_usb_pd_power_info req;
 	struct ec_response_usb_pd_power_info resp;
 	int ret;
 
-	req.port = port;
+	req.port = info->port_id;
 	ret = cros_ec_pd_command(info, EC_CMD_USB_PD_POWER_INFO, 0,
 				 &req, sizeof(req), &resp, sizeof(resp));
 	if (ret < 0)
@@ -154,21 +154,19 @@ static int cros_ec_usb_get_power_type(struct cros_ec_extcon_info *info,
  * cros_ec_usb_get_role() - Get role info about possible PD device attached to a
  * given port.
  * @info: pointer to struct cros_ec_extcon_info
- * @port: Port # on device
  * @role: data/power/vconn roles
  *
  *
  * Return: >0 on success, 0 if no cable is connected, <0 on failure.
  */
 static int cros_ec_usb_get_role(struct cros_ec_extcon_info *info,
-				unsigned int port,
 				unsigned int *role)
 {
 	struct ec_params_usb_pd_control pd_control;
 	struct ec_response_usb_pd_control_v1 resp;
 	int ret;
 
-	pd_control.port = port;
+	pd_control.port = info->port_id;
 	pd_control.role = USB_PD_CTRL_ROLE_NO_CHANGE;
 	pd_control.mux = USB_PD_CTRL_MUX_NO_CHANGE;
 	pd_control.swap = USB_PD_CTRL_SWAP_NONE;
@@ -297,13 +295,13 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 	int err, res;
 	unsigned int role, dr, pr, power_type;
 
-	err = cros_ec_usb_get_power_type(info, 0, &power_type);
+	err = cros_ec_usb_get_power_type(info, &power_type);
 	if (err) {
 		dev_err(dev, "failed getting power type err = %d\n", err);
 		return;
 	}
 
-	res = cros_ec_usb_get_role(info, 0, &role);
+	res = cros_ec_usb_get_role(info, &role);
 	if (res < 0) {
 		dev_err(dev, "failed getting role err = %d\n", res);
 		return;
@@ -384,7 +382,7 @@ static bool extcon_cros_ec_has_vconn(struct cros_ec_extcon_info *info)
 	unsigned int role;
 	int res;
 
-	res = cros_ec_usb_get_role(info, 0, &role);
+	res = cros_ec_usb_get_role(info, &role);
 
 	return (res > 0) && (role & PD_CTRL_RESP_ROLE_VCONN);
 }
@@ -406,7 +404,7 @@ static int extcon_cros_ec_force_data_role(struct cros_ec_extcon_info *info,
 	if (new_dr == info->dr)
 		return 0;
 
-	pd_control.port = 0;
+	pd_control.port = info->port_id;
 	pd_control.role = USB_PD_CTRL_ROLE_NO_CHANGE;
 	pd_control.mux = USB_PD_CTRL_MUX_NO_CHANGE;
 	pd_control.swap = USB_PD_CTRL_SWAP_DATA;
@@ -561,6 +559,7 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 	struct cros_ec_extcon_info *info;
 	struct cros_ec_device *ec = dev_get_drvdata(pdev->dev.parent);
 	struct device *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
 	unsigned int numports = 0;
 	int ret = 0;
 
@@ -571,15 +570,27 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 	info->dev = dev;
 	info->ec = ec;
 
+	if (np) {
+		u32 port;
+
+		ret = of_property_read_u32(np, "google,usb-port-id", &port);
+		if (ret < 0) {
+			dev_err(dev, "Missing google,usb-port-id property\n");
+			return ret;
+		}
+		info->port_id = port;
+	} else {
+		info->port_id = pdev->id;
+	}
+
 	ret = cros_ec_pd_get_num_ports(info, &numports);
 	if (ret) {
 		dev_err(dev, "failed getting number of ports! ret = %d\n", ret);
 		return -ENODEV;
 	}
 
-	if (numports != 1) {
-		/* If we don't have exactly one port, fail */
-		dev_err(dev, "This driver only supports exactly one port\n");
+	if (info->port_id >= numports) {
+		dev_err(dev, "This system only supports %d ports\n", numports);
 		return -ENODEV;
 	}
 
