@@ -358,9 +358,8 @@ static int extcon_cros_ec_event(struct notifier_block *nb,
 	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
 		extcon_cros_ec_detect_cable(info);
 		return NOTIFY_OK;
-	} else {
-		return NOTIFY_DONE;
 	}
+	return NOTIFY_DONE;
 }
 
 static bool extcon_cros_ec_has_vconn(struct cros_ec_extcon_info *info)
