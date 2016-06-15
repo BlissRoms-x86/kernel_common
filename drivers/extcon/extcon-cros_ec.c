@@ -211,34 +211,24 @@ static const char *cros_ec_usb_power_type_string(unsigned int type)
 	switch (type) {
 	case USB_CHG_TYPE_NONE:
 		return "USB_CHG_TYPE_NONE";
-		break;
 	case USB_CHG_TYPE_PD:
 		return "USB_CHG_TYPE_PD";
-		break;
 	case USB_CHG_TYPE_PROPRIETARY:
 		return "USB_CHG_TYPE_PROPRIETARY";
-		break;
 	case USB_CHG_TYPE_C:
 		return "USB_CHG_TYPE_C";
-		break;
 	case USB_CHG_TYPE_BC12_DCP:
 		return "USB_CHG_TYPE_BC12_DCP";
-		break;
 	case USB_CHG_TYPE_BC12_CDP:
 		return "USB_CHG_TYPE_BC12_CDP";
-		break;
 	case USB_CHG_TYPE_BC12_SDP:
 		return "USB_CHG_TYPE_BC12_SDP";
-		break;
 	case USB_CHG_TYPE_OTHER:
 		return "USB_CHG_TYPE_OTHER";
-		break;
 	case USB_CHG_TYPE_VBUS:
 		return "USB_CHG_TYPE_VBUS";
-		break;
 	case USB_CHG_TYPE_UNKNOWN:
 		return "USB_CHG_TYPE_UNKNOWN";
-		break;
 	default:
 		return "USB_CHG_TYPE_UNKNOWN";
 	}
@@ -256,14 +246,12 @@ static bool cros_ec_usb_power_type_is_wall_wart(unsigned int type,
 	case USB_CHG_TYPE_PROPRIETARY:
 	case USB_CHG_TYPE_BC12_DCP:
 		return true;
-		break;
 	case USB_CHG_TYPE_PD:
 #if 0		/* TODO(crosbug.com/p/45871) use USB comm bit when available */
 		return !(role & PD_CTRL_RESP_ROLE_USB_COMM);
 #else
 		return false;
 #endif
-		break;
 	case USB_CHG_TYPE_C:
 	case USB_CHG_TYPE_BC12_CDP:
 	case USB_CHG_TYPE_BC12_SDP:
