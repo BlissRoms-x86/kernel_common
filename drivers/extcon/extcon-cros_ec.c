@@ -272,7 +272,7 @@ static unsigned int cros_ec_usb_role_is_writeable(unsigned int role)
 	return write_mask;
 }
 
-static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
+static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 {
 	struct device *dev = info->dev;
 	int role, power_type;
@@ -282,14 +282,14 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 	if (power_type < 0) {
 		dev_err(dev, "failed getting power type err = %d\n",
 			power_type);
-		return;
+		return power_type;
 	}
 
 	role = cros_ec_usb_get_role(info);
 	if (role < 0) {
 		if (role != -ENOTCONN) {
 			dev_err(dev, "failed getting role err = %d\n", role);
-			return;
+			return role;
 		}
 		dr = DUAL_ROLE_PROP_DR_NONE;
 		pr = DUAL_ROLE_PROP_PR_NONE;
@@ -341,6 +341,7 @@ static void extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		wake_up_all(&info->role_wait);
 		dual_role_instance_changed(info->drp_inst);
 	}
+	return 0;
 }
 
 static int extcon_cros_ec_event(struct notifier_block *nb,
@@ -613,15 +614,27 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 	info->notifier.notifier_call = extcon_cros_ec_event;
 	ret = blocking_notifier_chain_register(&info->ec->event_notifier,
 					       &info->notifier);
-	if (ret < 0)
-		dev_warn(dev, "failed to register notifier\n");
+	if (ret < 0) {
+		dev_err(dev, "failed to register notifier\n");
+		return ret;
+	}
 
 	/* Perform initial detection */
-	extcon_cros_ec_detect_cable(info);
+	ret = extcon_cros_ec_detect_cable(info);
+	if (ret < 0) {
+		dev_err(dev, "failed to detect initial cable state\n");
+		goto unregister_notifier;
+	}
 
 	return 0;
-}
 
+unregister_notifier:
+	blocking_notifier_chain_unregister(&info->ec->event_notifier,
+					   &info->notifier);
+	if (info->wakelock_held)
+		wake_unlock(&info->wakelock);
+	return ret;
+}
 
 static int extcon_cros_ec_remove(struct platform_device *pdev)
 {
