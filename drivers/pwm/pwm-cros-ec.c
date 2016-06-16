@@ -91,12 +91,19 @@ static int cros_ec_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			     struct pwm_state *state)
 {
 	struct cros_ec_pwm_device *ec_pwm = pwm_to_cros_ec_pwm(chip);
+	int duty_cycle;
 
 	/* The EC won't let us change the period */
 	if (state->period != EC_PWM_MAX_DUTY)
 		return -EINVAL;
 
-	return cros_ec_pwm_set_duty(ec_pwm->ec, pwm->hwpwm, state->duty_cycle);
+	/*
+	 * EC doesn't separate the concept of duty cycle and enabled, but
+	 * kernel does. Translate.
+	 */
+	duty_cycle = state->enabled ? state->duty_cycle : 0;
+
+	return cros_ec_pwm_set_duty(ec_pwm->ec, pwm->hwpwm, duty_cycle);
 }
 
 static void cros_ec_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
@@ -113,6 +120,8 @@ static void cros_ec_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	state->enabled = (ret > 0);
 	state->period = EC_PWM_MAX_DUTY;
+
+	/* Note that "disabled" and "duty cycle == 0" are treated the same */
 	state->duty_cycle = ret;
 }
 
