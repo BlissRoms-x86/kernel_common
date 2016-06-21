@@ -449,6 +449,15 @@ enum host_event_code {
 	/* Keyboard fastboot combo has been pressed */
 	EC_HOST_EVENT_KEYBOARD_FASTBOOT = 25,
 
+	/* EC RTC event occurred */
+	EC_HOST_EVENT_RTC = 26,
+
+	/* Emulate MKBP event */
+	EC_HOST_EVENT_MKBP = 27,
+
+	/* EC desires to change state of host-controlled USB mux */
+	EC_HOST_EVENT_USB_MUX = 28,
+
 	/*
 	 * The high bit of the event mask is not used as a host event code.  If
 	 * it reads back as set, then the entire event mask should be
@@ -481,7 +490,7 @@ struct ec_lpc_host_args {
  * If EC gets a command and this flag is not set, this is an old-style command.
  * Command version is 0 and params from host are at EC_LPC_ADDR_OLD_PARAM with
  * unknown length.  EC must respond with an old-style response (that is,
- * withouth setting EC_HOST_ARGS_FLAG_TO_HOST).
+ * without setting EC_HOST_ARGS_FLAG_TO_HOST).
  */
 #define EC_HOST_ARGS_FLAG_FROM_HOST 0x01
 /*
@@ -801,7 +810,7 @@ struct ec_response_get_cmd_versions {
 } __packed;
 
 /*
- * Check EC communcations status (busy). This is needed on i2c/spi but not
+ * Check EC communications status (busy). This is needed on i2c/spi but not
  * on lpc since it has its own out-of-band busy indicator.
  *
  * lpc must read the status from the command register. Attempting this on
@@ -833,7 +842,7 @@ struct ec_response_test_protocol {
 	uint8_t buf[32];
 } __packed;
 
-/* Get prococol information */
+/* Get protocol information */
 #define EC_CMD_GET_PROTOCOL_INFO	0x0b
 
 /* Flags for ec_response_get_protocol_info.flags */
@@ -945,7 +954,7 @@ enum ec_feature_code {
 	 * (Common Smart Battery System Interface Specification)
 	 */
 	EC_FEATURE_SMART_BATTERY = 18,
-	/* EC can dectect when the host hangs. */
+	/* EC can detect when the host hangs. */
 	EC_FEATURE_HANG_DETECT = 19,
 	/* Report power information, for pit only */
 	EC_FEATURE_PMU = 20,
@@ -957,6 +966,10 @@ enum ec_feature_code {
 	EC_FEATURE_USB_MUX = 23,
 	/* Motion Sensor code has an internal software FIFO */
 	EC_FEATURE_MOTION_SENSE_FIFO = 24,
+	/* Support temporary secure vstore */
+	EC_FEATURE_VSTORE = 25,
+	/* EC decides on USB-C SS mux state, muxes configured by host */
+	EC_FEATURE_USBC_SS_MUX_VIRTUAL = 26,
 };
 
 #define EC_FEATURE_MASK_0(event_code) (1UL << (event_code % 32))
@@ -1186,6 +1199,7 @@ struct ec_params_pwm_set_fan_target_rpm_v1 {
 } __packed;
 
 /* Get keyboard backlight */
+/* OBSOLETE - Use EC_CMD_PWM_SET_DUTY */
 #define EC_CMD_PWM_GET_KEYBOARD_BACKLIGHT 0x22
 
 struct ec_response_pwm_get_keyboard_backlight {
@@ -1194,6 +1208,7 @@ struct ec_response_pwm_get_keyboard_backlight {
 } __packed;
 
 /* Set keyboard backlight */
+/* OBSOLETE - Use EC_CMD_PWM_SET_DUTY */
 #define EC_CMD_PWM_SET_KEYBOARD_BACKLIGHT 0x23
 
 struct ec_params_pwm_set_keyboard_backlight {
@@ -1215,8 +1230,8 @@ struct ec_params_pwm_set_fan_duty_v1 {
 } __packed;
 
 #define EC_CMD_PWM_SET_DUTY 0x25
-/* 16 bit duty cycle, 65535 = 100% */
-#define EC_PWM_MAX_DUTY 65535
+/* 16 bit duty cycle, 0xffff = 100% */
+#define EC_PWM_MAX_DUTY 0xffff
 
 enum ec_pwm_type {
 	/* All types, indexed by board-specific enum pwm_channel */
@@ -1759,6 +1774,18 @@ enum motionsense_command {
 	 */
 	MOTIONSENSE_CMD_SET_ACTIVITY = 13,
 
+	/*
+	 * Lid Angle
+	 */
+	MOTIONSENSE_CMD_LID_ANGLE = 14,
+
+	/*
+	 * Allow the FIFO to trigger interrupt via MKBP events.
+	 * By default the FIFO does not send interrupt to process the FIFO
+	 * until the AP is ready or it is coming from a wakeup sensor.
+	 */
+	MOTIONSENSE_CMD_FIFO_INT_ENABLE = 15,
+
 	/* Number of motionsense sub-commands. */
 	MOTIONSENSE_NUM_CMDS
 };
@@ -1791,6 +1818,7 @@ enum motionsensor_chip {
 	MOTIONSENSE_CHIP_SI1143 = 5,
 	MOTIONSENSE_CHIP_KX022 = 6,
 	MOTIONSENSE_CHIP_L3GD20H = 7,
+	MOTIONSENSE_CHIP_BMA255 = 8,
 };
 
 struct ec_response_motion_sensor_data {
@@ -1818,7 +1846,7 @@ struct ec_response_motion_sense_fifo_info {
 	uint16_t size;
 	/* Amount of space used in the fifo */
 	uint16_t count;
-	/* TImestamp recorded in us */
+	/* Timestamp recorded in us */
 	uint32_t timestamp;
 	/* Total amount of vector lost */
 	uint16_t total_lost;
@@ -1853,7 +1881,7 @@ struct ec_motion_sense_activity {
 #define MOTIONSENSE_SENSOR_FLAG_PRESENT (1<<0)
 
 /*
- * Flush entry for synchronisation.
+ * Flush entry for synchronization.
  * data contains time stamp
  */
 #define MOTIONSENSE_SENSOR_FLAG_FLUSH (1<<0)
@@ -1872,6 +1900,8 @@ struct ec_motion_sense_activity {
 /* MOTIONSENSE_CMD_SENSOR_OFFSET subcommand flag */
 /* Set Calibration information */
 #define MOTION_SENSE_SET_OFFSET 1
+
+#define LID_ANGLE_UNRELIABLE 500
 
 struct ec_params_motion_sense {
 	uint8_t cmd;
@@ -1961,6 +1991,19 @@ struct ec_params_motion_sense {
 		} fifo_read;
 
 		struct ec_motion_sense_activity set_activity;
+
+		/* Used for MOTIONSENSE_CMD_LID_ANGLE */
+		struct {
+		} lid_angle;
+
+		/* Used for MOTIONSENSE_CMD_FIFO_INT_ENABLE */
+		struct {
+			/*
+			 * 1: enable, 0 disable fifo,
+			 * EC_MOTION_SENSE_NO_VALUE return value.
+			 */
+			int8_t enable;
+		} fifo_int_enable;
 	};
 } __packed;
 
@@ -1998,13 +2041,15 @@ struct ec_response_motion_sense {
 
 		/*
 		 * Used for MOTIONSENSE_CMD_EC_RATE, MOTIONSENSE_CMD_SENSOR_ODR,
-		 * MOTIONSENSE_CMD_SENSOR_RANGE, and
-		 * MOTIONSENSE_CMD_KB_WAKE_ANGLE.
+		 * MOTIONSENSE_CMD_SENSOR_RANGE,
+		 * MOTIONSENSE_CMD_KB_WAKE_ANGLE and
+		 * MOTIONSENSE_CMD_FIFO_INT_ENABLE.
 		 */
 		struct {
 			/* Current value of the parameter queried. */
 			int32_t ret;
-		} ec_rate, sensor_odr, sensor_range, kb_wake_angle;
+		} ec_rate, sensor_odr, sensor_range, kb_wake_angle,
+		  fifo_int_enable;
 
 		/* Used for MOTIONSENSE_CMD_SENSOR_OFFSET */
 		struct {
@@ -2024,6 +2069,16 @@ struct ec_response_motion_sense {
 
 		struct {
 		} set_activity;
+
+
+		/* Used for MOTIONSENSE_CMD_LID_ANGLE */
+		struct {
+			/*
+			 * Angle between 0 and 360 degree if available,
+			 * LID_ANGLE_UNRELIABLE otherwise.
+			 */
+			uint16_t value;
+		} lid_angle;
 	};
 } __packed;
 
@@ -2145,6 +2200,50 @@ struct ec_response_port80_read {
 
 struct ec_response_port80_last_boot {
 	uint16_t code;
+} __packed;
+
+/*****************************************************************************/
+/* Temporary secure storage for host verified boot use */
+
+/* Number of bytes in a vstore slot */
+#define EC_VSTORE_SLOT_SIZE 64
+
+/* Maximum number of vstore slots */
+#define EC_VSTORE_SLOT_MAX 32
+
+/* Get persistent storage info */
+#define EC_CMD_VSTORE_INFO 0x49
+
+struct ec_response_vstore_info {
+	/* Indicates which slots are locked */
+	uint32_t slot_locked;
+	/* Total number of slots available */
+	uint8_t slot_count;
+} __packed;
+
+/*
+ * Read temporary secure storage
+ *
+ * Response is EC_VSTORE_SLOT_SIZE bytes of data.
+ */
+#define EC_CMD_VSTORE_READ 0x4a
+
+struct ec_params_vstore_read {
+	uint8_t slot; /* Slot to read from */
+} __packed;
+
+struct ec_response_vstore_read {
+	uint8_t data[EC_VSTORE_SLOT_SIZE];
+} __packed;
+
+/*
+ * Write temporary secure storage and lock it.
+ */
+#define EC_CMD_VSTORE_WRITE 0x4b
+
+struct ec_params_vstore_write {
+	uint8_t slot; /* Slot to write to */
+	uint8_t data[EC_VSTORE_SLOT_SIZE];
 } __packed;
 
 /*****************************************************************************/
@@ -2460,6 +2559,13 @@ struct ec_response_get_next_event {
 	union ec_response_get_next_data data;
 } __packed;
 
+/* Run keyboard factory test scanning */
+#define EC_CMD_KEYBOARD_FACTORY_TEST 0x68
+
+struct ec_response_keyboard_factory_test {
+	uint16_t shorted;	/* Keyboard pins are shorted */
+} __packed;
+
 /*****************************************************************************/
 /* Temperature sensor commands */
 
@@ -2701,7 +2807,6 @@ struct ec_params_console_read_v1 {
  *	  EC_RES_SUCCESS if the command was successful.
  *	  EC_RES_ERROR if the cut off command failed.
  */
-
 #define EC_CMD_BATTERY_CUT_OFF 0x99
 
 #define EC_BATTERY_CUTOFF_FLAG_AT_SHUTDOWN	(1 << 0)
@@ -2995,6 +3100,23 @@ struct ec_response_hibernation_delay {
 	uint32_t hibernate_delay;
 };
 
+/* Inform the EC when entering a sleep state */
+#define EC_CMD_HOST_SLEEP_EVENT 0xa9
+
+enum host_sleep_event {
+	HOST_SLEEP_EVENT_S3_SUSPEND   = 1,
+	HOST_SLEEP_EVENT_S3_RESUME    = 2,
+	HOST_SLEEP_EVENT_S0IX_SUSPEND = 3,
+	HOST_SLEEP_EVENT_S0IX_RESUME  = 4
+};
+
+struct ec_params_host_sleep_event {
+	uint8_t sleep_event;
+} __packed;
+
+struct ec_response_host_sleep_event {
+	uint8_t sleep_event;
+} __packed;
 
 /*****************************************************************************/
 /* Smart battery pass-through */
@@ -3030,6 +3152,7 @@ struct ec_params_sb_wr_block {
 	uint8_t reg;
 	uint16_t data[32];
 } __packed;
+
 
 /*****************************************************************************/
 /* Battery vendor parameters
@@ -3131,6 +3254,27 @@ struct ec_params_entering_mode {
 #define VBOOT_MODE_NORMAL    0
 #define VBOOT_MODE_DEVELOPER 1
 #define VBOOT_MODE_RECOVERY  2
+
+/*****************************************************************************/
+/*
+ * I2C passthru protection command: Protects I2C tunnels against access on
+ * certain addresses (board-specific).
+ */
+#define EC_CMD_I2C_PASSTHRU_PROTECT 0xb7
+
+enum ec_i2c_passthru_protect_subcmd {
+	EC_CMD_I2C_PASSTHRU_PROTECT_STATUS = 0x0,
+	EC_CMD_I2C_PASSTHRU_PROTECT_ENABLE = 0x1,
+};
+
+struct ec_params_i2c_passthru_protect {
+	uint8_t subcmd;
+	uint8_t port;		/* I2C port number */
+} __packed;
+
+struct ec_response_i2c_passthru_protect {
+	uint8_t status;		/* Status flags (0: unlocked, 1: locked) */
+} __packed;
 
 /*****************************************************************************/
 /* System commands */
@@ -3560,8 +3704,39 @@ struct ec_params_pd_write_log_entry {
 	uint8_t port; /* port#, or 0 for events unrelated to a given port */
 } __packed;
 
-#endif  /* !__ACPI__ */
 
+/* Control USB-PD chip */
+#define EC_CMD_PD_CONTROL 0x119
+
+enum ec_pd_control_cmd {
+	PD_SUSPEND = 0,      /* Suspend the PD chip (EC: stop talking to PD) */
+	PD_RESUME,           /* Resume the PD chip (EC: start talking to PD) */
+	PD_RESET,            /* Force reset the PD chip */
+	PD_CONTROL_DISABLE   /* Disable further calls to this command */
+};
+
+struct ec_params_pd_control {
+	uint8_t chip;         /* chip id (should be 0) */
+	uint8_t subcmd;
+} __packed;
+
+/* Get info about USB-C SS muxes */
+#define EC_CMD_USB_PD_MUX_INFO 0x11a
+
+struct ec_params_usb_pd_mux_info {
+	uint8_t port; /* USB-C port number */
+} __packed;
+
+/* Flags representing mux state */
+#define USB_PD_MUX_USB_ENABLED       (1 << 0)
+#define USB_PD_MUX_DP_ENABLED        (1 << 1)
+#define USB_PD_MUX_POLARITY_INVERTED (1 << 2)
+
+struct ec_response_usb_pd_mux_info {
+	uint8_t flags; /* USB_PD_MUX_*-encoded USB mux state */
+} __packed;
+
+#endif  /* !__ACPI__ */
 
 /*****************************************************************************/
 /*
