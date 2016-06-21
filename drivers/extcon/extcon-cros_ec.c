@@ -60,6 +60,7 @@ struct cros_ec_extcon_info {
 
 	unsigned int dr; /* data role */
 	unsigned int pr; /* power role */
+	bool dp; /* DisplayPort enabled */
 	unsigned int power_type;
 	unsigned int writeable;
 	wait_queue_head_t role_wait;
@@ -67,17 +68,10 @@ struct cros_ec_extcon_info {
 	struct dual_role_phy_instance *drp_inst;
 };
 
-/* List of detectable cables */
-enum {
-	EXTCON_CABLE_USB = 0,
-	EXTCON_CABLE_USB_HOST,
-
-	EXTCON_CABLE_END,
-};
-
 static const unsigned int usb_type_c_cable[] = {
 	EXTCON_USB,
 	EXTCON_USB_HOST,
+	EXTCON_DISP_DP,
 	EXTCON_NONE,
 };
 
@@ -147,14 +141,37 @@ static int cros_ec_usb_get_power_type(struct cros_ec_extcon_info *info)
 
 
 /**
+ * cros_ec_usb_get_pd_mux_state() - Get PD mux state for given port.
+ * @info: pointer to struct cros_ec_extcon_info
+ *
+ * Return: PD mux state on success, <0 on failure.
+ */
+static int cros_ec_usb_get_pd_mux_state(struct cros_ec_extcon_info *info)
+{
+	struct ec_params_usb_pd_mux_info req;
+	struct ec_response_usb_pd_mux_info resp;
+	int ret;
+
+	req.port = info->port_id;
+	ret = cros_ec_pd_command(info, EC_CMD_USB_PD_MUX_INFO, 0,
+				 &req, sizeof(req),
+				 &resp, sizeof(resp));
+	if (ret < 0)
+		return ret;
+
+	return resp.flags;
+}
+
+/**
  * cros_ec_usb_get_role() - Get role info about possible PD device attached to a
  * given port.
  * @info: pointer to struct cros_ec_extcon_info
- *
+ * @polarity: pointer to cable polarity (return value)
  *
  * Return: role info on success, -ENOTCONN if no cable is connected, <0 on failure.
  */
-static int cros_ec_usb_get_role(struct cros_ec_extcon_info *info)
+static int cros_ec_usb_get_role(struct cros_ec_extcon_info *info,
+				bool *polarity)
 {
 	struct ec_params_usb_pd_control pd_control;
 	struct ec_response_usb_pd_control_v1 resp;
@@ -172,6 +189,8 @@ static int cros_ec_usb_get_role(struct cros_ec_extcon_info *info)
 
 	if (!(resp.enabled & PD_CTRL_RESP_ENABLED_CONNECTED))
 		return -ENOTCONN;
+
+	*polarity = resp.polarity;
 
 	return resp.role;
 }
@@ -272,11 +291,13 @@ static unsigned int cros_ec_usb_role_is_writeable(unsigned int role)
 	return write_mask;
 }
 
-static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
+static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
+				       bool force)
 {
 	struct device *dev = info->dev;
 	int role, power_type;
 	unsigned int dr, pr;
+	bool polarity, dp, mux;
 
 	power_type = cros_ec_usb_get_power_type(info);
 	if (power_type < 0) {
@@ -285,7 +306,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		return power_type;
 	}
 
-	role = cros_ec_usb_get_role(info);
+	role = cros_ec_usb_get_role(info, &polarity);
 	if (role < 0) {
 		if (role != -ENOTCONN) {
 			dev_err(dev, "failed getting role err = %d\n", role);
@@ -293,11 +314,26 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 		}
 		dr = DUAL_ROLE_PROP_DR_NONE;
 		pr = DUAL_ROLE_PROP_PR_NONE;
+		polarity = false;
+		dp = false;
+		mux = false;
+		dev_dbg(dev, "disconnected\n");
 	} else {
+		int pd_mux_state;
+
 		dr = (role & PD_CTRL_RESP_ROLE_DATA) ?
 			DUAL_ROLE_PROP_DR_HOST : DUAL_ROLE_PROP_DR_DEVICE;
 		pr = (role & PD_CTRL_RESP_ROLE_POWER) ?
 			DUAL_ROLE_PROP_PR_SRC : DUAL_ROLE_PROP_PR_SNK;
+		pd_mux_state = cros_ec_usb_get_pd_mux_state(info);
+		if (pd_mux_state < 0)
+			pd_mux_state = USB_PD_MUX_USB_ENABLED;
+		dp = pd_mux_state & USB_PD_MUX_DP_ENABLED;
+		mux = pd_mux_state & USB_PD_MUX_USB_ENABLED;
+
+		dev_dbg(dev,
+			"connected role 0x%x pwr type %d dr %d pr %d pol %d mux %d dp %d\n",
+			role, power_type, dr, pr, polarity, mux, dp);
 	}
 
 	/*
@@ -308,7 +344,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 	    cros_ec_usb_power_type_is_wall_wart(power_type, role))
 		dr = DUAL_ROLE_PROP_DR_NONE;
 
-	if (info->dr != dr || info->pr != pr ||
+	if (force || info->dr != dr || info->pr != pr || info->dp != dp ||
 	    info->power_type != power_type) {
 		bool host_connected = false, device_connected = false;
 
@@ -317,6 +353,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 			cros_ec_usb_role_string(dr));
 		info->dr = dr;
 		info->pr = pr;
+		info->dp = dp;
 		info->power_type = power_type;
 		info->writeable = cros_ec_usb_role_is_writeable(role);
 
@@ -334,10 +371,29 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info)
 			info->wakelock_held = false;
 		}
 
-		extcon_set_cable_state_(info->edev, EXTCON_USB_HOST,
-					host_connected);
-		extcon_set_cable_state_(info->edev, EXTCON_USB,
-					device_connected);
+		extcon_set_state(info->edev, EXTCON_USB, device_connected);
+		extcon_set_state(info->edev, EXTCON_USB_HOST, host_connected);
+		extcon_set_state(info->edev, EXTCON_DISP_DP, dp);
+		extcon_set_property(info->edev, EXTCON_USB,
+				    EXTCON_PROP_USB_VBUS,
+				    (union extcon_property_value)(int)pr);
+		extcon_set_property(info->edev, EXTCON_USB_HOST,
+				    EXTCON_PROP_USB_VBUS,
+				    (union extcon_property_value)(int)pr);
+		extcon_set_property(info->edev, EXTCON_USB,
+				    EXTCON_PROP_USB_TYPEC_POLARITY,
+				    (union extcon_property_value)(int)polarity);
+		extcon_set_property(info->edev, EXTCON_USB_HOST,
+				    EXTCON_PROP_USB_TYPEC_POLARITY,
+				    (union extcon_property_value)(int)polarity);
+		extcon_set_property(info->edev, EXTCON_DISP_DP,
+				    EXTCON_PROP_USB_TYPEC_POLARITY,
+				    (union extcon_property_value)(int)polarity);
+
+		extcon_sync(info->edev, EXTCON_USB);
+		extcon_sync(info->edev, EXTCON_USB_HOST);
+		extcon_sync(info->edev, EXTCON_DISP_DP);
+
 		wake_up_all(&info->role_wait);
 		dual_role_instance_changed(info->drp_inst);
 	}
@@ -355,8 +411,9 @@ static int extcon_cros_ec_event(struct notifier_block *nb,
 	ec = info->ec;
 
 	host_event = cros_ec_get_host_event(ec);
-	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
-		extcon_cros_ec_detect_cable(info);
+	if (host_event & (EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU) |
+			  EC_HOST_EVENT_MASK(EC_HOST_EVENT_USB_MUX))) {
+		extcon_cros_ec_detect_cable(info, false);
 		return NOTIFY_OK;
 	}
 	return NOTIFY_DONE;
@@ -364,9 +421,10 @@ static int extcon_cros_ec_event(struct notifier_block *nb,
 
 static bool extcon_cros_ec_has_vconn(struct cros_ec_extcon_info *info)
 {
+	bool polarity;
 	int role;
 
-	role = cros_ec_usb_get_role(info);
+	role = cros_ec_usb_get_role(info, &polarity);
 
 	return (role >= 0) && (role & PD_CTRL_RESP_ROLE_VCONN);
 }
@@ -590,6 +648,17 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	extcon_set_property_capability(info->edev, EXTCON_USB,
+				       EXTCON_PROP_USB_VBUS);
+	extcon_set_property_capability(info->edev, EXTCON_USB_HOST,
+				       EXTCON_PROP_USB_VBUS);
+	extcon_set_property_capability(info->edev, EXTCON_USB,
+				       EXTCON_PROP_USB_TYPEC_POLARITY);
+	extcon_set_property_capability(info->edev, EXTCON_USB_HOST,
+				       EXTCON_PROP_USB_TYPEC_POLARITY);
+	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
+				       EXTCON_PROP_USB_TYPEC_POLARITY);
+
 	info->dr = DUAL_ROLE_PROP_DR_NONE;
 	info->pr = DUAL_ROLE_PROP_PR_NONE;
 	init_waitqueue_head(&info->role_wait);
@@ -619,7 +688,7 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 	}
 
 	/* Perform initial detection */
-	ret = extcon_cros_ec_detect_cable(info);
+	ret = extcon_cros_ec_detect_cable(info, true);
 	if (ret < 0) {
 		dev_err(dev, "failed to detect initial cable state\n");
 		goto unregister_notifier;
