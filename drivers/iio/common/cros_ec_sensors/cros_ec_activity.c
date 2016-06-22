@@ -30,6 +30,8 @@
 
 #include "cros_ec_sensors_core.h"
 
+#define DRV_NAME "cros-ec-activity"
+
 /* st data for ec_sensors iio driver. */
 struct cros_ec_sensors_state {
 	/* Shared by all sensors */
@@ -272,23 +274,15 @@ static int cros_ec_sensors_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct platform_device_id cros_ec_sensors_ids[] = {
-	{
-		.name = "cros-ec-activity",
-	},
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(platform, cros_ec_sensors_ids);
-
 static struct platform_driver cros_ec_sensors_platform_driver = {
 	.driver = {
-		.name	= "cros-ec-activity",
+		.name	= DRV_NAME,
 	},
 	.probe		= cros_ec_sensors_probe,
 	.remove		= cros_ec_sensors_remove,
-	.id_table	= cros_ec_sensors_ids,
 };
 module_platform_driver(cros_ec_sensors_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC activity sensors driver");
+MODULE_ALIAS("platform:" DRV_NAME);
 MODULE_LICENSE("GPL v2");

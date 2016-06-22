@@ -35,6 +35,8 @@
 
 #include "cros_ec_sensors_core.h"
 
+#define DRV_NAME "cros-ec-ring"
+
 /* The ring is a FIFO that return sensor information from
  * the single EC FIFO.
  * There are always 5 channels returned:
@@ -524,24 +526,16 @@ static int cros_ec_ring_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct platform_device_id cros_ec_ring_ids[] = {
-	{
-		.name = "cros-ec-ring",
-	},
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(platform, cros_ec_ring_ids);
-
 static struct platform_driver cros_ec_ring_platform_driver = {
 	.driver = {
-		.name	= "cros-ec-ring",
+		.name	= DRV_NAME,
 		.owner	= THIS_MODULE,
 	},
 	.probe		= cros_ec_ring_probe,
 	.remove		= cros_ec_ring_remove,
-	.id_table	= cros_ec_ring_ids,
 };
 module_platform_driver(cros_ec_ring_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC sensor hub ring driver");
+MODULE_ALIAS("platform:" DRV_NAME);
 MODULE_LICENSE("GPL v2");
