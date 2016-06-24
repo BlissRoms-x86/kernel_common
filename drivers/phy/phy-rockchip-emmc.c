@@ -90,26 +90,7 @@ static int rockchip_emmc_phy_power(struct phy *phy, bool on_off)
 	unsigned int freqsel = PHYCTRL_FREQSEL_200M;
 	unsigned long timeout;
 
-	/*
-	 * We purposely get the clock here and not in probe to avoid the
-	 * circular dependency problem.  We expect:
-	 * - PHY driver to probe
-	 * - SDHCI driver to start probe
-	 * - SDHCI driver to register it's clock
-	 * - SDHCI driver to get the PHY
-	 * - SDHCI driver to power on the PHY
-	 */
-	if (!rk_phy->emmcclk) {
-		rk_phy->emmcclk = devm_clk_get(&phy->dev, "emmcclk");
-
-		/* Don't expect defer at this point; try next time */
-		if (PTR_ERR(rk_phy->emmcclk) == -EPROBE_DEFER) {
-			dev_warn(&phy->dev, "Unexpected emmcclk defer\n");
-			rk_phy->emmcclk = NULL;
-		}
-	}
-
-	if (!IS_ERR_OR_NULL(rk_phy->emmcclk)) {
+	if (rk_phy->emmcclk != NULL) {
 		unsigned long rate = clk_get_rate(rk_phy->emmcclk);
 		unsigned long ideal_rate;
 		unsigned long diff;
@@ -231,6 +212,44 @@ static int rockchip_emmc_phy_power(struct phy *phy, bool on_off)
 	return 0;
 }
 
+static int rockchip_emmc_phy_init(struct phy *phy)
+{
+	struct rockchip_emmc_phy *rk_phy = phy_get_drvdata(phy);
+	int ret = 0;
+
+	/*
+	 * We purposely get the clock here and not in probe to avoid the
+	 * circular dependency problem.  We expect:
+	 * - PHY driver to probe
+	 * - SDHCI driver to start probe
+	 * - SDHCI driver to register it's clock
+	 * - SDHCI driver to get the PHY
+	 * - SDHCI driver to init the PHY
+	 *
+	 * The clock is optional, so upon any error we just set to NULL.
+	 *
+	 * NOTE: we don't do anything special for EPROBE_DEFER here.  Given the
+	 * above expected use case, EPROBE_DEFER isn't sensible to expect, so
+	 * it's just like any other error.
+	 */
+	rk_phy->emmcclk = clk_get(&phy->dev, "emmcclk");
+	if (IS_ERR(rk_phy->emmcclk)) {
+		dev_dbg(&phy->dev, "Error getting emmcclk: %d\n", ret);
+		rk_phy->emmcclk = NULL;
+	}
+
+	return ret;
+}
+
+static int rockchip_emmc_phy_exit(struct phy *phy)
+{
+	struct rockchip_emmc_phy *rk_phy = phy_get_drvdata(phy);
+
+	clk_put(rk_phy->emmcclk);
+
+	return 0;
+}
+
 static int rockchip_emmc_phy_power_off(struct phy *phy)
 {
 	/* Power down emmc phy analog blocks */
@@ -267,6 +286,8 @@ static int rockchip_emmc_phy_power_on(struct phy *phy)
 }
 
 static const struct phy_ops ops = {
+	.init		= rockchip_emmc_phy_init,
+	.exit		= rockchip_emmc_phy_exit,
 	.power_on	= rockchip_emmc_phy_power_on,
 	.power_off	= rockchip_emmc_phy_power_off,
 	.owner		= THIS_MODULE,
