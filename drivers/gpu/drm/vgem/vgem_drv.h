@@ -53,6 +53,8 @@ extern int vgem_gem_prime_pin(struct drm_gem_object *gobj);
 extern void vgem_gem_prime_unpin(struct drm_gem_object *gobj);
 extern void *vgem_gem_prime_vmap(struct drm_gem_object *gobj);
 extern void vgem_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr);
+extern int vgem_gem_prime_mmap(struct drm_gem_object *gobj,
+			       struct vm_area_struct *vma);
 struct drm_gem_object *
 vgem_gem_prime_import_sg_table(struct drm_device *dev,
 			       struct dma_buf_attachment *attach,

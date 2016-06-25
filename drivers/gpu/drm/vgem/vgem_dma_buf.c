@@ -62,6 +62,21 @@ void vgem_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
 	vunmap(vaddr);
 }
 
+int vgem_gem_prime_mmap(struct drm_gem_object *gobj,
+			struct vm_area_struct *vma)
+{
+	int ret;
+
+	ret = drm_gem_mmap_obj(gobj, gobj->size, vma);
+	if (ret < 0)
+		return ret;
+
+	vma->vm_flags |= VM_MIXEDMAP;
+	vma->vm_flags &= ~VM_PFNMAP;
+
+	return 0;
+}
+
 struct drm_gem_object *
 vgem_gem_prime_import_sg_table(struct drm_device *dev,
 			       struct dma_buf_attachment *attach,
