@@ -49,6 +49,7 @@
  */
 
 #include "rk3399-gru.dtsi"
+#include <include/dt-bindings/input/linux-event-codes.h>
 
 /*
  * Kevin-specific things
@@ -106,6 +107,23 @@
 			panel_in_edp: endpoint {
 				remote-endpoint = <&edp_out_panel>;
 			};
+		};
+	};
+
+	gpio_keys: gpio-keys {
+		compatible = "gpio-keys";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cpu1_pen_eject>;
+
+		pen-insert {
+			label = "Pen Insert";
+
+			/* Insert = low, eject = high */
+			gpios = <&gpio0 13 GPIO_ACTIVE_LOW>;
+			linux,code = <SW_PEN_INSERTED>;
+			linux,input-type = <EV_SW>;
 		};
 	};
 };
@@ -204,8 +222,6 @@ ap_i2c_dig: &i2c2 {
 	};
 
 	pen {
-		// TODO: Need pull?
-		// TODO: Active high or active low?
 		cpu1_pen_eject: cpu1-pen-eject {
 			rockchip,pins = <0 13 RK_FUNC_GPIO &pcfg_pull_up>;
 		};

@@ -52,6 +52,7 @@
 
 	/* Top level deletions */
 	/delete-node/p3_3_v_dig;
+	/delete-node/gpio-keys;
 };
 
 &cluster0_opp {
