@@ -184,6 +184,9 @@
 		regulator-min-microvolt = <800000>;
 		regulator-max-microvolt = <1500000>;
 
+		// TODO: scope; change driver to ramp slower too?
+		regulator-ramp-delay = <6000>;
+
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
 		pwm-dutycycle-unit = <100>;
@@ -202,6 +205,9 @@
 
 		regulator-min-microvolt = <800000>;
 		regulator-max-microvolt = <1500000>;
+
+		// TODO: scope; change driver to ramp slower too?
+		regulator-ramp-delay = <6000>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
@@ -222,6 +228,9 @@
 		regulator-min-microvolt = <800000>;
 		regulator-max-microvolt = <1500000>;
 
+		// TODO: scope; change driver to ramp slower too?
+		regulator-ramp-delay = <6000>;
+
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
 		pwm-dutycycle-unit = <100>;
@@ -240,6 +249,9 @@
 
 		regulator-min-microvolt = <800000>;
 		regulator-max-microvolt = <1500000>;
+
+		// TODO: scope; change driver to ramp slower too?
+		regulator-ramp-delay = <6000>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
