@@ -946,6 +946,7 @@ static void put_ctx(struct perf_event_context *ctx)
  * function.
  *
  * Lock order:
+ *    cred_guard_mutex
  *	task_struct::perf_event_mutex
  *	  perf_event_context::mutex
  *	    perf_event_context::lock
@@ -1580,14 +1581,14 @@ event_sched_out(struct perf_event *event,
 
 	perf_pmu_disable(event->pmu);
 
+	event->tstamp_stopped = tstamp;
+	event->pmu->del(event, 0);
+	event->oncpu = -1;
 	event->state = PERF_EVENT_STATE_INACTIVE;
 	if (event->pending_disable) {
 		event->pending_disable = 0;
 		event->state = PERF_EVENT_STATE_OFF;
 	}
-	event->tstamp_stopped = tstamp;
-	event->pmu->del(event, 0);
-	event->oncpu = -1;
 
 	if (!is_software_event(event))
 		cpuctx->active_oncpu--;
@@ -3418,7 +3419,6 @@ static struct task_struct *
 find_lively_task_by_vpid(pid_t vpid)
 {
 	struct task_struct *task;
-	int err;
 
 	rcu_read_lock();
 	if (!vpid)
@@ -3432,16 +3432,7 @@ find_lively_task_by_vpid(pid_t vpid)
 	if (!task)
 		return ERR_PTR(-ESRCH);
 
-	/* Reuse ptrace permission checks for now. */
-	err = -EACCES;
-	if (!ptrace_may_access(task, PTRACE_MODE_READ_REALCREDS))
-		goto errout;
-
 	return task;
-errout:
-	put_task_struct(task);
-	return ERR_PTR(err);
-
 }
 
 /*
@@ -7979,6 +7970,9 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 		}
 	}
 
+	/* symmetric to unaccount_event() in _free_event() */
+	account_event(event);
+
 	return event;
 
 err_per_task:
@@ -8325,6 +8319,24 @@ SYSCALL_DEFINE5(perf_event_open,
 
 	get_online_cpus();
 
+	if (task) {
+		err = mutex_lock_interruptible(&task->signal->cred_guard_mutex);
+		if (err)
+			goto err_cpus;
+
+		/*
+		 * Reuse ptrace permission checks for now.
+		 *
+		 * We must hold cred_guard_mutex across this and any potential
+		 * perf_install_in_context() call for this new event to
+		 * serialize against exec() altering our credentials (and the
+		 * perf_event_exit_task() that could imply).
+		 */
+		err = -EACCES;
+		if (!ptrace_may_access(task, PTRACE_MODE_READ_REALCREDS))
+			goto err_cred;
+	}
+
 	if (flags & PERF_FLAG_PID_CGROUP)
 		cgroup_fd = pid;
 
@@ -8332,7 +8344,7 @@ SYSCALL_DEFINE5(perf_event_open,
 				 NULL, NULL, cgroup_fd);
 	if (IS_ERR(event)) {
 		err = PTR_ERR(event);
-		goto err_cpus;
+		goto err_cred;
 	}
 
 	if (is_sampling_event(event)) {
@@ -8341,8 +8353,6 @@ SYSCALL_DEFINE5(perf_event_open,
 			goto err_alloc;
 		}
 	}
-
-	account_event(event);
 
 	/*
 	 * Special case software events and allow them to be part of
@@ -8391,11 +8401,6 @@ SYSCALL_DEFINE5(perf_event_open,
 	if ((pmu->capabilities & PERF_PMU_CAP_EXCLUSIVE) && group_leader) {
 		err = -EBUSY;
 		goto err_context;
-	}
-
-	if (task) {
-		put_task_struct(task);
-		task = NULL;
 	}
 
 	/*
@@ -8485,6 +8490,11 @@ SYSCALL_DEFINE5(perf_event_open,
 
 	WARN_ON_ONCE(ctx->parent_ctx);
 
+	/*
+	 * This is the point on no return; we cannot fail hereafter. This is
+	 * where we start modifying current state.
+	 */
+
 	if (move_group) {
 		/*
 		 * See perf_event_ctx_lock() for comments on the details
@@ -8554,6 +8564,11 @@ SYSCALL_DEFINE5(perf_event_open,
 		mutex_unlock(&gctx->mutex);
 	mutex_unlock(&ctx->mutex);
 
+	if (task) {
+		mutex_unlock(&task->signal->cred_guard_mutex);
+		put_task_struct(task);
+	}
+
 	put_online_cpus();
 
 	event->owner = current;
@@ -8582,7 +8597,15 @@ err_context:
 	perf_unpin_context(ctx);
 	put_ctx(ctx);
 err_alloc:
-	free_event(event);
+	/*
+	 * If event_file is set, the fput() above will have called ->release()
+	 * and that will take care of freeing the event.
+	 */
+	if (!event_file)
+		free_event(event);
+err_cred:
+	if (task)
+		mutex_unlock(&task->signal->cred_guard_mutex);
 err_cpus:
 	put_online_cpus();
 err_task:
@@ -8625,8 +8648,6 @@ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
 
 	/* Mark owner so we could distinguish it from user events. */
 	event->owner = EVENT_OWNER_KERNEL;
-
-	account_event(event);
 
 	ctx = find_get_context(event->pmu, task, event);
 	if (IS_ERR(ctx)) {
@@ -8864,6 +8885,9 @@ static void perf_event_exit_task_context(struct task_struct *child, int ctxn)
 
 /*
  * When a child task exits, feed back event values to parent events.
+ *
+ * Can be called with cred_guard_mutex held when called from
+ * install_exec_creds().
  */
 void perf_event_exit_task(struct task_struct *child)
 {
