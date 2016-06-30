@@ -40,6 +40,8 @@
  *     OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "rk3399-sched-energy.dtsi"
+
 / {
 	cluster0_opp: opp-table0 {
 		compatible = "operating-points-v2";
@@ -147,26 +149,32 @@
 
 &cpu_l0 {
 	operating-points-v2 = <&cluster0_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_0 &RK3399_CLUSTER_COST_0>;
 };
 
 &cpu_l1 {
 	operating-points-v2 = <&cluster0_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_0 &RK3399_CLUSTER_COST_0>;
 };
 
 &cpu_l2 {
 	operating-points-v2 = <&cluster0_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_0 &RK3399_CLUSTER_COST_0>;
 };
 
 &cpu_l3 {
 	operating-points-v2 = <&cluster0_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_0 &RK3399_CLUSTER_COST_0>;
 };
 
 &cpu_b0 {
 	operating-points-v2 = <&cluster1_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_1 &RK3399_CLUSTER_COST_1>;
 };
 
 &cpu_b1 {
 	operating-points-v2 = <&cluster1_opp>;
+	sched-energy-costs = <&RK3399_CPU_COST_1 &RK3399_CLUSTER_COST_1>;
 };
 
 &gpu {
