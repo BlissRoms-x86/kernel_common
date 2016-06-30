@@ -88,7 +88,8 @@ int vgem_gem_get_pages(struct drm_vgem_gem_object *obj)
 
 static int vgem_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct drm_vgem_gem_object *obj = vma->vm_private_data;
+	struct drm_gem_object *gobj = vma->vm_private_data;
+	struct drm_vgem_gem_object *obj = to_vgem_bo(gobj);
 	loff_t num_pages;
 	pgoff_t page_offset;
 	int ret;
@@ -251,19 +252,14 @@ int vgem_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 		goto out_unlock;
 	}
 
-	if (!obj->dev->driver->gem_vm_ops) {
-		ret = -EINVAL;
+	ret = drm_gem_mmap_obj(obj, obj->size, vma);
+	if (ret < 0)
 		goto out_unlock;
-	}
 
-	vma->vm_flags |= VM_IO | VM_MIXEDMAP | VM_DONTEXPAND | VM_DONTDUMP;
-	vma->vm_ops = obj->dev->driver->gem_vm_ops;
-	vma->vm_private_data = vgem_obj;
-	vma->vm_page_prot =
-		pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
+	vma->vm_flags |= VM_MIXEDMAP;
+	vma->vm_flags &= ~VM_PFNMAP;
 
 	mutex_unlock(&dev->struct_mutex);
-	drm_gem_vm_open(vma);
 	return ret;
 
 out_unlock:
