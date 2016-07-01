@@ -604,17 +604,17 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 		info->drp_inst = inst;
 	}
 
+	/* Initialize wakelock to hold off suspend when USB is attached */
+	wake_lock_init(&info->wakelock, WAKE_LOCK_SUSPEND,
+		       dev_name(&pdev->dev));
+	info->wakelock_held = false;
+
 	/* Get PD events from the EC */
 	info->notifier.notifier_call = extcon_cros_ec_event;
 	ret = blocking_notifier_chain_register(&info->ec->event_notifier,
 					       &info->notifier);
 	if (ret < 0)
 		dev_warn(dev, "failed to register notifier\n");
-
-	/* Initialize wakelock to hold off suspend when USB is attached */
-	wake_lock_init(&info->wakelock, WAKE_LOCK_SUSPEND,
-		       dev_name(&pdev->dev));
-	info->wakelock_held = false;
 
 	/* Perform initial detection */
 	extcon_cros_ec_detect_cable(info);
