@@ -34,7 +34,7 @@ static struct cros_ec_dev_platform ec_p = {
 	.cmd_offset = EC_CMD_PASSTHRU_OFFSET(CROS_EC_DEV_EC_INDEX),
 };
 
-static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
+int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 {
 	struct cros_ec_command *msg;
 	struct ec_response_get_next_event *event;
@@ -62,6 +62,7 @@ static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 	}
 	return ret;
 }
+EXPORT_SYMBOL(cros_ec_get_next_event);
 
 static int cros_ec_get_keyboard_state_event(struct cros_ec_device *ec_dev)
 {
