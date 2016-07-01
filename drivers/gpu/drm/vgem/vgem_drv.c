@@ -106,17 +106,19 @@ static int vgem_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	ret = vm_insert_page(vma, (unsigned long)vmf->virtual_address,
 			     obj->pages[page_offset]);
 	switch (ret) {
+	case -EAGAIN:
 	case 0:
+	case -ERESTARTSYS:
+	case -EINTR:
+	case -EBUSY:
+		/*
+		 * EBUSY is ok: this just means that another thread
+		 * already did the job.
+		 */
 		return VM_FAULT_NOPAGE;
 	case -ENOMEM:
 		return VM_FAULT_OOM;
-	case -EBUSY:
-		return VM_FAULT_RETRY;
-	case -EFAULT:
-	case -EINVAL:
-		return VM_FAULT_SIGBUS;
 	default:
-		WARN_ON(1);
 		return VM_FAULT_SIGBUS;
 	}
 }
