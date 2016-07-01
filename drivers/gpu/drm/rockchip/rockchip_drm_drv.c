@@ -188,6 +188,9 @@ static int rockchip_drm_load(struct drm_device *drm_dev, unsigned long flags)
 
 	drm_dev->dev_private = private;
 
+	INIT_LIST_HEAD(&private->psr_list);
+	mutex_init(&private->psr_list_mutex);
+
 	drm_mode_config_init(drm_dev);
 
 	rockchip_drm_mode_config_init(drm_dev);
@@ -243,7 +246,6 @@ static int rockchip_drm_load(struct drm_device *drm_dev, unsigned long flags)
 	ret = rockchip_drm_fbdev_init(drm_dev);
 	if (ret)
 		goto err_vblank_cleanup;
-
 	return 0;
 err_vblank_cleanup:
 	drm_vblank_cleanup(drm_dev);

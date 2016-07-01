@@ -73,6 +73,9 @@ struct rockchip_drm_private {
 	struct rockchip_atomic_commit commit;
 	struct iommu_domain *domain;
 	struct drm_mm mm;
+
+	struct list_head psr_list;
+	struct mutex psr_list_mutex;
 };
 
 void rockchip_drm_atomic_work(struct work_struct *work);
