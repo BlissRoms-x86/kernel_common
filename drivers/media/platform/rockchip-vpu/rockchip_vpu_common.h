@@ -34,7 +34,7 @@
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-contig.h>
 
-#include "rk3288_vpu_hw.h"
+#include "rockchip_vpu_hw.h"
 
 #define RK3288_VPU_NAME			"rk3288-vpu"
 #define RK3288_VPU_DEC_NAME		"rk3288-vpu-dec"

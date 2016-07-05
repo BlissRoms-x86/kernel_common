@@ -21,7 +21,7 @@
  * GNU General Public License for more details.
  */
 
-#include "rk3288_vpu_common.h"
+#include "rockchip_vpu_common.h"
 
 #include <linux/module.h>
 #include <linux/version.h>
@@ -32,8 +32,8 @@
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-sg.h>
 
-#include "rk3288_vpu_dec.h"
-#include "rk3288_vpu_hw.h"
+#include "rockchip_vpu_dec.h"
+#include "rockchip_vpu_hw.h"
 
 #define DEF_SRC_FMT_DEC				V4L2_PIX_FMT_H264_SLICE
 #define DEF_DST_FMT_DEC				V4L2_PIX_FMT_NV12

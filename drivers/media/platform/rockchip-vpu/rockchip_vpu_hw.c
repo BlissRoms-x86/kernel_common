@@ -14,7 +14,7 @@
  * GNU General Public License for more details.
  */
 
-#include "rk3288_vpu_common.h"
+#include "rockchip_vpu_common.h"
 
 #include <linux/clk.h>
 #include <linux/delay.h>
