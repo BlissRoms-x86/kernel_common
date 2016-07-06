@@ -173,4 +173,15 @@ config PCI_HISI
 	help
 	  Say Y here if you want PCIe controller support on HiSilicon HIP05 SoC
 
+config PCIE_ROCKCHIP
+	tristate "Rockchip PCIe controller"
+	depends on ARM64 && ARCH_ROCKCHIP
+	depends on OF
+	depends on PCI_MSI_IRQ_DOMAIN
+	select MFD_SYSCON
+	help
+	  Say Y here if you want internal PCI support on Rockchip SoC.
+	  There is 1 internal PCIe port available to support GEN2 with
+	  4 slots.
+
 endmenu
