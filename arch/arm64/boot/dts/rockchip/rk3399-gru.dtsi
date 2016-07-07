@@ -276,23 +276,23 @@
 	/* pp900_ap aliases; these are always on for AP so just use alias */
 
 	/* EC turns on w/ pp900_ddrpll_en */
-	pp900_ddrpll: pp900_ap {
+	pp900_ddrpll: pp900-ap {
 	};
 
 	/* EC turns on w/ pp900_pcie_en */
-	pp900_pcie: pp900_ap {
+	pp900_pcie: pp900-ap {
 	};
 
 	/* EC turns on w/ pp900_pll_en */
-	pp900_pll: pp900_ap {
+	pp900_pll: pp900-ap {
 	};
 
 	/* EC turns on w/ pp900_pmu_en */
-	pp900_pmu: pp900_ap {
+	pp900_pmu: pp900-ap {
 	};
 
 	/* EC turns on w/ pp900_usb_en */
-	pp900_usb: pp900_ap {
+	pp900_usb: pp900-ap {
 	};
 
 	/* pp1800 aliases; these are always on for AP so just use alias */
