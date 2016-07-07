@@ -399,6 +399,24 @@ error:
 	kfree(msg);
 }
 
+static const struct mfd_cell cros_ec_rtc_devs[] = {
+	{
+		.name = "cros-ec-rtc",
+		.id   = -1,
+	},
+};
+
+static void cros_ec_rtc_register(struct cros_ec_dev *ec)
+{
+	int ret;
+
+	ret = mfd_add_devices(ec->dev, 0, cros_ec_rtc_devs,
+			      ARRAY_SIZE(cros_ec_rtc_devs),
+			      NULL, 0, NULL);
+	if (ret)
+		dev_err(ec->dev, "failed to add cros-ec-rtc device: %d\n", ret);
+}
+
 static int ec_device_probe(struct platform_device *pdev)
 {
 	int retval = -ENOMEM;
@@ -460,6 +478,10 @@ static int ec_device_probe(struct platform_device *pdev)
 	/* check whether this EC is a sensor hub. */
 	if (cros_ec_check_features(ec, EC_FEATURE_MOTION_SENSE))
 		cros_ec_sensors_register(ec);
+
+	/* check whether this EC instance has RTC host command support */
+	if (cros_ec_check_features(ec, EC_FEATURE_RTC))
+		cros_ec_rtc_register(ec);
 
 	/* Take control of the lightbar from the EC. */
 	lb_manual_suspend_ctrl(ec, 1);
