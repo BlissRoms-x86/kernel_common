@@ -278,6 +278,13 @@ struct rockchip_vpu_h264d_run {
 };
 
 /**
+ * struct rockchip_vpu_h264e_run - per-run data specific to H264 encoding.
+ */
+struct rockchip_vpu_h264e_run {
+	const struct rockchip_reg_params *reg_params;
+};
+
+/**
  * struct rockchip_vpu_vp9d_run - per-run data specific to vp9
  * decoding.
  * @dec_param: Pointer to a buffer containing per-run frame data
@@ -315,6 +322,7 @@ struct rockchip_vpu_run {
 		struct rockchip_vpu_vp8e_run vp8e;
 		struct rockchip_vpu_vp8d_run vp8d;
 		struct rockchip_vpu_h264d_run h264d;
+		struct rockchip_vpu_h264e_run h264e;
 		struct rockchip_vpu_vp9d_run vp9d;
 		/* Other modes will need different data. */
 	};
@@ -664,6 +672,12 @@ rockchip_vpu_ctx_is_dummy_encode(struct rockchip_vpu_ctx *ctx)
 	struct rockchip_vpu_dev *dev = ctx->dev;
 
 	return ctx == dev->dummy_encode_ctx;
+}
+
+static inline unsigned int rockchip_vpu_rounded_luma_size(unsigned int w,
+							  unsigned int h)
+{
+	return round_up(w, MB_DIM) * round_up(h, MB_DIM);
 }
 
 int rockchip_vpu_ctrls_setup(struct rockchip_vpu_ctx *ctx,

@@ -105,11 +105,6 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rockchip_vpu_ctx *ctx,
 				hdr_size + ext_hdr_size + dct_size);
 }
 
-static inline unsigned int ref_luma_size(unsigned int w, unsigned int h)
-{
-	return round_up(w, MB_DIM) * round_up(h, MB_DIM);
-}
-
 int rk3288_vpu_vp8e_init(struct rockchip_vpu_ctx *ctx)
 {
 	struct rockchip_vpu_dev *vpu = ctx->dev;
@@ -133,7 +128,7 @@ int rk3288_vpu_vp8e_init(struct rockchip_vpu_ctx *ctx)
 		goto err_ctrl_buf;
 	}
 
-	ref_buf_size = ref_luma_size(width, height) * 3 / 2;
+	ref_buf_size = rockchip_vpu_rounded_luma_size(width, height) * 3 / 2;
 	ret = rockchip_vpu_aux_buf_alloc(vpu, &ctx->hw.vp8e.ext_buf,
 					2 * ref_buf_size);
 	if (ret) {
@@ -195,8 +190,8 @@ static void rk3288_vpu_vp8e_set_buffers(struct rockchip_vpu_dev *vpu,
 	u32 start_offset;
 	size_t dst_size;
 
-	rounded_size = ref_luma_size(ctx->src_fmt.width,
-						ctx->src_fmt.height);
+	rounded_size = rockchip_vpu_rounded_luma_size(ctx->src_fmt.width,
+						      ctx->src_fmt.height);
 
 	ref_buf_dma = rec_buf_dma = ctx->hw.vp8e.ext_buf.dma;
 	if (ctx->hw.vp8e.ref_rec_ptr)

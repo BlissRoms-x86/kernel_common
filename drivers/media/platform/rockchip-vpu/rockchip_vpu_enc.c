@@ -264,6 +264,14 @@ static struct rockchip_vpu_control controls[] = {
 		.step = 1,
 		.default_value = 1,
 	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 
 static inline const void *get_ctrl_ptr(struct rockchip_vpu_ctx *ctx,
@@ -836,6 +844,7 @@ static int rockchip_vpu_enc_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_MFC51_VIDEO_RC_FIXED_TARGET_BIT:
 	case V4L2_CID_MPEG_VIDEO_B_FRAMES:
 	case V4L2_CID_MPEG_VIDEO_H264_B_FRAME_QP:
+	case V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR:
 	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
 		/* Ignore these controls for now. (FIXME?) */
 		break;
@@ -1280,14 +1289,19 @@ static void rockchip_vpu_enc_prepare_run(struct rockchip_vpu_ctx *ctx)
 
 	v4l2_ctrl_apply_store(&ctx->ctrl_handler, config_store);
 
-	memcpy(ctx->run.dst->vp8e.header,
-		get_ctrl_ptr(ctx, ROCKCHIP_VPU_ENC_CTRL_HEADER),
-		ROCKCHIP_HEADER_SIZE);
-	ctx->run.vp8e.reg_params = get_ctrl_ptr(ctx,
-		ROCKCHIP_VPU_ENC_CTRL_REG_PARAMS);
-	memcpy(ctx->run.priv_src.cpu,
-		get_ctrl_ptr(ctx, ROCKCHIP_VPU_ENC_CTRL_HW_PARAMS),
-		ROCKCHIP_HW_PARAMS_SIZE);
+	if (ctx->vpu_dst_fmt->fourcc == V4L2_PIX_FMT_VP8) {
+		memcpy(ctx->run.dst->vp8e.header,
+			get_ctrl_ptr(ctx, ROCKCHIP_VPU_ENC_CTRL_HEADER),
+			ROCKCHIP_HEADER_SIZE);
+		ctx->run.vp8e.reg_params = get_ctrl_ptr(ctx,
+			ROCKCHIP_VPU_ENC_CTRL_REG_PARAMS);
+		memcpy(ctx->run.priv_src.cpu,
+			get_ctrl_ptr(ctx, ROCKCHIP_VPU_ENC_CTRL_HW_PARAMS),
+			ROCKCHIP_HW_PARAMS_SIZE);
+	} else if (ctx->vpu_dst_fmt->fourcc == V4L2_PIX_FMT_H264) {
+		ctx->run.h264e.reg_params = get_ctrl_ptr(ctx,
+			ROCKCHIP_VPU_ENC_CTRL_REG_PARAMS);
+	}
 }
 
 static const struct rockchip_vpu_run_ops rockchip_vpu_enc_run_ops = {
