@@ -780,9 +780,11 @@ config INTEL_IPS
 	  along with the CPU frequency and i915 drivers, provides that
 	  functionality.  If in doubt, say Y here; it will only load on
 	  supported platforms.
+
 config ACPI_CHROMEOS
 	bool "ChromeOS specific ACPI extensions"
 	depends on ACPI
+	depends on CHROME_PLATFORMS
 	select NVRAM
 	select CHROMEOS
 	---help---
