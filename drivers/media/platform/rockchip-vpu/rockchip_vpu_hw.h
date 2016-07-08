@@ -366,6 +366,13 @@ const struct rk3288_vp8e_reg_params *rk3288_vpu_vp8e_get_dummy_params(void);
 void rk3288_vpu_vp8e_assemble_bitstream(struct rockchip_vpu_ctx *ctx,
 					struct rockchip_vpu_buf *dst_buf);
 
+/* Run ops for rk3399 vpu H264 encoder */
+int rk3399_vpu_h264e_init(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_h264e_exit(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_h264e_run(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_h264e_done(struct rockchip_vpu_ctx *ctx,
+			   enum vb2_buffer_state result);
+
 /* Run ops for rk3399 vpu VP8 decoder */
 int rk3399_vpu_vp8d_init(struct rockchip_vpu_ctx *ctx);
 void rk3399_vpu_vp8d_exit(struct rockchip_vpu_ctx *ctx);

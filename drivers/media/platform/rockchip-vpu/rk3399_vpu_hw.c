@@ -65,6 +65,12 @@ static const struct rockchip_vpu_fmt rk3399_vpu_enc_fmts[] = {
 		.codec_mode = RK_VPU_CODEC_VP8E,
 		.num_planes = 1,
 	},
+	{
+		.name = "H264 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_H264,
+		.codec_mode = RK_VPU_CODEC_H264E,
+		.num_planes = 1,
+	},
 };
 
 static const struct rockchip_vpu_fmt rk3399_vpu_dec_fmts[] = {
@@ -242,6 +248,13 @@ static const struct rockchip_vpu_codec_ops rk3399_vpu_mode_ops[] = {
 		.run = rk3399_vpu_vp8d_run,
 		.done = rockchip_vpu_run_done,
 		.reset = rk3399_vpu_dec_reset,
+	},
+	[RK_VPU_CODEC_H264E] = {
+		.init = rk3399_vpu_h264e_init,
+		.exit = rk3399_vpu_h264e_exit,
+		.run = rk3399_vpu_h264e_run,
+		.done = rk3399_vpu_h264e_done,
+		.reset = rk3399_vpu_enc_reset,
 	},
 };
 
