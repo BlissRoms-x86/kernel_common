@@ -56,3 +56,28 @@
 		     "google,kevin-rev3", "google,kevin",
 		     "google,gru", "rockchip,rk3399";
 };
+
+/*
+ * HACK for -rev3 to bump up voltage
+ *
+ * There's some extra voltage drop on early revs of kevin due to board layout
+ * problems.  On -rev3 we're almost there, so only 50 mV (it was 200 mV on
+ * earlier revs)
+ *
+ * NOTE: The 'regulator-microvolt-offset' is not a terribly well-tested and
+ * has some quirks (like I think it doesn't necessarily validate constraints
+ * properly?), but seems to work and seems better than hardcoding every
+ * operating point everywhere.
+ */
+&ppvar_bigcpu {
+	regulator-microvolt-offset = <50000>;
+};
+&ppvar_centerlogic {
+	regulator-microvolt-offset = <50000>;
+};
+&ppvar_gpu {
+	regulator-microvolt-offset = <50000>;
+};
+&ppvar_litcpu {
+	regulator-microvolt-offset = <50000>;
+};
