@@ -146,6 +146,39 @@ struct rk3288_h264e_reg_params {
 };
 
 /**
+ * struct rk3399_vp8e_reg_params - low level encoding parameters
+ * TODO: Create abstract structures for more generic controls or just
+ *       remove unused fields.
+ */
+struct rk3399_vp8e_reg_params {
+	u32 is_intra;
+	u32 frm_hdr_size;
+
+	u32 qp;
+
+	s32 mv_prob[2][19];
+	s32 intra_prob;
+
+	u32 bool_enc_value;
+	u32 bool_enc_value_bits;
+	u32 bool_enc_range;
+
+	u32 filterDisable;
+	u32 filter_sharpness;
+	u32 filter_level;
+
+	s32 intra_frm_delta;
+	s32 last_frm_delta;
+	s32 golden_frm_delta;
+	s32 altref_frm_delta;
+
+	s32 bpred_mode_delta;
+	s32 zero_mode_delta;
+	s32 newmv_mode_delta;
+	s32 splitmv_mode_delta;
+};
+
+/**
  * struct rockchip_reg_params - low level encoding parameters
  */
 struct rockchip_reg_params {
@@ -153,6 +186,7 @@ struct rockchip_reg_params {
 	union {
 		const struct rk3288_h264e_reg_params rk3288_h264e;
 		const struct rk3288_vp8e_reg_params rk3288_vp8e;
+		const struct rk3399_vp8e_reg_params rk3399_vp8e;
 	};
 };
 
@@ -336,6 +370,13 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rockchip_vpu_ctx *ctx,
 int rk3399_vpu_vp8d_init(struct rockchip_vpu_ctx *ctx);
 void rk3399_vpu_vp8d_exit(struct rockchip_vpu_ctx *ctx);
 void rk3399_vpu_vp8d_run(struct rockchip_vpu_ctx *ctx);
+
+/* Run ops for rk3399 vpu VP8 encoder */
+int rk3399_vpu_vp8e_init(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_vp8e_exit(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_vp8e_run(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_vp8e_done(struct rockchip_vpu_ctx *ctx,
+			  enum vb2_buffer_state result);
 
 /* Run ops for rk3399 vdec H264 decoder */
 int rk3399_vdec_h264d_init(struct rockchip_vpu_ctx *ctx);

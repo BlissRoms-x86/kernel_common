@@ -25,6 +25,46 @@
  */
 
 static const struct rockchip_vpu_fmt rk3399_vpu_enc_fmts[] = {
+	/* Source formats. */
+	{
+		.name = "4:2:0 3 planes Y/Cb/Cr",
+		.fourcc = V4L2_PIX_FMT_YUV420M,
+		.codec_mode = RK_VPU_CODEC_NONE,
+		.num_planes = 3,
+		.depth = { 8, 4, 4 },
+		.enc_fmt = RK3288_VPU_ENC_FMT_YUV420P,
+	},
+	{
+		.name = "4:2:0 2 plane Y/CbCr",
+		.fourcc = V4L2_PIX_FMT_NV12M,
+		.codec_mode = RK_VPU_CODEC_NONE,
+		.num_planes = 2,
+		.depth = { 8, 8 },
+		.enc_fmt = RK3288_VPU_ENC_FMT_YUV420SP,
+	},
+	{
+		.name = "4:2:2 1 plane YUYV",
+		.fourcc = V4L2_PIX_FMT_YUYV,
+		.codec_mode = RK_VPU_CODEC_NONE,
+		.num_planes = 1,
+		.depth = { 16 },
+		.enc_fmt = RK3288_VPU_ENC_FMT_YUYV422,
+	},
+	{
+		.name = "4:2:2 1 plane UYVY",
+		.fourcc = V4L2_PIX_FMT_UYVY,
+		.codec_mode = RK_VPU_CODEC_NONE,
+		.num_planes = 1,
+		.depth = { 16 },
+		.enc_fmt = RK3288_VPU_ENC_FMT_UYVY422,
+	},
+	/* Destination formats. */
+	{
+		.name = "VP8 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_VP8,
+		.codec_mode = RK_VPU_CODEC_VP8E,
+		.num_planes = 1,
+	},
 };
 
 static const struct rockchip_vpu_fmt rk3399_vpu_dec_fmts[] = {
@@ -189,6 +229,13 @@ static void rk3399_vpu_dec_reset(struct rockchip_vpu_ctx *ctx)
  */
 
 static const struct rockchip_vpu_codec_ops rk3399_vpu_mode_ops[] = {
+	[RK_VPU_CODEC_VP8E] = {
+		.init = rk3399_vpu_vp8e_init,
+		.exit = rk3399_vpu_vp8e_exit,
+		.run = rk3399_vpu_vp8e_run,
+		.done = rk3399_vpu_vp8e_done,
+		.reset = rk3399_vpu_enc_reset,
+},
 	[RK_VPU_CODEC_VP8D] = {
 		.init = rk3399_vpu_vp8d_init,
 		.exit = rk3399_vpu_vp8d_exit,
