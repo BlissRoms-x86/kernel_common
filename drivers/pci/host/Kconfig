@@ -174,7 +174,7 @@ config PCI_HISI
 	  Say Y here if you want PCIe controller support on HiSilicon HIP05 SoC
 
 config PCIE_ROCKCHIP
-	tristate "Rockchip PCIe controller"
+	bool "Rockchip PCIe controller"
 	depends on ARM64 && ARCH_ROCKCHIP
 	depends on OF
 	depends on PCI_MSI_IRQ_DOMAIN
