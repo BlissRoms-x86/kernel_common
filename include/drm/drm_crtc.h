@@ -44,6 +44,7 @@ struct drm_file;
 struct drm_clip_rect;
 struct device_node;
 struct fence;
+struct reservation_object;
 
 #define DRM_MODE_OBJECT_CRTC 0xcccccccc
 #define DRM_MODE_OBJECT_CONNECTOR 0xc0c0c0c0
@@ -180,6 +181,14 @@ struct drm_framebuffer_funcs {
 		     struct drm_file *file_priv, unsigned flags,
 		     unsigned color, struct drm_clip_rect *clips,
 		     unsigned num_clips);
+	/*
+	 * This callback appends up to 4 reservation objects
+	 * associated with given fb to resvs array. It should check
+	 * if the reservation is already in the array before adding it.
+	 */
+	int (*get_reservations)(struct drm_framebuffer *fb,
+				struct reservation_object **resvs,
+				unsigned int *num_resvs);
 };
 
 struct drm_framebuffer {

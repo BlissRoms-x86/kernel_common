@@ -864,6 +864,9 @@ struct drm_device {
 	struct drm_vma_offset_manager *vma_offset_manager;
 	/*@} */
 	int switch_power_state;
+
+	unsigned atomic_in_fence_context;
+	atomic_t atomic_in_fence_seqno;
 };
 
 #define DRM_SWITCH_POWER_ON 0
