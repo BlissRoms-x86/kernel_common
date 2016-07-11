@@ -12,6 +12,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/dma-buf.h>
 #include <linux/kernel.h>
 #include <drm/drm.h>
 #include <drm/drmP.h>
@@ -77,10 +78,45 @@ static int rockchip_drm_fb_dirty(struct drm_framebuffer *fb,
 	return 0;
 }
 
+static int rockchip_drm_get_reservations(struct drm_framebuffer *fb,
+					  struct reservation_object **resvs,
+					  unsigned int *num_resvs)
+{
+	int num_planes = drm_format_num_planes(fb->pixel_format);
+	int i;
+
+	if (num_planes <= 0) {
+		DRM_ERROR("Invalid pixel format with no planes.\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_planes; i++) {
+		struct drm_gem_object *obj = rockchip_fb_get_gem_obj(fb, i);
+		int r;
+
+		if (!obj) {
+			DRM_ERROR("Failed to get rockchip gem object from framebuffer.\n");
+			return -EINVAL;
+		}
+
+		if (!obj->dma_buf)
+			continue;
+		if (!obj->dma_buf->resv)
+			continue;
+		for (r = 0; r < *num_resvs; r++)
+			if (resvs[r] == obj->dma_buf->resv)
+				break;
+		if (r == *num_resvs)
+			resvs[(*num_resvs)++] = obj->dma_buf->resv;
+	}
+	return 0;
+}
+
 static const struct drm_framebuffer_funcs rockchip_drm_fb_funcs = {
 	.destroy	= rockchip_drm_fb_destroy,
 	.create_handle	= rockchip_drm_fb_create_handle,
 	.dirty		= rockchip_drm_fb_dirty,
+	.get_reservations = rockchip_drm_get_reservations,
 };
 
 static struct rockchip_drm_fb *
@@ -240,15 +276,32 @@ rockchip_atomic_wait_for_complete(struct drm_device *dev, struct drm_atomic_stat
 	}
 }
 
+static void wait_for_fences(struct drm_device *dev,
+			    struct drm_atomic_state *state)
+{
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
+	int i;
+
+	for_each_plane_in_state(state, plane, plane_state, i) {
+		if (!plane->state->fence)
+			continue;
+
+		WARN_ON(!plane->state->fb);
+
+		fence_wait(plane->state->fence, false);
+		fence_put(plane->state->fence);
+		plane->state->fence = NULL;
+	}
+}
+
 static void
 rockchip_atomic_commit_complete(struct rockchip_atomic_commit *commit)
 {
 	struct drm_atomic_state *state = commit->state;
 	struct drm_device *dev = commit->dev;
 
-	/*
-	 * TODO: do fence wait here.
-	 */
+	wait_for_fences(dev, state);
 
 	/*
 	 * Rockchip crtc support runtime PM, can't update display planes
