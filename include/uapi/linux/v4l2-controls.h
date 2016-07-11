@@ -587,6 +587,10 @@ enum v4l2_vp8_golden_frame_sel {
 
 #define V4L2_CID_MPEG_VIDEO_VP8_FRAME_HDR		(V4L2_CID_MPEG_BASE+512)
 
+#define V4L2_CID_MPEG_VIDEO_VP9_FRAME_HDR		(V4L2_CID_MPEG_BASE+513)
+#define V4L2_CID_MPEG_VIDEO_VP9_DECODE_PARAM		(V4L2_CID_MPEG_BASE+514)
+#define V4L2_CID_MPEG_VIDEO_VP9_ENTROPY			(V4L2_CID_MPEG_BASE+515)
+
 /*  MPEG-class control IDs specific to the CX2341x driver as defined by V4L2 */
 #define V4L2_CID_MPEG_CX2341X_BASE 				(V4L2_CTRL_CLASS_MPEG | 0x1000)
 #define V4L2_CID_MPEG_CX2341X_VIDEO_SPATIAL_FILTER_MODE 	(V4L2_CID_MPEG_CX2341X_BASE+0)
@@ -1211,6 +1215,149 @@ struct v4l2_ctrl_vp8_frame_hdr {
 	__u32 alt_frame;
 
 	__u8 flags;
+};
+
+#define V4L2_VP9_SGMNT_PARAM_FLAG_ENABLED		0x01
+#define V4L2_VP9_SGMNT_PARAM_FLAG_UPDATE_MAP		0x02
+#define V4L2_VP9_SGMNT_PARAM_FLAG_TEMPORAL_UPDATE	0x04
+#define V4L2_VP9_SGMNT_PARAM_FLAG_UPDATE_DATA		0x08
+#define V4L2_VP9_SGMNT_PARAM_FLAG_ABS_OR_DELTA_UPDATE	0x10
+struct v4l2_vp9_segmentation_params {
+	__u8 tree_probs[7];
+	__u8 pred_probs[3];
+	__u8 feature_enabled[8][4];
+	__s16 feature_data[8][4];
+
+	__u8 flags;
+};
+
+#define V4L2_VP9_LOOP_FLTR_FLAG_DELTA_ENABLED		0x01
+#define V4L2_VP9_LOOP_FLTR_FLAG_DELTA_UPDATE		0x02
+struct v4l2_vp9_loop_filter_params {
+	__u8 level;
+	__u8 sharpness;
+	__s8 deltas[4];
+	__s8 mode_deltas[2];
+	__u8 lvl_lookup[8][4][2];
+
+	__u8 flags;
+};
+
+#define V4L2_VP9_QUANT_PARAMS_FLAG_LOSSLESS		0x01
+struct v4l2_vp9_quantization_params {
+	__u8 base_q_idx;
+	__s8 delta_q_y_dc;
+	__s8 delta_q_uv_dc;
+	__s8 delta_q_uv_ac;
+
+	__u8 flags;
+};
+
+#define V4L2_VP9_FRAME_HDR_FLAG_SHOW_FRAME	0x01
+/* Error resilient mode enabled flag */
+#define V4L2_VP9_FRAME_HDR_FLAG_ERR_RES		0x02
+#define V4L2_VP9_FRAME_HDR_FLAG_FRAME_INTRA	0x04
+#define V4L2_VP9_FRAME_HDR_ALLOW_HIGH_PREC_MV	0x08
+#define V4L2_VP9_FRAME_HDR_REFRESH_FRAME_CTX	0x10
+#define V4L2_VP9_FRAME_HDR_PARALLEL_DEC_MODE	0x20
+struct v4l2_ctrl_vp9_frame_hdr {
+	__u8 profile;
+	/* 0: keyframe, 1: non-keyframe */
+	__u8 frame_type;
+
+	__u8 bit_depth;
+	__u8 color_space;
+	__u8 color_range;
+	__u8 subsampling_x;
+	__u8 subsampling_y;
+
+	__u32 frame_width;
+	__u32 frame_height;
+	__u32 render_width;
+	__u32 render_height;
+
+	__u8 reset_frame_context;
+
+	__u8 interpolation_filter;
+	__u8 frame_context_idx;
+
+	struct v4l2_vp9_loop_filter_params lf_params;
+	struct v4l2_vp9_quantization_params quant_params;
+	struct v4l2_vp9_segmentation_params sgmnt_params;
+
+	__u8 tile_cols_log2;
+	__u8 tile_rows_log2;
+
+	__u16 header_size_in_bytes;
+
+	__u8 flags;
+};
+
+struct v4l2_vp9_reference_frame {
+	 /* v4l2_buffer index */
+	__u32 buf_index;
+
+	__u32 frame_width;
+	__u32 frame_height;
+	__u8 bit_depth;
+	__u8 subsampling_x;
+	__u8 subsampling_y;
+};
+
+struct v4l2_ctrl_vp9_decode_param {
+	/* v4l2_buffer index for all reference frames (frame slots). */
+	__u32 ref_frames[8];
+
+	/* Active reference frames, [0]: last, [1]: golden, [2]: altref */
+	struct v4l2_vp9_reference_frame active_ref_frames[3];
+};
+
+struct v4l2_vp9_entropy_ctx {
+	__u8 tx_probs_8x8[2][1];
+	__u8 tx_probs_16x16[2][2];
+	__u8 tx_probs_32x32[2][3];
+
+	__u8 coef_probs[4][2][2][6][6][3];
+	__u8 skip_prob[3];
+	__u8 inter_mode_probs[7][3];
+	__u8 interp_filter_probs[4][2];
+	__u8 is_inter_prob[4];
+
+	__u8 comp_mode_prob[5];
+	__u8 single_ref_prob[5][2];
+	__u8 comp_ref_prob[5];
+
+	__u8 y_mode_probs[4][9];
+	__u8 uv_mode_probs[10][9];
+
+	__u8 partition_probs[16][3];
+
+	__u8 mv_joint_probs[3];
+	__u8 mv_sign_prob[2];
+	__u8 mv_class_probs[2][10];
+	__u8 mv_class0_bit_prob[2];
+	__u8 mv_bits_prob[2][10];
+	__u8 mv_class0_fr_probs[2][2][3];
+	__u8 mv_fr_probs[2][3];
+	__u8 mv_class0_hp_prob[2];
+	__u8 mv_hp_prob[2];
+};
+
+/* Entropy context state for current frame (frame_context_idx). */
+struct v4l2_ctrl_vp9_entropy {
+	__u8 tx_mode;
+	__u8 reference_mode;
+
+	/* Entropy context after load_probs2(). */
+	struct v4l2_vp9_entropy_ctx initial_entropy_ctx;
+
+	/*
+	 * Entropy context for the current decoding state: when passed to the
+	 * driver, contains the state of initial_entropy_ctx after parsing the
+	 * compressed header. After decoding is done (after vb2_buffer_done() is
+	 * called on the associated buffer), state as after refresh_probs().
+	 */
+	struct v4l2_vp9_entropy_ctx current_entropy_ctx;
 };
 
 #endif

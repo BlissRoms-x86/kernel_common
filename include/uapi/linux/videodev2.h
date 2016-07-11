@@ -596,6 +596,7 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_VP8      v4l2_fourcc('V', 'P', '8', '0') /* VP8 */
 #define V4L2_PIX_FMT_VP8_FRAME v4l2_fourcc('V', 'P', '8', 'F') /* VP8 parsed frames */
 #define V4L2_PIX_FMT_VP9      v4l2_fourcc('V', 'P', '9', '0') /* VP9 */
+#define V4L2_PIX_FMT_VP9_FRAME v4l2_fourcc('V', 'P', '9', 'F') /* VP9 parsed frames */
 
 /*  Vendor-specific formats   */
 #define V4L2_PIX_FMT_CPIA1    v4l2_fourcc('C', 'P', 'I', 'A') /* cpia1 YUV */
@@ -1481,6 +1482,9 @@ struct v4l2_ext_control {
 		struct v4l2_ctrl_h264_slice_param __user *p_h264_slice_param;
 		struct v4l2_ctrl_h264_decode_param __user *p_h264_decode_param;
 		struct v4l2_ctrl_vp8_frame_hdr __user *p_vp8_frame_hdr;
+		struct v4l2_ctrl_vp9_frame_hdr __user *p_vp9_frame_hdr;
+		struct v4l2_ctrl_vp9_decode_param __user *p_vp9_decode_param;
+		struct v4l2_ctrl_vp9_entropy __user *p_vp9_entropy;
 		void __user *ptr;
 	};
 } __attribute__ ((packed));
@@ -1523,6 +1527,9 @@ enum v4l2_ctrl_type {
 	V4L2_CTRL_TYPE_H264_SLICE_PARAM = 0x0106,
 	V4L2_CTRL_TYPE_H264_DECODE_PARAM = 0x0107,
 	V4L2_CTRL_TYPE_VP8_FRAME_HDR	= 0x108,
+	V4L2_CTRL_TYPE_VP9_FRAME_HDR	= 0x109,
+	V4L2_CTRL_TYPE_VP9_DECODE_PARAM	= 0x110,
+	V4L2_CTRL_TYPE_VP9_ENTROPY	= 0x111,
 
 	V4L2_CTRL_TYPE_PRIVATE       = 0xffff,
 };
