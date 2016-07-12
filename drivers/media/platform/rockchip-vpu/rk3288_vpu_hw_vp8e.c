@@ -186,7 +186,8 @@ static void rk3288_vpu_vp8e_set_buffers(struct rockchip_vpu_dev *vpu,
 {
 	struct vb2_v4l2_buffer *vb2_dst = &ctx->run.dst->b;
 	struct vb2_v4l2_buffer *vb2_src = &ctx->run.src->b;
-	const struct rk3288_vp8e_reg_params *params = ctx->run.vp8e.reg_params;
+	const struct rk3288_vp8e_reg_params *params =
+		&ctx->run.vp8e.reg_params->rk3288_vp8e;
 	dma_addr_t ref_buf_dma, rec_buf_dma;
 	dma_addr_t stream_dma;
 	size_t rounded_size;
@@ -300,7 +301,8 @@ static void rk3288_vpu_vp8e_set_buffers(struct rockchip_vpu_dev *vpu,
 static void rk3288_vpu_vp8e_set_params(struct rockchip_vpu_dev *vpu,
 				       struct rockchip_vpu_ctx *ctx)
 {
-	const struct rk3288_vp8e_reg_params *params = ctx->run.vp8e.reg_params;
+	const struct rk3288_vp8e_reg_params *params =
+		&ctx->run.vp8e.reg_params->rk3288_vp8e;
 	int i;
 
 	vepu_write_relaxed(vpu, params->enc_ctrl0, VEPU_REG_ENC_CTRL0);

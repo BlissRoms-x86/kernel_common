@@ -22,6 +22,8 @@
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/pm_runtime.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
@@ -97,6 +99,9 @@ static struct rockchip_vpu_ctx *
 rockchip_vpu_encode_after_decode_war(struct rockchip_vpu_ctx *ctx)
 {
 	struct rockchip_vpu_dev *dev = ctx->dev;
+
+	if (!dev->dummy_encode_ctx)
+		return ctx;
 
 	if (dev->was_decoding && rockchip_vpu_ctx_is_encoder(ctx))
 		return dev->dummy_encode_ctx;
@@ -585,12 +590,76 @@ static const struct v4l2_file_operations rockchip_vpu_fops = {
  * Platform driver.
  */
 
+/* Supported VPU variants. */
+static const struct of_device_id of_rockchip_vpu_match[] = {
+	{ .compatible = "rockchip,rk3288-vpu", .data = &rk3288_vpu_variant, },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, of_rockchip_vpu_match);
+
+static int rockchip_vpu_video_device_register(struct rockchip_vpu_dev *vpu,
+					      bool encoder)
+{
+	const struct of_device_id *match;
+	struct video_device *vfd;
+	int ret = 0;
+
+	vpu_debug_enter();
+
+	match = of_match_node(of_rockchip_vpu_match, vpu->dev->of_node);
+
+	vfd = video_device_alloc();
+	if (!vfd) {
+		v4l2_err(&vpu->v4l2_dev, "Failed to allocate video device\n");
+		return -ENOMEM;
+	}
+
+	vfd->fops = &rockchip_vpu_fops;
+	vfd->release = video_device_release;
+	vfd->lock = &vpu->vpu_mutex;
+	vfd->v4l2_dev = &vpu->v4l2_dev;
+	vfd->vfl_dir = VFL_DIR_M2M;
+
+	if (encoder) {
+		vfd->ioctl_ops = get_enc_v4l2_ioctl_ops();
+		snprintf(vfd->name, sizeof(vfd->name), "%s-enc",
+			 match->compatible);
+		vpu->vfd_enc = vfd;
+	} else {
+		vfd->ioctl_ops = get_dec_v4l2_ioctl_ops();
+		snprintf(vfd->name, sizeof(vfd->name), "%s-dec",
+			 match->compatible);
+		vpu->vfd_dec = vfd;
+	}
+
+	video_set_drvdata(vfd, vpu);
+
+	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
+	if (ret) {
+		v4l2_err(&vpu->v4l2_dev, "Failed to register video device\n");
+		goto err_dev_reg;
+	}
+
+	v4l2_info(&vpu->v4l2_dev, "%s registered as video%d\n",
+		  vfd->name, vfd->num);
+
+	vpu_debug_leave();
+
+	return 0;
+
+err_dev_reg:
+	video_device_release(vfd);
+	vpu_debug_leave();
+
+	return ret;
+}
+
 static int rockchip_vpu_probe(struct platform_device *pdev)
 {
+	const struct of_device_id *match;
 	struct rockchip_vpu_dev *vpu = NULL;
 	DEFINE_DMA_ATTRS(attrs_novm);
 	DEFINE_DMA_ATTRS(attrs_nohugepage);
-	struct video_device *vfd;
 	int ret = 0;
 
 	vpu_debug_enter();
@@ -606,11 +675,22 @@ static int rockchip_vpu_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&vpu->ready_ctxs);
 	init_waitqueue_head(&vpu->run_wq);
 
-	ret = rockchip_vpu_hw_probe(vpu);
+	match = of_match_node(of_rockchip_vpu_match, pdev->dev.of_node);
+	vpu->variant = match->data;
+
+	INIT_DELAYED_WORK(&vpu->watchdog_work, rockchip_vpu_watchdog);
+
+	ret = vpu->variant->hw_probe(vpu);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to probe VPU hardware\n");
 		goto err_hw_probe;
 	}
+
+	vpu->variant->clk_enable(vpu);
+
+	pm_runtime_set_autosuspend_delay(vpu->dev, 100);
+	pm_runtime_use_autosuspend(vpu->dev);
+	pm_runtime_enable(vpu->dev);
 
 	/*
 	 * We'll do mostly sequential access, so sacrifice TLB efficiency for
@@ -642,90 +722,56 @@ static int rockchip_vpu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, vpu);
 
-	ret = rockchip_vpu_enc_init_dummy_ctx(vpu);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to create dummy encode context\n");
-		goto err_dummy_enc;
+	if (vpu->variant->dec_fmts) {
+		ret = rockchip_vpu_video_device_register(vpu, false);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"Failed to register decoder\n");
+			goto err_dec_reg;
+		}
 	}
 
-	/* encoder */
-	vfd = video_device_alloc();
-	if (!vfd) {
-		v4l2_err(&vpu->v4l2_dev, "Failed to allocate video device\n");
-		ret = -ENOMEM;
-		goto err_enc_alloc;
+	if (vpu->variant->enc_fmts) {
+		ret = rockchip_vpu_video_device_register(vpu, true);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"Failed to register encoder\n");
+			goto err_enc_reg;
+		}
 	}
 
-	vfd->fops = &rockchip_vpu_fops;
-	vfd->ioctl_ops = get_enc_v4l2_ioctl_ops();
-	vfd->release = video_device_release;
-	vfd->lock = &vpu->vpu_mutex;
-	vfd->v4l2_dev = &vpu->v4l2_dev;
-	vfd->vfl_dir = VFL_DIR_M2M;
-	snprintf(vfd->name, sizeof(vfd->name), "%s", ROCKCHIP_VPU_ENC_NAME);
-	vpu->vfd_enc = vfd;
-
-	video_set_drvdata(vfd, vpu);
-
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
-	if (ret) {
-		v4l2_err(&vpu->v4l2_dev, "Failed to register video device\n");
-		goto err_enc_reg;
+	if (vpu->variant->needs_enc_after_dec_war) {
+		ret = rockchip_vpu_enc_init_dummy_ctx(vpu);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"Failed to create dummy encode context\n");
+			goto err_dummy_enc;
+		}
 	}
-
-	v4l2_info(&vpu->v4l2_dev,
-		"Rockchip VPU encoder registered as /vpu/video%d\n",
-		vfd->num);
-
-	/* decoder */
-	vfd = video_device_alloc();
-	if (!vfd) {
-		v4l2_err(&vpu->v4l2_dev, "Failed to allocate video device\n");
-		ret = -ENOMEM;
-		goto err_dec_alloc;
-	}
-
-	vfd->fops = &rockchip_vpu_fops;
-	vfd->ioctl_ops = get_dec_v4l2_ioctl_ops();
-	vfd->release = video_device_release;
-	vfd->lock = &vpu->vpu_mutex;
-	vfd->v4l2_dev = &vpu->v4l2_dev;
-	vfd->vfl_dir = VFL_DIR_M2M;
-	snprintf(vfd->name, sizeof(vfd->name), "%s", ROCKCHIP_VPU_DEC_NAME);
-	vpu->vfd_dec = vfd;
-
-	video_set_drvdata(vfd, vpu);
-
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
-	if (ret) {
-		v4l2_err(&vpu->v4l2_dev, "Failed to register video device\n");
-		goto err_dec_reg;
-	}
-
-	v4l2_info(&vpu->v4l2_dev,
-		"Rockchip VPU decoder registered as /vpu/video%d\n",
-		vfd->num);
 
 	vpu_debug_leave();
 
 	return 0;
 
-err_dec_reg:
-	video_device_release(vpu->vfd_dec);
-err_dec_alloc:
-	video_unregister_device(vpu->vfd_enc);
-err_enc_reg:
-	video_device_release(vpu->vfd_enc);
-err_enc_alloc:
-	rockchip_vpu_enc_free_dummy_ctx(vpu);
 err_dummy_enc:
+	if (vpu->vfd_enc) {
+		video_unregister_device(vpu->vfd_enc);
+		video_device_release(vpu->vfd_enc);
+	}
+err_enc_reg:
+	if (vpu->vfd_dec) {
+		video_unregister_device(vpu->vfd_dec);
+		video_device_release(vpu->vfd_dec);
+	}
+err_dec_reg:
 	v4l2_device_unregister(&vpu->v4l2_dev);
 err_v4l2_dev_reg:
 	vb2_dma_contig_cleanup_ctx(vpu->alloc_ctx_vm);
 err_dma_contig_vm:
 	vb2_dma_contig_cleanup_ctx(vpu->alloc_ctx);
 err_dma_contig:
-	rockchip_vpu_hw_remove(vpu);
+	pm_runtime_disable(vpu->dev);
+	vpu->variant->clk_disable(vpu);
 err_hw_probe:
 	pr_debug("%s-- with error\n", __func__);
 	vpu_debug_leave();
@@ -747,24 +793,26 @@ static int rockchip_vpu_remove(struct platform_device *pdev)
 	 * contexts have been released.
 	 */
 
-	video_unregister_device(vpu->vfd_dec);
-	video_unregister_device(vpu->vfd_enc);
-	rockchip_vpu_enc_free_dummy_ctx(vpu);
+	if (vpu->vfd_enc) {
+		video_unregister_device(vpu->vfd_enc);
+		video_device_release(vpu->vfd_enc);
+	}
+	if (vpu->vfd_dec) {
+		video_unregister_device(vpu->vfd_dec);
+		video_device_release(vpu->vfd_dec);
+	}
+	if (vpu->variant->needs_enc_after_dec_war)
+		rockchip_vpu_enc_free_dummy_ctx(vpu);
 	v4l2_device_unregister(&vpu->v4l2_dev);
 	vb2_dma_contig_cleanup_ctx(vpu->alloc_ctx_vm);
 	vb2_dma_contig_cleanup_ctx(vpu->alloc_ctx);
-	rockchip_vpu_hw_remove(vpu);
+	pm_runtime_disable(vpu->dev);
+	vpu->variant->clk_disable(vpu);
 
 	vpu_debug_leave();
 
 	return 0;
 }
-
-static const struct of_device_id of_rockchip_vpu_match[] = {
-	{ .compatible = "rockchip,rk3288-vpu", },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, of_rockchip_vpu_match);
 
 #ifdef CONFIG_PM_SLEEP
 static int rockchip_vpu_suspend(struct device *dev)
@@ -796,7 +844,7 @@ static struct platform_driver rockchip_vpu_driver = {
 	.probe = rockchip_vpu_probe,
 	.remove = rockchip_vpu_remove,
 	.driver = {
-		   .name = ROCKCHIP_VPU_NAME,
+		   .name = "rockchip-vpu",
 		   .owner = THIS_MODULE,
 		   .of_match_table = of_match_ptr(of_rockchip_vpu_match),
 		   .pm = &rockchip_vpu_pm_ops,

@@ -54,56 +54,15 @@
 #define V4L2_CID_PRIVATE_ROCKCHIP_HW_PARAMS	(V4L2_CID_CUSTOM_BASE + 2)
 #define V4L2_CID_PRIVATE_ROCKCHIP_RET_PARAMS	(V4L2_CID_CUSTOM_BASE + 3)
 
-static struct rockchip_vpu_fmt formats[] = {
-	/* Source formats. */
-	{
-		.name = "4:2:0 3 planes Y/Cb/Cr",
-		.fourcc = V4L2_PIX_FMT_YUV420M,
-		.codec_mode = RK_VPU_CODEC_NONE,
-		.num_planes = 3,
-		.depth = { 8, 4, 4 },
-		.enc_fmt = RK3288_VPU_ENC_FMT_YUV420P,
-	},
-	{
-		.name = "4:2:0 2 plane Y/CbCr",
-		.fourcc = V4L2_PIX_FMT_NV12M,
-		.codec_mode = RK_VPU_CODEC_NONE,
-		.num_planes = 2,
-		.depth = { 8, 8 },
-		.enc_fmt = RK3288_VPU_ENC_FMT_YUV420SP,
-	},
-	{
-		.name = "4:2:2 1 plane YUYV",
-		.fourcc = V4L2_PIX_FMT_YUYV,
-		.codec_mode = RK_VPU_CODEC_NONE,
-		.num_planes = 1,
-		.depth = { 16 },
-		.enc_fmt = RK3288_VPU_ENC_FMT_YUYV422,
-	},
-	{
-		.name = "4:2:2 1 plane UYVY",
-		.fourcc = V4L2_PIX_FMT_UYVY,
-		.codec_mode = RK_VPU_CODEC_NONE,
-		.num_planes = 1,
-		.depth = { 16 },
-		.enc_fmt = RK3288_VPU_ENC_FMT_UYVY422,
-	},
-	/* Destination formats. */
-	{
-		.name = "VP8 Encoded Stream",
-		.fourcc = V4L2_PIX_FMT_VP8,
-		.codec_mode = RK_VPU_CODEC_VP8E,
-		.num_planes = 1,
-	},
-};
-
-static struct rockchip_vpu_fmt *find_format(u32 fourcc, bool bitstream)
+static const struct rockchip_vpu_fmt *find_format(struct rockchip_vpu_dev *dev,
+						  u32 fourcc, bool bitstream)
 {
+	const struct rockchip_vpu_fmt *formats = dev->variant->enc_fmts;
 	unsigned int i;
 
 	vpu_debug_enter();
 
-	for (i = 0; i < ARRAY_SIZE(formats); i++) {
+	for (i = 0; i < dev->variant->num_enc_fmts; i++) {
 		if (formats[i].fourcc != fourcc)
 			continue;
 		if (bitstream && formats[i].codec_mode != RK_VPU_CODEC_NONE)
@@ -140,7 +99,7 @@ static struct rockchip_vpu_control controls[] = {
 		.id = V4L2_CID_PRIVATE_ROCKCHIP_REG_PARAMS,
 		.type = V4L2_CTRL_TYPE_PRIVATE,
 		.name = "Rockchip Private Reg Params",
-		.elem_size = sizeof(struct rk3288_vp8e_reg_params),
+		.elem_size = sizeof(struct rockchip_reg_params),
 		.max_stores = VIDEO_MAX_FRAME,
 		.can_store = true,
 	},
@@ -335,14 +294,14 @@ static const char *const *rockchip_vpu_enc_get_menu(u32 id)
 static int vidioc_querycap(struct file *file, void *priv,
 			   struct v4l2_capability *cap)
 {
-	struct rockchip_vpu_dev *dev = video_drvdata(file);
+	struct rockchip_vpu_dev *vpu = video_drvdata(file);
 
 	vpu_debug_enter();
 
-	strlcpy(cap->driver, ROCKCHIP_VPU_ENC_NAME, sizeof(cap->driver));
-	strlcpy(cap->card, dev->pdev->name, sizeof(cap->card));
-	strlcpy(cap->bus_info, "platform:" ROCKCHIP_VPU_NAME,
-		sizeof(cap->bus_info));
+	strlcpy(cap->driver, vpu->dev->driver->name, sizeof(cap->driver));
+	strlcpy(cap->card, vpu->vfd_enc->name, sizeof(cap->card));
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform: %s",
+		 vpu->dev->driver->name);
 
 	/*
 	 * This is only a mem-to-mem video device.
@@ -358,8 +317,9 @@ static int vidioc_querycap(struct file *file, void *priv,
 static int vidioc_enum_framesizes(struct file *file, void *prov,
 				  struct v4l2_frmsizeenum *fsize)
 {
+	struct rockchip_vpu_dev *dev = video_drvdata(file);
 	struct v4l2_frmsize_stepwise *s = &fsize->stepwise;
-	struct rockchip_vpu_fmt *fmt;
+	const struct rockchip_vpu_fmt *fmt;
 
 	if (fsize->index != 0) {
 		vpu_debug(0, "invalid frame size index (expected 0, got %d)\n",
@@ -367,7 +327,7 @@ static int vidioc_enum_framesizes(struct file *file, void *prov,
 		return -EINVAL;
 	}
 
-	fmt = find_format(fsize->pixel_format, true);
+	fmt = find_format(dev, fsize->pixel_format, true);
 	if (!fmt) {
 		vpu_debug(0, "unsupported bitstream format (%08x)\n",
 				fsize->pixel_format);
@@ -386,14 +346,16 @@ static int vidioc_enum_framesizes(struct file *file, void *prov,
 	return 0;
 }
 
-static int vidioc_enum_fmt(struct v4l2_fmtdesc *f, bool out)
+static int vidioc_enum_fmt(struct file *file, struct v4l2_fmtdesc *f, bool out)
 {
-	struct rockchip_vpu_fmt *fmt;
+	struct rockchip_vpu_dev *dev = video_drvdata(file);
+	const struct rockchip_vpu_fmt *fmt;
+	const struct rockchip_vpu_fmt *formats = dev->variant->enc_fmts;
 	int i, j = 0;
 
 	vpu_debug_enter();
 
-	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
+	for (i = 0; i < dev->variant->num_enc_fmts; i++) {
 		if (out && formats[i].codec_mode != RK_VPU_CODEC_NONE)
 			continue;
 		else if (!out && formats[i].codec_mode == RK_VPU_CODEC_NONE)
@@ -425,13 +387,13 @@ static int vidioc_enum_fmt(struct v4l2_fmtdesc *f, bool out)
 static int vidioc_enum_fmt_vid_cap_mplane(struct file *file, void *priv,
 					  struct v4l2_fmtdesc *f)
 {
-	return vidioc_enum_fmt(f, false);
+	return vidioc_enum_fmt(file, f, false);
 }
 
 static int vidioc_enum_fmt_vid_out_mplane(struct file *file, void *priv,
 					  struct v4l2_fmtdesc *f)
 {
-	return vidioc_enum_fmt(f, true);
+	return vidioc_enum_fmt(file, f, true);
 }
 
 static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
@@ -463,7 +425,8 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
-	struct rockchip_vpu_fmt *fmt;
+	struct rockchip_vpu_dev *dev = video_drvdata(file);
+	const struct rockchip_vpu_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	char str[5];
 
@@ -473,7 +436,7 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		vpu_debug(4, "%s\n", fmt2str(f->fmt.pix_mp.pixelformat, str));
 
-		fmt = find_format(pix_fmt_mp->pixelformat, true);
+		fmt = find_format(dev, pix_fmt_mp->pixelformat, true);
 		if (!fmt) {
 			vpu_err("failed to try capture format\n");
 			return -EINVAL;
@@ -490,7 +453,7 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
 		vpu_debug(4, "%s\n", fmt2str(f->fmt.pix_mp.pixelformat, str));
 
-		fmt = find_format(pix_fmt_mp->pixelformat, false);
+		fmt = find_format(dev, pix_fmt_mp->pixelformat, false);
 		if (!fmt) {
 			vpu_err("failed to try output format\n");
 			return -EINVAL;
@@ -523,7 +486,7 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	return 0;
 }
 
-static void calculate_plane_sizes(struct rockchip_vpu_fmt *fmt,
+static void calculate_plane_sizes(const struct rockchip_vpu_fmt *fmt,
 				  unsigned int w, unsigned int h,
 				  struct v4l2_pix_format_mplane *pix_fmt_mp)
 {
@@ -546,8 +509,9 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	struct rockchip_vpu_ctx *ctx = fh_to_ctx(priv);
+	struct rockchip_vpu_dev *dev = ctx->dev;
 	unsigned int mb_width, mb_height;
-	struct rockchip_vpu_fmt *fmt;
+	const struct rockchip_vpu_fmt *fmt;
 	int ret = 0;
 
 	vpu_debug_enter();
@@ -574,7 +538,8 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		if (ret)
 			goto out;
 
-		ctx->vpu_dst_fmt = find_format(pix_fmt_mp->pixelformat, true);
+		ctx->vpu_dst_fmt = find_format(dev, pix_fmt_mp->pixelformat,
+					       true);
 		ctx->dst_fmt = *pix_fmt_mp;
 		break;
 
@@ -593,7 +558,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		if (ret)
 			goto out;
 
-		fmt = find_format(pix_fmt_mp->pixelformat, false);
+		fmt = find_format(dev, pix_fmt_mp->pixelformat, false);
 		ctx->vpu_src_fmt = fmt;
 
 		mb_width = MB_WIDTH(pix_fmt_mp->width);
@@ -1334,8 +1299,8 @@ int rockchip_vpu_enc_init(struct rockchip_vpu_ctx *ctx)
 	struct rockchip_vpu_dev *vpu = ctx->dev;
 	int ret;
 
-	ctx->vpu_src_fmt = find_format(DEF_SRC_FMT_ENC, false);
-	ctx->vpu_dst_fmt = find_format(DEF_DST_FMT_ENC, true);
+	ctx->vpu_src_fmt = find_format(vpu, DEF_SRC_FMT_ENC, false);
+	ctx->vpu_dst_fmt = find_format(vpu, DEF_DST_FMT_ENC, true);
 
 	ret = rockchip_vpu_aux_buf_alloc(vpu, &ctx->run.priv_src,
 					ROCKCHIP_HW_PARAMS_SIZE);
@@ -1408,7 +1373,7 @@ int rockchip_vpu_enc_init_dummy_ctx(struct rockchip_vpu_dev *dev)
 
 	ctx->dev = dev;
 
-	ctx->vpu_src_fmt = find_format(DUMMY_SRC_FMT, false);
+	ctx->vpu_src_fmt = find_format(dev, DUMMY_SRC_FMT, false);
 	ctx->src_fmt.width = DUMMY_W;
 	ctx->src_fmt.height = DUMMY_H;
 	ctx->src_fmt.pixelformat = ctx->vpu_src_fmt->fourcc;
@@ -1417,7 +1382,7 @@ int rockchip_vpu_enc_init_dummy_ctx(struct rockchip_vpu_dev *dev)
 	calculate_plane_sizes(ctx->vpu_src_fmt, ctx->src_fmt.width,
 				ctx->src_fmt.height, &ctx->src_fmt);
 
-	ctx->vpu_dst_fmt = find_format(DUMMY_DST_FMT, true);
+	ctx->vpu_dst_fmt = find_format(dev, DUMMY_DST_FMT, true);
 	ctx->dst_fmt.width = ctx->src_fmt.width;
 	ctx->dst_fmt.height = ctx->src_fmt.height;
 	ctx->dst_fmt.pixelformat = ctx->vpu_dst_fmt->fourcc;
@@ -1435,7 +1400,9 @@ int rockchip_vpu_enc_init_dummy_ctx(struct rockchip_vpu_dev *dev)
 	INIT_LIST_HEAD(&ctx->dst_queue);
 	INIT_LIST_HEAD(&ctx->list);
 
-	ctx->run.vp8e.reg_params = rk3288_vpu_vp8e_get_dummy_params();
+	ctx->run.vp8e.reg_params =
+		(struct rockchip_reg_params *)
+		rk3288_vpu_vp8e_get_dummy_params();
 	ctx->run_ops = &dummy_encode_run_ops;
 
 	ctx->run.dst = devm_kzalloc(dev->dev, sizeof(*ctx->run.dst),

@@ -36,10 +36,6 @@
 
 #include "rockchip_vpu_hw.h"
 
-#define ROCKCHIP_VPU_NAME		"rockchip-vpu"
-#define ROCKCHIP_VPU_DEC_NAME		"rockchip-vpu-dec"
-#define ROCKCHIP_VPU_ENC_NAME		"rockchip-vpu-enc"
-
 #define V4L2_CID_CUSTOM_BASE		(V4L2_CID_USER_BASE | 0x1000)
 
 #define DST_QUEUE_OFF_BASE		(TASK_SIZE / 2)
@@ -50,9 +46,41 @@
 #define MB_WIDTH(x_size)		DIV_ROUND_UP(x_size, MB_DIM)
 #define MB_HEIGHT(y_size)		DIV_ROUND_UP(y_size, MB_DIM)
 
-struct rockchip_vpu_variant;
 struct rockchip_vpu_ctx;
 struct rockchip_vpu_codec_ops;
+
+/**
+ * struct rockchip_vpu_variant - information about VPU hardware variant
+ *
+ * @enc_offset:			Offset from VPU base to encoder registers.
+ * @enc_reg_num:		Number of registers of encoder block.
+ * @dec_offset:			Offset from VPU base to decoder registers.
+ * @dec_reg_num:		Number of registers of decoder block.
+ * @needs_enc_after_dec_war:	Needs dummy encoder.
+ * @enc_fmts:			Encoder formats.
+ * @num_enc_fmts:		Number of encoder formats.
+ * @dec_fmts:			Decoder formats.
+ * @num_dec_fmts:		Number of decoder formats.
+ * @mode_ops:			Codec ops.
+ * @hw_probe:			Probe hardware.
+ * @clk_enable:			Enable clocks.
+ * @clk_disable:		Disable clocks.
+ */
+struct rockchip_vpu_variant {
+	unsigned enc_offset;
+	unsigned enc_reg_num;
+	unsigned dec_offset;
+	unsigned dec_reg_num;
+	bool needs_enc_after_dec_war;
+	const struct rockchip_vpu_fmt *enc_fmts;
+	unsigned num_enc_fmts;
+	const struct rockchip_vpu_fmt *dec_fmts;
+	unsigned num_dec_fmts;
+	const struct rockchip_vpu_codec_ops *mode_ops;
+	int (*hw_probe)(struct rockchip_vpu_dev *vpu);
+	void (*clk_enable)(struct rockchip_vpu_dev *vpu);
+	void (*clk_disable)(struct rockchip_vpu_dev *vpu);
+};
 
 /**
  * enum rockchip_vpu_codec_mode - codec operating mode.
@@ -140,8 +168,8 @@ enum rockchip_vpu_state {
  *			(for allocations without kernel mapping).
  * @alloc_ctx_vm:	VB2 allocator context
  *			(for allocations with kernel mapping).
- * @aclk_vcodec:	Handle of ACLK clock.
- * @hclk_vcodec:	Handle of HCLK clock.
+ * @aclk:		Handle of ACLK clock.
+ * @hclk:		Handle of HCLK clock.
  * @base:		Mapped address of VPU registers.
  * @enc_base:		Mapped address of VPU encoder register for convenience.
  * @dec_base:		Mapped address of VPU decoder register for convenience.
@@ -168,8 +196,8 @@ struct rockchip_vpu_dev {
 	struct device *dev;
 	void *alloc_ctx;
 	void *alloc_ctx_vm;
-	struct clk *aclk_vcodec;
-	struct clk *hclk_vcodec;
+	struct clk *aclk;
+	struct clk *hclk;
 	void __iomem *base;
 	void __iomem *enc_base;
 	void __iomem *dec_base;
@@ -207,7 +235,7 @@ struct rockchip_vpu_run_ops {
  *		by user space.
  */
 struct rockchip_vpu_vp8e_run {
-	const struct rk3288_vp8e_reg_params *reg_params;
+	const struct rockchip_reg_params *reg_params;
 };
 
 /**
@@ -298,9 +326,9 @@ struct rockchip_vpu_ctx {
 	struct v4l2_fh fh;
 
 	/* Format info */
-	struct rockchip_vpu_fmt *vpu_src_fmt;
+	const struct rockchip_vpu_fmt *vpu_src_fmt;
 	struct v4l2_pix_format_mplane src_fmt;
-	struct rockchip_vpu_fmt *vpu_dst_fmt;
+	const struct rockchip_vpu_fmt *vpu_dst_fmt;
 	struct v4l2_pix_format_mplane dst_fmt;
 
 	/* VB2 queue data */

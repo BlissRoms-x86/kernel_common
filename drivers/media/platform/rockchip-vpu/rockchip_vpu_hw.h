@@ -17,6 +17,7 @@
 #ifndef ROCKCHIP_VPU_HW_H_
 #define ROCKCHIP_VPU_HW_H_
 
+#include <linux/interrupt.h>
 #include <media/videobuf2-core.h>
 
 #define ROCKCHIP_HEADER_SIZE		1280
@@ -26,8 +27,32 @@
 struct rockchip_vpu_dev;
 struct rockchip_vpu_ctx;
 struct rockchip_vpu_buf;
+struct rockchip_vpu_variant;
 
 struct rk3288_vpu_h264d_priv_tbl;
+
+/**
+ * struct rockchip_vpu_codec_ops - codec mode specific operations
+ *
+ * @init:	Prepare for streaming. Called from VB2 .start_streaming()
+ *		when streaming from both queues is being enabled.
+ * @exit:	Clean-up after streaming. Called from VB2 .stop_streaming()
+ *		when streaming from first of both enabled queues is being
+ *		disabled.
+ * @run:	Start single {en,de)coding run. Called from non-atomic context
+ *		to indicate that a pair of buffers is ready and the hardware
+ *		should be programmed and started.
+ * @done:	Read back processing results and additional data from hardware.
+ * @reset:	Reset the hardware in case of a timeout.
+ */
+struct rockchip_vpu_codec_ops {
+	int (*init)(struct rockchip_vpu_ctx *);
+	void (*exit)(struct rockchip_vpu_ctx *);
+
+	void (*run)(struct rockchip_vpu_ctx *);
+	void (*done)(struct rockchip_vpu_ctx *, enum vb2_buffer_state);
+	void (*reset)(struct rockchip_vpu_ctx *);
+};
 
 /**
  * enum rk3288_vpu_enc_fmt - source format ID for hardware registers.
@@ -84,6 +109,16 @@ struct rk3288_vp8e_reg_params {
 	u32 vp8_ctrl1;
 	u32 bit_cost_golden;
 	u32 loop_flt_delta[2];
+};
+
+/**
+ * struct rockchip_reg_params - low level encoding parameters
+ */
+struct rockchip_reg_params {
+	/* Mode-specific data. */
+	union {
+		const struct rk3288_vp8e_reg_params rk3288_vp8e;
+	};
 };
 
 /**
@@ -148,15 +183,17 @@ struct rockchip_vpu_hw_ctx {
 	};
 };
 
-int rockchip_vpu_hw_probe(struct rockchip_vpu_dev *vpu);
-void rockchip_vpu_hw_remove(struct rockchip_vpu_dev *vpu);
+extern const struct rockchip_vpu_variant rk3288_vpu_variant;
 
+void rockchip_vpu_watchdog(struct work_struct *work);
 void rockchip_vpu_power_on(struct rockchip_vpu_dev *vpu);
 
 int rockchip_vpu_init(struct rockchip_vpu_ctx *ctx);
 void rockchip_vpu_deinit(struct rockchip_vpu_ctx *ctx);
 
 void rockchip_vpu_run(struct rockchip_vpu_ctx *ctx);
+
+void rockchip_vpu_irq_done(struct rockchip_vpu_dev *vpu);
 
 /* Run ops for rk3288 H264 decoder */
 int rk3288_vpu_h264d_init(struct rockchip_vpu_ctx *ctx);
