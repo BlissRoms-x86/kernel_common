@@ -196,6 +196,10 @@ ap_i2c_nfc: &i2c7 {
 	};
 };
 
+&u2phy1_host {
+	phy-supply = <&pp5000_usb_a_vbus>;
+};
+
 /* PINCTRL: always below everything else */
 
 &pinctrl {

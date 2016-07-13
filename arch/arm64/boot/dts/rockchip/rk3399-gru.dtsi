@@ -479,6 +479,11 @@
 		vin-supply = <&pp3300>;
 	};
 
+	/* pp5000 aliases; these are always on for AP so just use alias */
+
+	/* EC turns on w/ usb_a_en */
+	pp5000_usb_a_vbus: pp5000 {
+	};
 
 	/* END REGULATORS */
 
@@ -869,6 +874,22 @@ ap_i2c_audio: &i2c8 {
 &tcphy1 {
 	status = "okay";
 	extcon = <&usbc_extcon1>;
+};
+
+&u2phy0 {
+	status = "okay";
+};
+
+&u2phy1 {
+	status = "okay";
+};
+
+&u2phy0_host {
+	status = "okay";
+};
+
+&u2phy1_host {
+	status = "okay";
 };
 
 &uart2 {
