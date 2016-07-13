@@ -995,13 +995,26 @@ static struct iommu_domain *rk_iommu_domain_alloc(unsigned type)
 	if (type != IOMMU_DOMAIN_UNMANAGED && type != IOMMU_DOMAIN_DMA)
 		return NULL;
 
-	/* Register a pdev per domain, so DMA API can base on this *dev
-	 * even some virtual master doesn't have an iommu slave
+	/*
+	 * Allocate a platform device for domain to use with DMA API, since
+	 * a domain might not physically correspond to a single IOMMU device..
 	 */
-	pdev = platform_device_register_simple("rk_iommu_domain",
-					       PLATFORM_DEVID_AUTO, NULL, 0);
+	pdev = platform_device_alloc("rk_iommu_domain", PLATFORM_DEVID_AUTO);
 	if (IS_ERR(pdev))
 		return NULL;
+	iommu_dev = &pdev->dev;
+
+	iommu_dev->dma_parms = devm_kzalloc(iommu_dev,
+					    sizeof(*iommu_dev->dma_parms),
+					    GFP_KERNEL);
+	if (!iommu_dev->dma_parms)
+		goto err_unreg_pdev;
+
+	/* Set dma_ops for dev, otherwise it would be dummy_dma_ops */
+	arch_setup_dma_ops(iommu_dev, 0, DMA_BIT_MASK(32), NULL, false);
+
+	dma_set_max_seg_size(iommu_dev, DMA_BIT_MASK(32));
+	dma_coerce_mask_and_coherent(iommu_dev, DMA_BIT_MASK(32));
 
 	rk_domain = devm_kzalloc(&pdev->dev, sizeof(*rk_domain), GFP_KERNEL);
 	if (!rk_domain)
@@ -1022,7 +1035,6 @@ static struct iommu_domain *rk_iommu_domain_alloc(unsigned type)
 	if (!rk_domain->dt)
 		goto err_put_cookie;
 
-	iommu_dev = &pdev->dev;
 	rk_domain->dt_dma = dma_map_single(iommu_dev, rk_domain->dt,
 					   SPAGE_SIZE, DMA_TO_DEVICE);
 	if (dma_mapping_error(iommu_dev, rk_domain->dt_dma)) {
@@ -1048,7 +1060,7 @@ err_put_cookie:
 	if (type == IOMMU_DOMAIN_DMA)
 		iommu_put_dma_cookie(&rk_domain->domain);
 err_unreg_pdev:
-	platform_device_unregister(pdev);
+	platform_device_put(pdev);
 
 	return NULL;
 }
@@ -1078,7 +1090,7 @@ static void rk_iommu_domain_free(struct iommu_domain *domain)
 	if (domain->type == IOMMU_DOMAIN_DMA)
 		iommu_put_dma_cookie(&rk_domain->domain);
 
-	platform_device_unregister(rk_domain->pdev);
+	platform_device_put(rk_domain->pdev);
 }
 
 static bool rk_iommu_is_dev_iommu_master(struct device *dev)
@@ -1193,30 +1205,6 @@ static const struct iommu_ops rk_iommu_ops = {
 	.pgsize_bitmap = RK_IOMMU_PGSIZE_BITMAP,
 };
 
-static int rk_iommu_domain_probe(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-
-	dev->dma_parms = devm_kzalloc(dev, sizeof(*dev->dma_parms), GFP_KERNEL);
-	if (!dev->dma_parms)
-		return -ENOMEM;
-
-	/* Set dma_ops for dev, otherwise it would be dummy_dma_ops */
-	arch_setup_dma_ops(dev, 0, DMA_BIT_MASK(32), NULL, false);
-
-	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
-	dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(32));
-
-	return 0;
-}
-
-static struct platform_driver rk_iommu_domain_driver = {
-	.probe = rk_iommu_domain_probe,
-	.driver = {
-		   .name = "rk_iommu_domain",
-	},
-};
-
 static int rk_iommu_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1303,19 +1291,11 @@ static int __init rk_iommu_init(void)
 	if (ret)
 		return ret;
 
-	ret = platform_driver_register(&rk_iommu_domain_driver);
-	if (ret)
-		return ret;
-
-	ret = platform_driver_register(&rk_iommu_driver);
-	if (ret)
-		platform_driver_unregister(&rk_iommu_domain_driver);
-	return ret;
+	return platform_driver_register(&rk_iommu_driver);
 }
 static void __exit rk_iommu_exit(void)
 {
 	platform_driver_unregister(&rk_iommu_driver);
-	platform_driver_unregister(&rk_iommu_domain_driver);
 }
 
 subsys_initcall(rk_iommu_init);
