@@ -18,6 +18,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_iommu.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -1190,6 +1191,13 @@ err_put_group:
 	return ERR_PTR(ret);
 }
 
+static int rk_iommu_of_xlate(struct device *dev,
+			     struct of_phandle_args *spec)
+{
+	/* We don't have any phandle args, so just return 0. */
+	return 0;
+}
+
 static const struct iommu_ops rk_iommu_ops = {
 	.domain_alloc = rk_iommu_domain_alloc,
 	.domain_free = rk_iommu_domain_free,
@@ -1203,6 +1211,7 @@ static const struct iommu_ops rk_iommu_ops = {
 	.iova_to_phys = rk_iommu_iova_to_phys,
 	.device_group = rk_iommu_device_group,
 	.pgsize_bitmap = RK_IOMMU_PGSIZE_BITMAP,
+	.of_xlate = rk_iommu_of_xlate,
 };
 
 static int rk_iommu_probe(struct platform_device *pdev)
@@ -1278,28 +1287,29 @@ static struct platform_driver rk_iommu_driver = {
 
 static int __init rk_iommu_init(void)
 {
-	struct device_node *np;
-	int ret;
-
-	np = of_find_matching_node(NULL, rk_iommu_dt_ids);
-	if (!np)
-		return 0;
-
-	of_node_put(np);
-
-	ret = bus_set_iommu(&platform_bus_type, &rk_iommu_ops);
-	if (ret)
-		return ret;
-
 	return platform_driver_register(&rk_iommu_driver);
 }
-static void __exit rk_iommu_exit(void)
-{
-	platform_driver_unregister(&rk_iommu_driver);
-}
-
 subsys_initcall(rk_iommu_init);
-module_exit(rk_iommu_exit);
+
+static int __init rk_iommu_of_setup(struct device_node *np)
+{
+	struct platform_device *pdev;
+
+	if (!platform_bus_type.iommu_ops)
+		bus_set_iommu(&platform_bus_type, &rk_iommu_ops);
+
+	pdev = of_platform_device_create(np, NULL, platform_bus_type.dev_root);
+	if (IS_ERR(pdev)) {
+		pr_err("Failed to create platform device for IOMMU %s\n",
+		       of_node_full_name(np));
+		return PTR_ERR(pdev);
+	}
+
+	of_iommu_set_ops(np, &rk_iommu_ops);
+
+	return 0;
+}
+IOMMU_OF_DECLARE(rk_iommu_of, "rockchip,iommu", rk_iommu_of_setup);
 
 MODULE_DESCRIPTION("IOMMU API for Rockchip");
 MODULE_AUTHOR("Simon Xue <xxm@rock-chips.com> and Daniel Kurtz <djkurtz@chromium.org>");
