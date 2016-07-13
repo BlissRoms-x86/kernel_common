@@ -220,7 +220,7 @@ ap_i2c_nfc: &i2c7 {
 	status = "okay";
 
 	cr50@0 {
-		compatible = "google,cr50", "tcg,tpm_tis-spi";
+		compatible = "google,cr50";
 		reg = <0>;
 		spi-max-frequency = <800000>; // TODO: review later
 	};
