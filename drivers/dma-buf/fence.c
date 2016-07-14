@@ -51,6 +51,26 @@ unsigned fence_context_alloc(unsigned num)
 }
 EXPORT_SYMBOL(fence_context_alloc);
 
+struct signal_work {
+	struct work_struct work;
+	struct list_head cb_list;
+	struct fence *fence;
+};
+
+static void signal_worker(struct work_struct *work)
+{
+	struct signal_work *sw = container_of(work,
+					      struct signal_work, work);
+	struct fence_cb *cur, *tmp;
+
+	list_for_each_entry_safe(cur, tmp, &sw->cb_list, node) {
+		list_del_init(&cur->node);
+		cur->func(sw->fence, cur);
+	}
+	fence_put(sw->fence);
+	kfree(sw);
+}
+
 /**
  * fence_signal_locked - signal completion of a fence
  * @fence: the fence to signal
@@ -65,7 +85,7 @@ EXPORT_SYMBOL(fence_context_alloc);
  */
 int fence_signal_locked(struct fence *fence)
 {
-	struct fence_cb *cur, *tmp;
+	struct signal_work *sw;
 	int ret = 0;
 
 	if (WARN_ON(!fence))
@@ -86,10 +106,13 @@ int fence_signal_locked(struct fence *fence)
 	} else
 		trace_fence_signaled(fence);
 
-	list_for_each_entry_safe(cur, tmp, &fence->cb_list, node) {
-		list_del_init(&cur->node);
-		cur->func(fence, cur);
-	}
+	sw = kzalloc(sizeof(struct signal_work), GFP_ATOMIC);
+	if (!sw)
+		return -ENOMEM;
+	INIT_WORK(&sw->work, signal_worker);
+	sw->fence = fence_get(fence);
+	list_replace_init(&fence->cb_list, &sw->cb_list);
+	schedule_work(&sw->work);
 	return ret;
 }
 EXPORT_SYMBOL(fence_signal_locked);
@@ -123,13 +146,16 @@ int fence_signal(struct fence *fence)
 
 	if (test_bit(FENCE_FLAG_ENABLE_SIGNAL_BIT, &fence->flags)) {
 		struct fence_cb *cur, *tmp;
+		struct list_head cb_list;
 
 		spin_lock_irqsave(fence->lock, flags);
-		list_for_each_entry_safe(cur, tmp, &fence->cb_list, node) {
+		list_replace_init(&fence->cb_list, &cb_list);
+		spin_unlock_irqrestore(fence->lock, flags);
+
+		list_for_each_entry_safe(cur, tmp, &cb_list, node) {
 			list_del_init(&cur->node);
 			cur->func(fence, cur);
 		}
-		spin_unlock_irqrestore(fence->lock, flags);
 	}
 	return 0;
 }
