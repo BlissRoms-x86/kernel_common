@@ -70,6 +70,9 @@ enum {
 	ROCKCHIP_VPU_DEC_CTRL_H264_SLICE_PARAM,
 	ROCKCHIP_VPU_DEC_CTRL_H264_DECODE_PARAM,
 	ROCKCHIP_VPU_DEC_CTRL_VP8_FRAME_HDR,
+	ROCKCHIP_VPU_DEC_CTRL_VP9_FRAME_HDR,
+	ROCKCHIP_VPU_DEC_CTRL_VP9_DECODE_PARAM,
+	ROCKCHIP_VPU_DEC_CTRL_VP9_ENTROPY,
 };
 
 static struct rockchip_vpu_control controls[] = {
@@ -123,10 +126,33 @@ static struct rockchip_vpu_control controls[] = {
 		.elem_size = sizeof(struct v4l2_ctrl_vp8_frame_hdr),
 		.can_store = true,
 	},
+	[ROCKCHIP_VPU_DEC_CTRL_VP9_DECODE_PARAM] = {
+		.id = V4L2_CID_MPEG_VIDEO_VP9_DECODE_PARAM,
+		.type = V4L2_CTRL_TYPE_PRIVATE,
+		.name = "VP9 Decode Parameters",
+		.max_stores = VIDEO_MAX_FRAME,
+		.elem_size = sizeof(struct v4l2_ctrl_vp9_decode_param),
+		.can_store = true,
+	},
+	[ROCKCHIP_VPU_DEC_CTRL_VP9_FRAME_HDR] = {
+		.id = V4L2_CID_MPEG_VIDEO_VP9_FRAME_HDR,
+		.type = V4L2_CTRL_TYPE_PRIVATE,
+		.name = "VP9 Decoder Output Counts",
+		.max_stores = VIDEO_MAX_FRAME,
+		.elem_size = sizeof(struct v4l2_ctrl_vp9_frame_hdr),
+		.can_store = true,
+	},
+	[ROCKCHIP_VPU_DEC_CTRL_VP9_ENTROPY] = {
+		.id = V4L2_CID_MPEG_VIDEO_VP9_ENTROPY,
+		.type = V4L2_CTRL_TYPE_PRIVATE,
+		.name = "VP9 Decoder Output Counts",
+		.max_stores = VIDEO_MAX_FRAME,
+		.elem_size = sizeof(struct v4l2_ctrl_vp9_entropy),
+		.can_store = true,
+	},
 };
 
-static inline const void *get_ctrl_ptr(struct rockchip_vpu_ctx *ctx,
-				       unsigned id)
+static inline void *get_ctrl_ptr(struct rockchip_vpu_ctx *ctx, unsigned id)
 {
 	struct v4l2_ctrl *ctrl = ctx->ctrls[id];
 
@@ -269,6 +295,7 @@ static int vidioc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
 	struct rockchip_vpu_dev *dev = video_drvdata(file);
+	struct rockchip_vpu_ctx *ctx = fh_to_ctx(priv);
 	const struct rockchip_vpu_fmt *fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	char str[5];
@@ -316,8 +343,15 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 				ROCKCHIP_DEC_MAX_HEIGHT);
 
 		/* Round up to macroblocks. */
-		pix_fmt_mp->width = round_up(pix_fmt_mp->width, MB_DIM);
-		pix_fmt_mp->height = round_up(pix_fmt_mp->height, MB_DIM);
+		if (ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_VP9_FRAME) {
+			pix_fmt_mp->width = round_up(pix_fmt_mp->width, SB_DIM);
+			pix_fmt_mp->height =
+				round_up(pix_fmt_mp->height, SB_DIM);
+		} else {
+			pix_fmt_mp->width = round_up(pix_fmt_mp->width, MB_DIM);
+			pix_fmt_mp->height =
+				round_up(pix_fmt_mp->height, MB_DIM);
+		}
 		break;
 
 	default:
@@ -335,7 +369,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	struct rockchip_vpu_ctx *ctx = fh_to_ctx(priv);
 	struct rockchip_vpu_dev *dev = ctx->dev;
-	unsigned int mb_width, mb_height;
+	unsigned int dim_width, dim_height, align;
 	const struct rockchip_vpu_fmt *fmt;
 	int ret = 0;
 	int i;
@@ -397,20 +431,28 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		fmt = find_format(dev, pix_fmt_mp->pixelformat, false);
 		ctx->vpu_dst_fmt = fmt;
 
-		mb_width = MB_WIDTH(pix_fmt_mp->width);
-		mb_height = MB_HEIGHT(pix_fmt_mp->height);
+		if (ctx->vpu_src_fmt->fourcc != V4L2_PIX_FMT_VP9_FRAME) {
+			dim_width = MB_WIDTH(pix_fmt_mp->width);
+			dim_height = MB_HEIGHT(pix_fmt_mp->height);
+			align = 16;
+		} else {
+			dim_width = SB_WIDTH(pix_fmt_mp->width);
+			dim_height = SB_HEIGHT(pix_fmt_mp->height);
+			align = 64;
+		}
 
 		vpu_debug(0, "CAPTURE codec mode: %d\n", fmt->codec_mode);
-		vpu_debug(0, "fmt - w: %d, h: %d, mb - w: %d, h: %d\n",
+		vpu_debug(0, "fmt - w: %d, h: %d, block - w: %d, h: %d\n",
 			  pix_fmt_mp->width, pix_fmt_mp->height,
-			  mb_width, mb_height);
+			  dim_width, dim_height);
 
 		for (i = 0; i < fmt->num_planes; ++i) {
 			pix_fmt_mp->plane_fmt[i].bytesperline =
-				mb_width * MB_DIM * fmt->depth[i] / 8;
+				dim_width * align * fmt->depth[i] / 8;
 			pix_fmt_mp->plane_fmt[i].sizeimage =
 				pix_fmt_mp->plane_fmt[i].bytesperline
-				* mb_height * MB_DIM;
+				* dim_height * align;
+
 			/*
 			 * All of multiplanar formats we support have chroma
 			 * planes subsampled by 2.
@@ -759,6 +801,9 @@ static int rockchip_vpu_dec_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H264_SCALING_MATRIX:
 	case V4L2_CID_MPEG_VIDEO_H264_SLICE_PARAM:
 	case V4L2_CID_MPEG_VIDEO_VP8_FRAME_HDR:
+	case V4L2_CID_MPEG_VIDEO_VP9_DECODE_PARAM:
+	case V4L2_CID_MPEG_VIDEO_VP9_FRAME_HDR:
+	case V4L2_CID_MPEG_VIDEO_VP9_ENTROPY:
 		/* These controls are used directly. */
 		break;
 
@@ -779,8 +824,31 @@ static int rockchip_vpu_dec_s_ctrl(struct v4l2_ctrl *ctrl)
 	return ret;
 }
 
+static int rockchip_vpu_dec_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct rockchip_vpu_ctx *ctx = ctrl_to_ctx(ctrl);
+	struct rockchip_vpu_dev *dev = ctx->dev;
+	int ret = 0;
+
+	vpu_debug_enter();
+
+	vpu_debug(4, "ctrl id %d\n", ctrl->id);
+
+	switch (ctrl->id) {
+	default:
+		v4l2_err(&dev->v4l2_dev, "Invalid control, id=%d, val=%d\n",
+			 ctrl->id, ctrl->val);
+		ret = -EINVAL;
+	}
+
+	vpu_debug_leave();
+
+	return ret;
+}
+
 static const struct v4l2_ctrl_ops rockchip_vpu_dec_ctrl_ops = {
 	.s_ctrl = rockchip_vpu_dec_s_ctrl,
+	.g_volatile_ctrl = rockchip_vpu_dec_g_volatile_ctrl,
 };
 
 static const struct v4l2_ioctl_ops rockchip_vpu_dec_ioctl_ops = {
@@ -841,10 +909,13 @@ static int rockchip_vpu_queue_setup(struct vb2_queue *vq,
 		psize[0] = round_up(ctx->dst_fmt.plane_fmt[0].sizeimage, 8);
 		allocators[0] = ctx->dev->alloc_ctx;
 
-		if (ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_H264_SLICE)
+		if (ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_H264_SLICE ||
+		    ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_VP9_FRAME) {
 			/* Add space for appended motion vectors. */
-			psize[0] += 64 * MB_WIDTH(ctx->dst_fmt.width)
-					* MB_HEIGHT(ctx->dst_fmt.height);
+			psize[0] += 128 *
+				MB_WIDTH(ctx->dst_fmt.width) *
+				MB_HEIGHT(ctx->dst_fmt.height);
+		}
 
 		vpu_debug(0, "capture psize[%d]: %d\n", 0, psize[0]);
 		break;
@@ -1096,6 +1167,13 @@ static void rockchip_vpu_dec_prepare_run(struct rockchip_vpu_ctx *ctx)
 	} else if (ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_VP8_FRAME) {
 		ctx->run.vp8d.frame_hdr = get_ctrl_ptr(ctx,
 				ROCKCHIP_VPU_DEC_CTRL_VP8_FRAME_HDR);
+	} else if (ctx->vpu_src_fmt->fourcc == V4L2_PIX_FMT_VP9_FRAME) {
+		ctx->run.vp9d.dec_param = get_ctrl_ptr(ctx,
+				ROCKCHIP_VPU_DEC_CTRL_VP9_DECODE_PARAM);
+		ctx->run.vp9d.frame_hdr = get_ctrl_ptr(ctx,
+				ROCKCHIP_VPU_DEC_CTRL_VP9_FRAME_HDR);
+		ctx->run.vp9d.entropy = get_ctrl_ptr(ctx,
+				ROCKCHIP_VPU_DEC_CTRL_VP9_ENTROPY);
 	}
 }
 

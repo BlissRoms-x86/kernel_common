@@ -45,6 +45,9 @@
 #define MB_DIM				16
 #define MB_WIDTH(x_size)		DIV_ROUND_UP(x_size, MB_DIM)
 #define MB_HEIGHT(y_size)		DIV_ROUND_UP(y_size, MB_DIM)
+#define SB_DIM				64
+#define SB_WIDTH(x_size)		DIV_ROUND_UP(x_size, SB_DIM)
+#define SB_HEIGHT(y_size)		DIV_ROUND_UP(y_size, SB_DIM)
 
 struct rockchip_vpu_ctx;
 struct rockchip_vpu_codec_ops;
@@ -87,6 +90,7 @@ struct rockchip_vpu_variant {
  * @RK_VPU_CODEC_NONE:	No operating mode. Used for RAW video formats.
  * @RK_VPU_CODEC_H264D:	H264 decoder.
  * @RK_VPU_CODEC_VP8D:	VP8 decoder.
+ * @RK_VPU_CODEC_VP9D:	VP9 decoder.
  * @RK_VPU_CODEC_H264E:	H264 encoder.
  * @RK_VPU_CODEC_VP8E:	VP8 encoder.
  */
@@ -94,6 +98,7 @@ enum rockchip_vpu_codec_mode {
 	RK_VPU_CODEC_NONE = -1,
 	RK_VPU_CODEC_H264D,
 	RK_VPU_CODEC_VP8D,
+	RK_VPU_CODEC_VP9D,
 	RK_VPU_CODEC_H264E,
 	RK_VPU_CODEC_VP8E
 };
@@ -170,6 +175,8 @@ enum rockchip_vpu_state {
  *			(for allocations with kernel mapping).
  * @aclk:		Handle of ACLK clock.
  * @hclk:		Handle of HCLK clock.
+ * @sclk_cabac:		Handle of SCLK CA clock.
+ * @sclk_core:		Handle of SCLK CORE clock.
  * @base:		Mapped address of VPU registers.
  * @enc_base:		Mapped address of VPU encoder register for convenience.
  * @dec_base:		Mapped address of VPU decoder register for convenience.
@@ -198,6 +205,8 @@ struct rockchip_vpu_dev {
 	void *alloc_ctx_vm;
 	struct clk *aclk;
 	struct clk *hclk;
+	struct clk *sclk_cabac;
+	struct clk *sclk_core;
 	void __iomem *base;
 	void __iomem *enc_base;
 	void __iomem *dec_base;
@@ -269,6 +278,18 @@ struct rockchip_vpu_h264d_run {
 };
 
 /**
+ * struct rockchip_vpu_vp9d_run - per-run data specific to vp9
+ * decoding.
+ * @dec_param: Pointer to a buffer containing per-run frame data
+ *	       which is needed by setting vpu register.
+ */
+struct rockchip_vpu_vp9d_run {
+	const struct v4l2_ctrl_vp9_frame_hdr *frame_hdr;
+	const struct v4l2_ctrl_vp9_decode_param *dec_param;
+	struct v4l2_ctrl_vp9_entropy *entropy;
+};
+
+/**
  * struct rockchip_vpu_run - per-run data for hardware code.
  * @src:		Source buffer to be processed.
  * @dst:		Destination buffer to be processed.
@@ -288,6 +309,7 @@ struct rockchip_vpu_run {
 		struct rockchip_vpu_vp8e_run vp8e;
 		struct rockchip_vpu_vp8d_run vp8d;
 		struct rockchip_vpu_h264d_run h264d;
+		struct rockchip_vpu_vp9d_run vp9d;
 		/* Other modes will need different data. */
 	};
 };
@@ -407,6 +429,162 @@ struct rockchip_vpu_control {
 	bool is_volatile:1;
 	bool is_read_only:1;
 	bool can_store:1;
+};
+
+struct refs_counts {
+	u32 eob[2];
+	u32 coeff[3];
+};
+
+#define REF_TYPES	2	/* intra=0, inter=1 */
+#define TX_SIZES	4	/**
+				 * 4x4 transform
+				 * 8x8 transform
+				 * 16x16 transform
+				 * 32x32 transform
+				 **/
+#define PLANE_TYPES	2	/* Y UV */
+/* Middle dimension reflects the coefficient position within the transform. */
+#define COEF_BANDS	6
+#define COEFF_CONTEXTS	6
+
+#define PARTITION_CONTEXTS		16
+#define PARTITION_TYPES			4
+
+#define MAX_SEGMENTS			8
+#define SEG_TREE_PROBS			(MAX_SEGMENTS-1)
+#define PREDICTION_PROBS		3
+#define SKIP_CONTEXTS			3
+#define TX_SIZE_CONTEXTS		2
+#define TX_SIZES			4
+#define INTRA_INTER_CONTEXTS		4
+#define PLANE_TYPES			2
+#define COEF_BANDS			6
+#define COEFF_CONTEXTS			6
+#define UNCONSTRAINED_NODES		3
+#define INTRA_MODES			10
+#define INTER_PROB_SIZE_ALIGN_TO_128	151
+#define INTRA_PROB_SIZE_ALIGN_TO_128	149
+#define BLOCK_SIZE_GROUPS		4
+#define COMP_INTER_CONTEXTS		5
+#define REF_CONTEXTS			5
+#define INTER_MODE_CONTEXTS		7
+#define SWITCHABLE_FILTERS		3 /* number of switchable filters */
+#define SWITCHABLE_FILTER_CONTEXTS	(SWITCHABLE_FILTERS + 1)
+#define INTER_MODES			4
+#define MV_JOINTS			4
+#define MV_CLASSES			11
+/* bits at integer precision for class 0 */
+#define CLASS0_BITS			1
+#define CLASS0_SIZE			(1 << CLASS0_BITS)
+#define MV_OFFSET_BITS		(MV_CLASSES + CLASS0_BITS - 2)
+#define MV_FP_SIZE			4
+
+/* count output if inter frame being decoded */
+struct symbol_counts_for_inter_frame {
+	u32 partition[PARTITION_CONTEXTS][PARTITION_TYPES];
+	u32 skip[SKIP_CONTEXTS][2];
+	u32 inter[4][2];
+	u32 tx32p[TX_SIZE_CONTEXTS][TX_SIZES];
+	/**
+	 * tx16p counts contain 2x3 elements, only 3 TX_SIZES
+	 * tx16p[0][3] and tx16p[1][3] no meaning, only use for
+	 * memory align
+	 **/
+	u32 tx16p[TX_SIZE_CONTEXTS][TX_SIZES - 1 + 1];
+	u32 tx8p[TX_SIZE_CONTEXTS][TX_SIZES - 2];
+	u32 y_mode[BLOCK_SIZE_GROUPS][INTRA_MODES];
+	u32 uv_mode[INTRA_MODES][INTRA_MODES];
+	u32 comp[COMP_INTER_CONTEXTS][2];
+	u32 comp_ref[REF_CONTEXTS][2];
+	u32 single_ref[REF_CONTEXTS][2][2];
+	u32 mv_mode[INTER_MODE_CONTEXTS][INTER_MODES];
+	u32 filter[SWITCHABLE_FILTER_CONTEXTS][SWITCHABLE_FILTERS];
+	u32 mv_joint[MV_JOINTS];
+	u32 sign[2][2];
+	/* add 1 element for align */
+	u32 classes[2][MV_CLASSES + 1];
+	u32 class0[2][CLASS0_SIZE];
+	u32 bits[2][MV_OFFSET_BITS][2];
+	u32 class0_fp[2][CLASS0_SIZE][MV_FP_SIZE];
+	u32 fp[2][4];
+	u32 class0_hp[2][2];
+	u32 hp[2][2];
+	struct refs_counts ref_cnt[REF_TYPES][TX_SIZES][PLANE_TYPES]
+				  [COEF_BANDS][COEFF_CONTEXTS];
+};
+
+/* counts output if intra frame being decoded */
+struct symbol_counts_for_intra_frame {
+	u32 partition[4][4][PARTITION_TYPES];
+	u32 skip[SKIP_CONTEXTS][2];
+	u32 intra[4][2];
+	u32 tx32p[TX_SIZE_CONTEXTS][TX_SIZES];
+	u32 tx16p[TX_SIZE_CONTEXTS][TX_SIZES - 1 + 1];
+	u32 tx8p[TX_SIZE_CONTEXTS][TX_SIZES - 2];
+	struct refs_counts ref_cnt[REF_TYPES][TX_SIZES][PLANE_TYPES]
+				  [COEF_BANDS][COEFF_CONTEXTS];
+};
+
+union rkv_vp9_symbol_counts {
+	struct symbol_counts_for_intra_frame intra_spec;
+	struct symbol_counts_for_inter_frame inter_spec;
+};
+
+struct intra_mode_prob {
+	u8 y_mode_prob[105];
+	u8 uv_mode_prob[23];
+};
+
+struct intra_only_frm_spec {
+	u8 coef_probs_intra[4][2][128];
+	struct intra_mode_prob intra_mode[10];
+};
+
+struct inter_frm_spec {
+	u8 y_mode_probs[4][9];
+	u8 comp_mode_prob[5];
+	u8 comp_ref_prob[5];
+	u8 single_ref_prob[5][2];
+	u8 inter_mode_probs[7][3];
+	u8 interp_filter_probs[4][2];
+	u8 res[11];
+	u8 coef_probs[2][4][2][128];
+	u8 uv_mode_prob_0_2[3][9];
+	u8 res0[5];
+	u8 uv_mode_prob_3_5[3][9];
+	u8 res1[5];
+	u8 uv_mode_prob_6_8[3][9];
+	u8 res2[5];
+	u8 uv_mode_prob_9[9];
+	u8 res3[7];
+	u8 res4[16];
+	u8 mv_joint_probs[3];
+	u8 mv_sign_prob[2];
+	u8 mv_class_probs[2][10];
+	u8 mv_class0_bit_prob[2];
+	u8 mv_bits_prob[2][10];
+	u8 mv_class0_fr_probs[2][2][3];
+	u8 mv_fr_probs[2][3];
+	u8 mv_class0_hp_prob[2];
+	u8 mv_hp_prob[2];
+};
+
+struct vp9_decoder_probs_hw {
+	u8 partition_probs[16][3];
+	u8 pred_probs[3];
+	u8 tree_probs[7];
+	u8 skip_prob[3];
+	u8 tx_probs_32x32[2][3];
+	u8 tx_probs_16x16[2][2];
+	u8 tx_probs_8x8[2][1];
+	u8 is_inter_prob[4];
+	u8 res[3];
+	/* 128 bit align */
+	union {
+		struct intra_only_frm_spec intra_spec;
+		struct inter_frm_spec inter_spec;
+	};
 };
 
 /* Logging helpers */

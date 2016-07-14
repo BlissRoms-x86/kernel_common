@@ -18,6 +18,7 @@
 #define ROCKCHIP_VPU_HW_H_
 
 #include <linux/interrupt.h>
+#include <linux/v4l2-controls.h>
 #include <media/videobuf2-core.h>
 
 #define ROCKCHIP_HEADER_SIZE		1280
@@ -167,6 +168,56 @@ struct rockchip_vpu_h264d_hw_ctx {
 	struct rockchip_vpu_aux_buf priv_tbl;
 };
 
+struct rockchip_vpu_vp9d_last_info {
+	bool abs_delta;
+	s8 ref_deltas[4];
+	s8 mode_deltas[2];
+	bool segmentation_enable;
+	bool show_frame;
+	bool intra_only;
+	u32 width;
+	u32 height;
+	u8 frame_type;
+	s16 feature_data[8][4];
+	u8 feature_mask[8];
+	dma_addr_t mv_base_addr;
+	bool last_segid_flag;
+};
+
+struct rockchip_vpu_vp9d_counts {
+	u32 partition[4][4][4];
+	u32 skip[3][2];
+	u32 intra[4][2];
+	u32 tx32p[2][4];
+	u32 tx16p[2][4]; /* orign tx16p */
+	u32 tx8p[2][2];
+	u32 y_mode[4][10];
+	u32 uv_mode[10][10];
+	u32 comp[5][2];
+	u32 comp_ref[5][2];
+	u32 single_ref[5][2][2];
+	u32 mv_mode[7][4];
+	u32 filter[4][3];
+	u32 mv_joint[4];
+	u32 sign[2][2];
+	u32 classes[2][12]; /* orign classes[12] */
+	u32 class0[2][2];
+	u32 bits[2][10][2];
+	u32 class0_fp[2][2][4];
+	u32 fp[2][4];
+	u32 class0_hp[2][2];
+	u32 hp[2][2];
+	u32 coef[4][2][2][6][6][3];
+	u32 eob[4][2][2][6][6][2];
+};
+
+struct rockchip_vpu_vp9d_hw_ctx {
+	struct rockchip_vpu_aux_buf priv_tbl;
+	struct rockchip_vpu_aux_buf priv_dst;
+	struct rockchip_vpu_vp9d_last_info last_info;
+	dma_addr_t mv_base_addr;
+};
+
 /**
  * struct rockchip_vpu_hw_ctx - Context private data of hardware code.
  * @codec_ops:		Set of operations associated with current codec mode.
@@ -179,11 +230,13 @@ struct rockchip_vpu_hw_ctx {
 		struct rockchip_vpu_vp8e_hw_ctx vp8e;
 		struct rockchip_vpu_vp8d_hw_ctx vp8d;
 		struct rockchip_vpu_h264d_hw_ctx h264d;
+		struct rockchip_vpu_vp9d_hw_ctx vp9d;
 		/* Other modes will need different data. */
 	};
 };
 
 extern const struct rockchip_vpu_variant rk3288_vpu_variant;
+extern const struct rockchip_vpu_variant rk3399_vdec_variant;
 
 void rockchip_vpu_watchdog(struct work_struct *work);
 void rockchip_vpu_power_on(struct rockchip_vpu_dev *vpu);
@@ -215,5 +268,12 @@ const struct rk3288_vp8e_reg_params *rk3288_vpu_vp8e_get_dummy_params(void);
 
 void rk3288_vpu_vp8e_assemble_bitstream(struct rockchip_vpu_ctx *ctx,
 					struct rockchip_vpu_buf *dst_buf);
+
+/* Run ops for rk3399 vdec VP9 decoder */
+int rk3399_vdec_vp9d_init(struct rockchip_vpu_ctx *ctx);
+void rk3399_vdec_vp9d_exit(struct rockchip_vpu_ctx *ctx);
+void rk3399_vdec_vp9d_run(struct rockchip_vpu_ctx *ctx);
+void rk3399_vdec_vp9d_done(struct rockchip_vpu_ctx *ctx,
+			   enum vb2_buffer_state result);
 
 #endif /* ROCKCHIP_VPU_HW_H_ */
