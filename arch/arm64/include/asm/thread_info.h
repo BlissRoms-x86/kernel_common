@@ -53,10 +53,10 @@ struct thread_info {
 	int			cpu;		/* cpu */
 #ifdef CONFIG_ALT_SYSCALL
 	unsigned int		nr_syscalls;
-	void			*sys_call_table;
+	const void		*sys_call_table;
 #ifdef CONFIG_COMPAT
 	unsigned int		compat_nr_syscalls;
-	void			*compat_sys_call_table;
+	const void		*compat_sys_call_table;
 #endif
 #endif
 };
