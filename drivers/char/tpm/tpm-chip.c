@@ -284,8 +284,6 @@ static int tpm1_chip_register(struct tpm_chip *chip)
 	if (chip->flags & TPM_CHIP_FLAG_TPM2)
 		return 0;
 
-	tpm_sysfs_add_device(chip);
-
 	chip->bios_dir = tpm_bios_log_setup(dev_name(&chip->dev));
 
 	return 0;
@@ -375,6 +373,8 @@ int tpm_chip_register(struct tpm_chip *chip)
 		if (rc)
 			return rc;
 	}
+
+	tpm_sysfs_add_device(chip);
 
 	rc = tpm1_chip_register(chip);
 	if (rc)
