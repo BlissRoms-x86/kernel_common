@@ -1145,6 +1145,8 @@ typedef int (*sched_domain_flags_f)(void);
 typedef
 const struct sched_group_energy * const (*sched_domain_energy_f)(int cpu);
 
+extern void set_energy_aware(bool enabled);
+
 #define SDTL_OVERLAP	0x01
 
 struct sd_data {

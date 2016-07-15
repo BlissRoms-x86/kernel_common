@@ -6383,6 +6383,27 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 	atomic_set(&sg->sgc->nr_busy_cpus, sg->group_weight);
 }
 
+#ifdef CONFIG_FAIR_GROUP_SCHED
+#ifdef CONFIG_SCHED_DEBUG
+void set_energy_aware(bool enabled)
+{
+	if (enabled)
+		sched_feat_set("ENERGY_AWARE");
+	else
+		sched_feat_set("NO_ENERGY_AWARE");
+}
+#else
+__read_mostly bool energy_aware;
+
+void set_energy_aware(bool enabled)
+{
+	energy_aware = enabled;
+}
+#endif /* CONFIG_SCHED_DEBUG */
+#else
+void set_energy_aware(bool enabled) { }
+#endif
+
 /*
  * Check that the per-cpu provided sd energy data is consistent for all cpus
  * within the mask.
