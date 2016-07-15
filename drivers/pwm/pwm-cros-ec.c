@@ -56,7 +56,8 @@ static int cros_ec_pwm_set_duty(struct cros_ec_device *ec, u8 index, u16 duty)
 	return cros_ec_cmd_xfer_status(ec, msg);
 }
 
-static int cros_ec_pwm_get_duty(struct cros_ec_device *ec, u8 index)
+static int __cros_ec_pwm_get_duty(struct cros_ec_device *ec, u8 index,
+				  u32 *result)
 {
 	struct {
 		struct cros_ec_command msg;
@@ -81,10 +82,17 @@ static int cros_ec_pwm_get_duty(struct cros_ec_device *ec, u8 index)
 	params->index = index;
 
 	ret = cros_ec_cmd_xfer_status(ec, msg);
+	if (result)
+		*result = msg->result;
 	if (ret < 0)
 		return ret;
 
 	return resp->duty;
+}
+
+static int cros_ec_pwm_get_duty(struct cros_ec_device *ec, u8 index)
+{
+	return __cros_ec_pwm_get_duty(ec, index, NULL);
 }
 
 static int cros_ec_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
@@ -155,17 +163,23 @@ static int cros_ec_num_pwms(struct cros_ec_device *ec)
 
 	/* The index field is only 8 bits */
 	for (i = 0; i <= U8_MAX; i++) {
-		ret = cros_ec_pwm_get_duty(ec, i);
-		/*
-		 * We look for SUCCESS, INVALID_COMMAND, or INVALID_PARAM responses;
-		 * everything else is treated as an error
-		 */
-		if (ret == -EECRESULT - EC_RES_INVALID_COMMAND)
-			return -ENODEV;
-		else if (ret == -EECRESULT - EC_RES_INVALID_PARAM)
-			return i;
-		else if (ret < 0)
+		u32 result = 0;
+
+		ret = __cros_ec_pwm_get_duty(ec, i, &result);
+		/* We want to parse EC protocol errors */
+		if (ret < 0 && !(ret == -EPROTO && result))
 			return ret;
+
+		/*
+		 * We look for SUCCESS, INVALID_COMMAND, or INVALID_PARAM
+		 * responses; everything else is treated as an error
+		 */
+		if (result == EC_RES_INVALID_COMMAND)
+			return -ENODEV;
+		else if (result == EC_RES_INVALID_PARAM)
+			return i;
+		else if (result)
+			return -EPROTO;
 	}
 
 	return U8_MAX;
