@@ -205,6 +205,7 @@ SYSCALL_DEFINE2(ftruncate, unsigned int, fd, unsigned long, length)
 {
 	return do_sys_ftruncate(fd, length, 1);
 }
+EXPORT_SYMBOL_GPL(sys_ftruncate);
 
 #ifdef CONFIG_COMPAT
 COMPAT_SYSCALL_DEFINE2(ftruncate, unsigned int, fd, compat_ulong_t, length)
@@ -331,6 +332,7 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 	}
 	return error;
 }
+EXPORT_SYMBOL_GPL(sys_fallocate);
 
 /*
  * access() needs to use the real uid/gid, not the effective uid/gid.
