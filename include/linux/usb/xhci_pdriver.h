@@ -18,10 +18,13 @@
  *
  * @usb3_lpm_capable:	determines if this xhci platform supports USB3
  *			LPM capability
+ * @usb3_slow_suspend:	determines if it need an extraordinary delay when
+ *			suspending xhci.
  *
  */
 struct usb_xhci_pdata {
 	unsigned	usb3_lpm_capable:1;
+	unsigned	usb3_slow_suspend:1;
 };
 
 #endif /* __USB_CORE_XHCI_PDRIVER_H */
