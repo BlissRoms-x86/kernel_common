@@ -218,7 +218,7 @@ void rk3288_vpu_try_context(struct rk3288_vpu_dev *dev,
 
 	rk3288_vpu_try_run(dev);
 
-	vpu_debug_enter();
+	vpu_debug_leave();
 }
 
 /*
@@ -608,7 +608,7 @@ static int rk3288_vpu_probe(struct platform_device *pdev)
 
 	ret = rk3288_vpu_hw_probe(vpu);
 	if (ret) {
-		dev_err(&pdev->dev, "vcodec_hw_probe failed\n");
+		dev_err(&pdev->dev, "Failed to probe VPU hardware\n");
 		goto err_hw_probe;
 	}
 

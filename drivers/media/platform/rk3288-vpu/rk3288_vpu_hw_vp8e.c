@@ -80,7 +80,7 @@ void rk3288_vpu_vp8e_assemble_bitstream(struct rk3288_vpu_ctx *ctx,
 	if (WARN_ON(dst_buf->vp8e.dct_offset + dct_size > dst_size))
 		return;
 
-	vpu_debug(1, "%s: hdr_size = %u, ext_hdr_size = %u, dct_size = %u\n",
+	vpu_debug(1, "%s: hdr_size = %zu, ext_hdr_size = %zu, dct_size = %zu\n",
 			__func__, hdr_size, ext_hdr_size, dct_size);
 
 	memmove(dst + hdr_size + ext_hdr_size,
@@ -245,7 +245,7 @@ static void rk3288_vpu_vp8e_set_buffers(struct rk3288_vpu_dev *vpu,
 	vepu_write_relaxed(vpu, dst_size - ctx->run.dst->vp8e.dct_offset,
 				VEPU_REG_STR_BUF_LIMIT);
 
-	/* Auxilliary buffers. */
+	/* Auxiliary buffers. */
 	vepu_write_relaxed(vpu, ctx->hw.vp8e.ctrl_buf.dma,
 				VEPU_REG_ADDR_OUTPUT_CTRL);
 	vepu_write_relaxed(vpu, ctx->hw.vp8e.mv_buf.dma,

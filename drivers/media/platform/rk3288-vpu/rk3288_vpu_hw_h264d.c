@@ -34,7 +34,7 @@
 #define POC_BUFFER_SIZE			34
 #define SCALING_LIST_SIZE		((6 * 16 + 6 * 64) / 4)
 
-/* Data structure describing auxilliary buffer format. */
+/* Data structure describing auxiliary buffer format. */
 struct rk3288_vpu_h264d_priv_tbl {
 	u32 cabac_table[CABAC_INIT_BUFFER_SIZE];
 	u32 poc[POC_BUFFER_SIZE];
@@ -544,7 +544,7 @@ void rk3288_vpu_h264d_run(struct rk3288_vpu_ctx *ctx)
 	schedule_delayed_work(&vpu->watchdog_work, msecs_to_jiffies(2000));
 
 	/* Start decoding! */
-	vdpu_write_relaxed(vpu, VDPU_REG_CONFIG_DEC_AXI_RD_ID(0xff)
+	vdpu_write_relaxed(vpu, VDPU_REG_CONFIG_DEC_AXI_RD_ID(0xffu)
 				| VDPU_REG_CONFIG_DEC_TIMEOUT_E
 				| VDPU_REG_CONFIG_DEC_OUT_ENDIAN
 				| VDPU_REG_CONFIG_DEC_STRENDIAN_E

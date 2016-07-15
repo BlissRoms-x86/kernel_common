@@ -206,9 +206,9 @@ static void rk3288_vp8d_dump_hdr(struct rk3288_vpu_ctx *ctx)
 	vpu_debug(4, "Picture size: w=%d, h=%d\n", hdr->width, hdr->height);
 
 	/* stream addresses */
-	vpu_debug(4, "Addresses: segmap=0x%x, probs=0x%x\n",
-			ctx->hw.vp8d.segment_map.dma,
-			ctx->hw.vp8d.prob_tbl.dma);
+	vpu_debug(4, "Addresses: segmap=%pad, probs=%pad\n",
+			&ctx->hw.vp8d.segment_map.dma,
+			&ctx->hw.vp8d.prob_tbl.dma);
 
 	/* reference frame info */
 	vpu_debug(4, "Ref frame: last=%d, golden=%d, alt=%d\n",

@@ -59,7 +59,7 @@ struct rk3288_vpu_codec_ops;
  * @RK_VPU_CODEC_NONE:	No operating mode. Used for RAW video formats.
  * @RK_VPU_CODEC_H264D:	H264 decoder.
  * @RK_VPU_CODEC_VP8D:	VP8 decoder.
- * @RK_VPU_CODEC_H264E: H264 encoder.
+ * @RK_VPU_CODEC_H264E:	H264 encoder.
  * @RK_VPU_CODEC_VP8E:	VP8 encoder.
  */
 enum rk3288_vpu_codec_mode {
@@ -103,9 +103,8 @@ struct rk3288_vpu_vp8e_buf_data {
 
 /**
  * struct rk3288_vpu_buf - Private data related to each VB2 buffer.
- * @list:		List head for queuing in buffer queue.
  * @b:			Pointer to related VB2 buffer.
- * @flags:		Buffer state. See enum rk3288_vpu_buf_flags.
+ * @list:		List head for queuing in buffer queue.
  */
 struct rk3288_vpu_buf {
 	struct vb2_buffer b;
@@ -152,7 +151,7 @@ enum rk3288_vpu_state {
  *			shared with interrupt handlers.
  * @state:		Device state.
  * @ready_ctxs:		List of contexts ready to run.
- * @variant:		Hardware variant-specfic parameters.
+ * @variant:		Hardware variant-specific parameters.
  * @current_ctx:	Context being currently processed by hardware.
  * @run_wq:		Wait queue to wait for run completion.
  * @watchdog_work:	Delayed work for hardware timeout handling.
