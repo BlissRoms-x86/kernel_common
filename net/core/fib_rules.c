@@ -35,6 +35,7 @@ int fib_default_rule_add(struct fib_rules_ops *ops,
 	r->fr_net = ops->fro_net;
 	r->uid_start = INVALID_UID;
 	r->uid_end = INVALID_UID;
+	r->uid_kernel = false;
 
 	r->suppress_prefixlen = -1;
 	r->suppress_ifgroup = -1;
@@ -186,6 +187,9 @@ static int nla_put_uid(struct sk_buff *skb, int idx, kuid_t uid)
 
 static int fib_uid_range_match(struct flowi *fl, struct fib_rule *rule)
 {
+	if (rule->uid_kernel && uid_eq(fl->flowi_uid, GLOBAL_ROOT_UID))
+		return true;
+
 	return (!uid_valid(rule->uid_start) && !uid_valid(rule->uid_end)) ||
 	       (uid_gte(fl->flowi_uid, rule->uid_start) &&
 		uid_lte(fl->flowi_uid, rule->uid_end));
@@ -399,6 +403,7 @@ static int fib_nl_newrule(struct sk_buff *skb, struct nlmsghdr* nlh)
 		if (tb[FRA_UID_START] && tb[FRA_UID_END]) {
 			rule->uid_start = fib_nl_uid(tb[FRA_UID_START]);
 			rule->uid_end = fib_nl_uid(tb[FRA_UID_END]);
+			rule->uid_kernel = !nla_get_u32(tb[FRA_UID_START]);
 		}
 		if (!uid_valid(rule->uid_start) ||
 		    !uid_valid(rule->uid_end) ||

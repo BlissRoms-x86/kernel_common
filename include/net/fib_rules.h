@@ -31,6 +31,7 @@ struct fib_rule {
 	char			oifname[IFNAMSIZ];
 	kuid_t			uid_start;
 	kuid_t			uid_end;
+	bool			uid_kernel;
 	struct rcu_head		rcu;
 };
 
