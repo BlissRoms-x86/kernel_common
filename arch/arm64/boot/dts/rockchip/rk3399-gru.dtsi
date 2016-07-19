@@ -449,6 +449,14 @@
 
 	/* END REGULATORS */
 
+	firmware {
+		chromeos {
+			pinctrl-names = "default";
+			pinctrl-0 = <&ap_fw_wp>;
+			write-protect-gpio = <&gpio1 18 GPIO_ACTIVE_LOW>;
+		};
+	};
+
 	io-domains {
 		compatible = "rockchip,rk3399-io-voltage-domain";
 		rockchip,grf = <&grf>;
@@ -1005,6 +1013,12 @@ ap_i2c_audio: &i2c8 {
 	backlight-enable {
 		bl_en: bl-en {
 			rockchip,pins = <1 17 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	write-protect {
+		ap_fw_wp: ap-fw-wp {
+			rockchip,pins = <1 18 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
