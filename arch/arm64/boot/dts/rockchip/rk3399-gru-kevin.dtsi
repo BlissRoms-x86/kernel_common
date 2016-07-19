@@ -126,6 +126,22 @@
 			linux,input-type = <EV_SW>;
 		};
 	};
+
+	thermistor_ppvar_bigcpu: thermistor-ppvar-bigcpu {
+		compatible = "murata,ncp15wb473";
+		pullup-uv = <1800000>;
+		pullup-ohm = <25500>;
+		pulldown-ohm = <0>;
+		io-channels = <&saradc 2>;
+	};
+
+	thermistor_ppvar_litcpu: thermistor-ppvar-litcpu {
+		compatible = "murata,ncp15wb473";
+		pullup-uv = <1800000>;
+		pullup-ohm = <25500>;
+		pulldown-ohm = <0>;
+		io-channels = <&saradc 3>;
+	};
 };
 
 ap_i2c_tpm: &i2c0 {
@@ -208,6 +224,11 @@ ap_i2c_dig: &i2c2 {
 			};
 		};
 	};
+};
+
+&saradc {
+	status = "okay";
+	vref-supply = <&pp1800_ap_io>;
 };
 
 /* PINCTRL: always below everything else */
