@@ -1,5 +1,5 @@
 /*
- * Google Gru-Kevin Rev 3 board device tree source
+ * Google Gru-Kevin Rev 4+ board device tree source
  *
  * Copyright 2016 Google, Inc
  *
@@ -44,26 +44,29 @@
 
 /dts-v1/;
 #include "rk3399-gru-kevin.dtsi"
-#include "rk3399-early-opp.dtsi"
 
 / {
 	model = "Google Kevin";
-	compatible = "google,kevin-rev3", "google,kevin",
-		     "google,gru", "rockchip,rk3399";
+	compatible = "google,kevin-rev15", "google,kevin-rev14",
+		     "google,kevin-rev13", "google,kevin-rev12",
+		     "google,kevin-rev11", "google,kevin-rev10",
+		     "google,kevin-rev9", "google,kevin-rev8",
+		     "google,kevin-rev7", "google,kevin-rev6",
+		     "google,kevin-rev5", "google,kevin-rev4",
+		     "google,kevin", "google,gru", "rockchip,rk3399";
 };
 
-/*
- * HACK for -rev3 to bump up voltage
+/* HACK for -rev4 to bump up voltage to make factory test more stable.
+ * issue:55602(issue:54814?)
  *
- * There's some extra voltage drop on early revs of kevin due to board layout
- * problems.  On -rev3 we're almost there, so only 50 mV (it was 200 mV on
- * earlier revs)
+ * With the new OPPs of bit/lit cpu, it's now more stable when changing
+ * frequencies from 2088M/1608M to 600M/408M. But after testing stressapptest
+ * on 5pcs, there is 1/5 failed.
  *
- * NOTE: The 'regulator-microvolt-offset' is not a terribly well-tested and
- * has some quirks (like I think it doesn't necessarily validate constraints
- * properly?), but seems to work and seems better than hardcoding every
- * operating point everywhere.
+ * For the Gpu, the OPP in rk3399-opp.dtsi is from EVB boards, but on kevin,
+ * it's easy to get error like "mali reset". A higher voltage helps.
  */
+
 &ppvar_bigcpu {
 	regulator-microvolt-offset = <50000>;
 };
