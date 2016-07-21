@@ -14,6 +14,13 @@ Required properties:
                     "single-master" device, and needs no additional information
                     to associate with its master device.  See:
                     Documentation/devicetree/bindings/iommu/iommu.txt
+Optional properties:
+- clocks : A list of master clocks requires for the IOMMU to be accessible
+           by the host CPU. The number of clocks depends on the master
+           block and might as well be zero. See [1] for generic clock
+           bindings description.
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
 
 Example:
 
@@ -22,5 +29,6 @@ Example:
 		reg = <0xff940300 0x100>;
 		interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-names = "vopl_mmu";
+		clocks = <&cru ACLK_VOP1>, <&cru DCLK_VOP1>, <&cru HCLK_VOP1>;
 		#iommu-cells = <0>;
 	};
