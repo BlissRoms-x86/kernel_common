@@ -160,13 +160,7 @@ ap_i2c_dig: &i2c2 {
 		compatible = "atmel,atmel_mxt_tp";
 		reg = <0x4a>;
 		pinctrl-names = "default";
-		/*
-		 * Note strange pullup enable.  Apparently this avoids leakage
-		 * but still allows us to get nice 4.7K pullups for high speed
-		 * i2c transfers.  Basically we want the pullup on whenever the
-		 * ap is alive, so the "en" pin just gets set to output high.
-		*/
-		pinctrl-0 = <&trackpad_int_l &ap_i2c_tp_pu_en>;
+		pinctrl-0 = <&trackpad_int_l>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
 	};
