@@ -30,9 +30,7 @@
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_sync_helper.h>
 #include <linux/fence.h>
-#include <linux/fence-array.h>
 
 /**
  * DOC: overview
@@ -1138,94 +1136,6 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit);
 
-#ifdef CONFIG_DRM_DMA_SYNC
-static int drm_atomic_add_implicit_fences(struct drm_device *dev,
-					  struct drm_atomic_state *state)
-{
-	int nplanes = dev->mode_config.num_total_plane;
-	int ret = 0, i;
-	struct drm_plane *plane;
-	struct drm_plane_state *plane_state;
-	struct reservation_object **resvs;
-	unsigned int num_resvs = 0;
-	struct ww_acquire_ctx ctx;
-	struct fence_array *in_fence;
-	struct fence **in_fences = NULL;
-	int num_in_fences = 0;
-
-	resvs = kzalloc(nplanes * 4 * sizeof(*resvs), GFP_KERNEL);
-	if (!resvs)
-		return -ENOMEM;
-
-	for_each_plane_in_state(state, plane, plane_state, i) {
-		WARN_ON(plane_state->fence);
-		/* If fb is not changing or new fb is NULL. */
-		if (plane->state->fb == plane_state->fb || !plane_state->fb)
-			continue;
-
-		if (!plane_state->fb->funcs->get_reservations)
-			continue;
-
-		plane_state->fb->funcs->get_reservations(plane_state->fb, resvs, &num_resvs);
-	}
-
-	/* No reservations, nothing to do. */
-	if (!num_resvs)
-		goto err_resvs;
-
-	ret = drm_lock_reservations(resvs, num_resvs, &ctx);
-	if (ret < 0) {
-		DRM_ERROR("Failed to lock all reservation objects: %d.\n", ret);
-		goto err_resvs;
-	}
-
-	in_fences = kzalloc(num_resvs * sizeof(struct fence *), GFP_KERNEL);
-	if (!in_fences) {
-		ret = -ENOMEM;
-		goto err_mutex;
-	}
-	for (i = 0; i < num_resvs; i++) {
-		struct fence *exclusive;
-		exclusive = reservation_object_get_excl(resvs[i]);
-		if (exclusive)
-			in_fences[num_in_fences++] = fence_get(exclusive);
-	}
-
-	in_fence = fence_array_create(num_in_fences, in_fences,
-				      dev->atomic_in_fence_context,
-				      atomic_add_return(1, &dev->atomic_in_fence_seqno));
-
-	if (!in_fence) {
-		ret = -1;
-		goto err_in_fences_ref;
-	}
-
-	for_each_plane_in_state(state, plane, plane_state, i) {
-		/* If fb has is not changing or new fb is NULL. */
-		if (plane->state->fb == plane_state->fb || !plane_state->fb)
-			continue;
-		plane_state->fence = fence_get(&in_fence->base);
-	}
-	fence_put(&in_fence->base);
-	/* Fence array took ownership of in_fences array and fences therein. */
-	goto err_mutex;
-
-err_in_fences_ref:
-	for (i = 0; i < num_in_fences; i++)
-		fence_put(in_fences[i]);
-
-	kfree(in_fences);
-
-err_mutex:
-	drm_unlock_reservations(resvs, num_resvs, &ctx);
-
-err_resvs:
-	kfree(resvs);
-
-	return ret;
-}
-#endif /* CONFIG_DRM_DMA_SYNC */
-
 /**
  * DOC: implementing async commit
  *
@@ -1298,12 +1208,6 @@ int drm_atomic_helper_prepare_planes(struct drm_device *dev,
 				goto fail;
 		}
 	}
-
-#ifdef CONFIG_DRM_DMA_SYNC
-		ret = drm_atomic_add_implicit_fences(dev, state);
-		if (ret)
-			goto fail;
-#endif
 
 	return 0;
 
@@ -2633,8 +2537,6 @@ void __drm_atomic_helper_plane_duplicate_state(struct drm_plane *plane,
 
 	if (state->fb)
 		drm_framebuffer_reference(state->fb);
-	if (state->fence)
-		fence_get(state->fence);
 }
 EXPORT_SYMBOL(__drm_atomic_helper_plane_duplicate_state);
 
@@ -2675,8 +2577,6 @@ void __drm_atomic_helper_plane_destroy_state(struct drm_plane *plane,
 {
 	if (state->fb)
 		drm_framebuffer_unreference(state->fb);
-	if (state->fence)
-		fence_put(state->fence);
 }
 EXPORT_SYMBOL(__drm_atomic_helper_plane_destroy_state);
 
