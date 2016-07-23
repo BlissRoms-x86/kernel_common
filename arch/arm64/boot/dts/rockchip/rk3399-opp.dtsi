@@ -113,6 +113,31 @@
 			opp-microvolt = <1250000>;
 		};
 	};
+
+	gpu_opp_table: opp-table2 {
+		compatible = "operating-points-v2";
+
+		opp00 {
+			opp-hz = /bits/ 64 <200000000>;
+			opp-microvolt = <900000>;
+		};
+		opp01 {
+			opp-hz = /bits/ 64 <300000000>;
+			opp-microvolt = <900000>;
+		};
+		opp02 {
+			opp-hz = /bits/ 64 <400000000>;
+			opp-microvolt = <900000>;
+		};
+		opp03 {
+			opp-hz = /bits/ 64 <500000000>;
+			opp-microvolt = <950000>;
+		};
+		opp04 {
+			opp-hz = /bits/ 64 <650000000>;
+			opp-microvolt = <975000>;
+		};
+	};
 };
 
 &cpu_l0 {
@@ -137,4 +162,8 @@
 
 &cpu_b1 {
 	operating-points-v2 = <&cluster1_opp>;
+};
+
+&gpu {
+	operating-points-v2 = <&gpu_opp_table>;
 };

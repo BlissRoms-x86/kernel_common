@@ -1127,7 +1127,6 @@
 		clocks = <&cru ACLK_GPU>;
 		clock-names = "clk_mali";
 		#cooling-cells = <2>; /* min followed by max */
-		operating-points-v2 = <&gpu_opp_table>;
 		power-domains = <&power RK3399_PD_GPU>;
 		status = "disabled";
 
@@ -1139,23 +1138,6 @@
 			dynamic-power = <1780>;
 			ts = <32000 4700 (-80) 2>;
 			thermal-zone = "gpu-thermal";
-		};
-	};
-
-	gpu_opp_table: gpu_opp_table {
-		compatible = "operating-points-v2";
-
-		opp00 {
-			opp-hz = /bits/ 64 <200000000>;
-			opp-microvolt = <900000>;
-		};
-		opp01 {
-			opp-hz = /bits/ 64 <300000000>;
-			opp-microvolt = <900000>;
-		};
-		opp02 {
-			opp-hz = /bits/ 64 <400000000>;
-			opp-microvolt = <900000>;
 		};
 	};
 
