@@ -205,10 +205,10 @@ EXPORT_SYMBOL(rockchip_drm_psr_register);
 void rockchip_drm_psr_unregister(struct drm_encoder *encoder)
 {
 	struct rockchip_drm_private *drm_drv = encoder->dev->dev_private;
-	struct psr_drv *psr;
+	struct psr_drv *psr, *n;
 
 	mutex_lock(&drm_drv->psr_list_mutex);
-	list_for_each_entry(psr, &drm_drv->psr_list, list) {
+	list_for_each_entry_safe(psr, n, &drm_drv->psr_list, list) {
 		if (psr->encoder == encoder) {
 			del_timer(&psr->flush_timer);
 			list_del(&psr->list);
