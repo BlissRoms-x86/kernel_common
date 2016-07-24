@@ -880,6 +880,14 @@ ap_i2c_audio: &i2c8 {
 	status = "okay";
 };
 
+&vpu {
+	status = "okay";
+};
+
+&vpu_mmu {
+	status = "okay";
+};
+
 &vdec {
 	status = "okay";
 };
