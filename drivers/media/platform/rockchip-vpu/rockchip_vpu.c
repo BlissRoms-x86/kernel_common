@@ -760,20 +760,11 @@ static int rk3288_vpu_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_device_id vpu_driver_ids[] = {
-	{ .name = "rk3288-vpu", },
-	{ /* sentinel */ }
-};
-
-MODULE_DEVICE_TABLE(platform, vpu_driver_ids);
-
-#ifdef CONFIG_OF
 static const struct of_device_id of_rk3288_vpu_match[] = {
 	{ .compatible = "rockchip,rk3288-vpu", },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, of_rk3288_vpu_match);
-#endif
 
 #ifdef CONFIG_PM_SLEEP
 static int rk3288_vpu_suspend(struct device *dev)
@@ -804,7 +795,6 @@ static const struct dev_pm_ops rk3288_vpu_pm_ops = {
 static struct platform_driver rk3288_vpu_driver = {
 	.probe = rk3288_vpu_probe,
 	.remove = rk3288_vpu_remove,
-	.id_table = vpu_driver_ids,
 	.driver = {
 		   .name = RK3288_VPU_NAME,
 		   .owner = THIS_MODULE,
