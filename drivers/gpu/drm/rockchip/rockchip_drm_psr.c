@@ -20,9 +20,6 @@
 
 #define PSR_FLUSH_TIMEOUT	msecs_to_jiffies(3000) /* 3 seconds */
 
-static LIST_HEAD(psr_list);
-static DEFINE_MUTEX(psr_list_mutex);
-
 enum psr_state {
 	PSR_FLUSH,
 	PSR_ENABLE,
