@@ -880,6 +880,14 @@ ap_i2c_audio: &i2c8 {
 	status = "okay";
 };
 
+&vdec {
+	status = "okay";
+};
+
+&vdec_mmu {
+	status = "okay";
+};
+
 #include "common/cros-ec-keyboard.dtsi"
 #include "common/cros-ec-sbs.dtsi"
 
