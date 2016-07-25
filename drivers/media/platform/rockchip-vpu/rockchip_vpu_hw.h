@@ -291,6 +291,7 @@ struct rockchip_vpu_hw_ctx {
 };
 
 extern const struct rockchip_vpu_variant rk3288_vpu_variant;
+extern const struct rockchip_vpu_variant rk3399_vpu_variant;
 extern const struct rockchip_vpu_variant rk3399_vdec_variant;
 
 void rockchip_vpu_watchdog(struct work_struct *work);
@@ -330,6 +331,11 @@ const struct rk3288_vp8e_reg_params *rk3288_vpu_vp8e_get_dummy_params(void);
 
 void rk3288_vpu_vp8e_assemble_bitstream(struct rockchip_vpu_ctx *ctx,
 					struct rockchip_vpu_buf *dst_buf);
+
+/* Run ops for rk3399 vpu VP8 decoder */
+int rk3399_vpu_vp8d_init(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_vp8d_exit(struct rockchip_vpu_ctx *ctx);
+void rk3399_vpu_vp8d_run(struct rockchip_vpu_ctx *ctx);
 
 /* Run ops for rk3399 vdec H264 decoder */
 int rk3399_vdec_h264d_init(struct rockchip_vpu_ctx *ctx);
