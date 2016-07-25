@@ -750,6 +750,8 @@ static int vidioc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		ret = vb2_dqbuf(&ctx->vq_dst, buf, file->f_flags & O_NONBLOCK);
+		if (!ret)
+			buf->m.planes[0].m.mem_offset += DST_QUEUE_OFF_BASE;
 		break;
 
 	default:
