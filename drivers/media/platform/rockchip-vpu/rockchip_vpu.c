@@ -226,6 +226,27 @@ void rockchip_vpu_try_context(struct rockchip_vpu_dev *dev,
 	vpu_debug_leave();
 }
 
+void write_header(u32 value, u32 *buffer, u32 offset, u32 len)
+{
+	u32 word = offset / 32;
+	u32 bit = offset % 32;
+
+	if (len + bit > 32) {
+		u32 len1 = 32 - bit;
+		u32 len2 = len + bit - 32;
+
+		buffer[word] &= ~(((1 << len1) - 1) << bit);
+		buffer[word] |= value << bit;
+
+		value >>= (32 - bit);
+		buffer[word + 1] &= ~((1 << len2) - 1);
+		buffer[word + 1] |= value;
+	} else {
+		buffer[word] &= ~(((1 << len) - 1) << bit);
+		buffer[word] |= value << bit;
+	}
+}
+
 /*
  * Control registration.
  */

@@ -289,6 +289,12 @@ struct rockchip_vpu_vp9d_run {
 	struct v4l2_ctrl_vp9_entropy *entropy;
 };
 
+#define FIELD(word, bit)	(32 * (word) + (bit))
+
+#define WRITE_HEADER(value, buffer, field)	\
+	write_header(value, buffer, field ## _OFF, field ## _LEN)
+
+void write_header(u32 value, u32 *buffer, u32 offset, u32 len);
 /**
  * struct rockchip_vpu_run - per-run data for hardware code.
  * @src:		Source buffer to be processed.

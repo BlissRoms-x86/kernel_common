@@ -33,6 +33,12 @@ static const struct rockchip_vpu_fmt rk3399_vdec_fmts[] = {
 		.depth = { 12 },
 	},
 	{
+		.name = "Slices of H264 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_H264_SLICE,
+		.codec_mode = RK_VPU_CODEC_H264D,
+		.num_planes = 1,
+	},
+	{
 		.name = "Frames of VP9 Encoded Stream",
 		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
 		.codec_mode = RK_VPU_CODEC_VP9D,
@@ -158,6 +164,13 @@ static void rk3399_vdec_reset(struct rockchip_vpu_ctx *ctx)
  */
 
 static const struct rockchip_vpu_codec_ops rk3399_vdec_mode_ops[] = {
+	[RK_VPU_CODEC_H264D] = {
+		.init = rk3399_vdec_h264d_init,
+		.exit = rk3399_vdec_h264d_exit,
+		.run = rk3399_vdec_h264d_run,
+		.done = rockchip_vpu_run_done,
+		.reset = rk3399_vdec_reset,
+	},
 	[RK_VPU_CODEC_VP9D] = {
 		.init = rk3399_vdec_vp9d_init,
 		.exit = rk3399_vdec_vp9d_exit,
