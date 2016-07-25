@@ -235,28 +235,17 @@ rockchip_dp_drm_encoder_atomic_check(struct drm_encoder *encoder,
 	 * to RGA10 here.
 	 */
 
-	ret = drm_of_encoder_active_endpoint_id(dp->dev->of_node, encoder);
-	if (ret < 0)
-		return 0;
-
-	switch (dp->data->chip_type) {
-	case RK3399_EDP:
+	s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
+	s->output_type = DRM_MODE_CONNECTOR_eDP;
+	if (dp->data->chip_type == RK3399_EDP) {
 		/*
 		 * For RK3399, VOP Lit must code the out mode to RGB888,
 		 * VOP Big must code the out mode to RGB10.
 		 */
-		if (ret)
+		ret = drm_of_encoder_active_endpoint_id(dp->dev->of_node, encoder);
+		if (ret > 0)
 			s->output_mode = ROCKCHIP_OUT_MODE_P888;
-		else
-			s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
-		break;
-
-	default:
-		s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
-		break;
 	}
-
-	s->output_type = DRM_MODE_CONNECTOR_eDP;
 
 	return 0;
 }
