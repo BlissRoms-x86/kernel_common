@@ -36,24 +36,24 @@ static struct cros_ec_dev_platform ec_p = {
 
 int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 {
-	struct cros_ec_command *msg;
-	struct ec_response_get_next_event *event;
+	struct {
+		struct cros_ec_command msg;
+		struct ec_response_get_next_event event;
+	} buf;
+	struct cros_ec_command *msg = &buf.msg;
+	struct ec_response_get_next_event *event = &buf.event;
 	int ret;
+
+	memset(&buf, 0, sizeof(buf));
 
 	if (ec_dev->suspended) {
 		dev_dbg(ec_dev->dev, "Device suspended.\n");
 		return -EHOSTDOWN;
 	}
 
-	msg = kzalloc(sizeof(*msg) + sizeof(*event), GFP_KERNEL);
-	if (!msg)
-		return -ENOMEM;
-
 	msg->version = 0;
 	msg->command = EC_CMD_GET_NEXT_EVENT;
 	msg->insize = ec_dev->max_response;
-
-	event = (struct ec_response_get_next_event *)msg->data;
 
 	ret = cros_ec_cmd_xfer(ec_dev, msg);
 	if (ret > 0) {
@@ -66,19 +66,19 @@ EXPORT_SYMBOL(cros_ec_get_next_event);
 
 static int cros_ec_get_keyboard_state_event(struct cros_ec_device *ec_dev)
 {
-	union ec_response_get_next_data *data;
-	struct cros_ec_command *msg;
+	struct {
+		struct cros_ec_command msg;
+		union ec_response_get_next_data data;
+	} buf;
+	union ec_response_get_next_data *data = &buf.data;
+	struct cros_ec_command *msg = &buf.msg;
 	int ret;
 
-	msg = kzalloc(sizeof(*msg) + sizeof(*data), GFP_KERNEL);
-	if (!msg)
-		return -ENOMEM;
+	memset(&buf, 0, sizeof(buf));
 
 	msg->version = 0;
 	msg->command = EC_CMD_MKBP_STATE;
-	msg->insize = sizeof(ec_dev->event_data.data);
-
-	data = (union ec_response_get_next_data *)msg->data;
+	msg->insize = sizeof(*data);
 
 	ec_dev->event_data.event_type = EC_MKBP_EVENT_KEY_MATRIX;
 
