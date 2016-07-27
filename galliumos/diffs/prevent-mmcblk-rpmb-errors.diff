@@ -1,0 +1,14 @@
+From https://dev-nell.com/rpmb-emmc-errors-under-linux.html
+
+diff -ruN -x .git ../linux-ng/repo/drivers/mmc/card/block.c ./repo/drivers/mmc/card/block.c
+--- ../linux-ng/repo/drivers/mmc/card/block.c	2016-03-16 15:43:17.000000000 +0000
++++ ./repo/drivers/mmc/card/block.c	2016-07-26 18:37:54.896808655 +0000
+@@ -2366,7 +2366,7 @@
+ 		return 0;
+ 
+ 	for (idx = 0; idx < card->nr_parts; idx++) {
+-		if (card->part[idx].size) {
++		if (card->part[idx].size && !(card->part[idx].area_type & MMC_BLK_DATA_AREA_RPMB)) {
+ 			ret = mmc_blk_alloc_part(card, md,
+ 				card->part[idx].part_cfg,
+ 				card->part[idx].size >> 9,
