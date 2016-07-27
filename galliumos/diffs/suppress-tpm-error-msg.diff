@@ -1,0 +1,14 @@
+diff -ruN -x .git ../linux-ng/repo/drivers/char/tpm/tpm_tis.c ./repo/drivers/char/tpm/tpm_tis.c
+--- ../linux-ng/repo/drivers/char/tpm/tpm_tis.c	2016-03-16 15:43:17.000000000 +0000
++++ ./repo/drivers/char/tpm/tpm_tis.c	2016-07-26 18:37:54.880808524 +0000
+@@ -463,8 +463,8 @@
+ 		msleep(1);
+ 	if (!priv->irq_tested) {
+ 		disable_interrupts(chip);
+-		dev_err(chip->pdev,
+-			FW_BUG "TPM interrupt not working, polling instead\n");
++//		dev_err(chip->pdev,
++//			FW_BUG "TPM interrupt not working, polling instead\n");
+ 	}
+ 	priv->irq_tested = true;
+ 	return rc;

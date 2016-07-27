@@ -1,0 +1,12 @@
+diff -ruN -x .git ../linux-ng/repo/include/linux/blkdev.h ./repo/include/linux/blkdev.h
+--- ../linux-ng/repo/include/linux/blkdev.h	2016-03-16 15:43:17.000000000 +0000
++++ ./repo/include/linux/blkdev.h	2016-07-26 14:42:30.876181383 +0000
+@@ -44,7 +44,7 @@
+  * Maximum number of blkcg policies allowed to be registered concurrently.
+  * Defined here to simplify include dependency.
+  */
+-#define BLKCG_MAX_POLS		2
++#define BLKCG_MAX_POLS		3
+ 
+ struct request;
+ typedef void (rq_end_io_fn)(struct request *, int);

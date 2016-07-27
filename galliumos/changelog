@@ -1,0 +1,25 @@
+linux-4.4.15-galliumos (4.4.15-galliumos1) xenon; urgency=medium
+
+  * Add GalliumOS customizations
+    - kernel config in galliumos/config
+    - patch diffs in galliumos/diffs
+    - patch sequence in galliumos/diffs/sequence
+      + increase-blkcg_max_pols.diff
+      + add-bfq.diff
+      + add-elan-touchpad.diff
+      + add-touchscreen-support-peppy-samus.diff
+      + add-kbd-backlight-module.diff
+      + add-aufs.diff
+      + prevent-mmcblk-rpmb-errors.diff
+      + suppress-pll-unlock-msg.diff
+      + suppress-tpm-error-msg.diff
+    - all apply cleanly, some with minor offsets
+
+ -- reynhout <reynhout@galliumos.org>  Tue, 27 Jul 2016 12:22:51 +0000
+
+linux-4.4.15-galliumos (4.4.15-galliumos0) xenon; urgency=medium
+
+  * Vanilla, unpatched, kernel source from kernel.org archive
+    - https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.15.tar.xz
+
+ -- reynhout <reynhout@galliumos.org>  Tue, 27 Jul 2016 12:15:22 +0000

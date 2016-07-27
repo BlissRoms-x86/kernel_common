@@ -1,0 +1,10 @@
+increase-blkcg_max_pols.diff
+add-bfq.diff
+add-elan-touchpad.diff
+add-touchscreen-support-peppy-samus.diff
+add-kbd-backlight-module.diff
+add-aufs.diff
+prevent-mmcblk-rpmb-errors.diff
+suppress-pll-unlock-msg.diff
+suppress-tpm-error-msg.diff
+#unknown-probably-unwanted.diff
