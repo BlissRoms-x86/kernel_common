@@ -2891,6 +2891,41 @@ static void mwifiex_pcie_get_fw_name(struct mwifiex_adapter *adapter)
 		mwifiex_read_reg(adapter, 0x0c48, &revision_id);
 		mwifiex_read_reg(adapter, 0x0cd0, &version);
 		version &= 0x7;
+
+		/*
+		 * HACK!
+		 *
+		 * Apparently:
+		 * - On kevin -rev2, -rev3, -rev4 the read of "version" comes
+		 *   back with 0x0.  This may be a known bug with the early rev
+		 *   of the Marvell module (we'll get a new one with -rev5) or
+		 *   simply an unimplemented feature with the modules we have.
+		 * - Kevin -rev2 and -rev3 had UART modules; -rev4 had USB.
+		 * - If you try to put the USB firmware on a module that wants
+		 *   UART then the firmware totally fails to load.  Since we
+		 *   load WiFi and BT firmware together this means if get this
+		 *   wrong then we have no WiFi, which is not OK for -rev2 and
+		 *   -rev3 devices.
+		 * - We've decided the way forward is USB and we want new
+		 *   devices with USB modules (-rev4) to have working Bluetooth.
+		 *
+		 * We could try something fancy like try to load the USB
+		 * firmware and look for an error but that would be
+		 * a lot of work for something that's throwaway.  Eventually
+		 * -rev2 and -rev3 boards will be deprecated and thrown away.
+		 * Let's solve our problem by just hacking this fix in which
+		 * will cause us to pretend that the version was reported
+		 * properly.  We can drop this check when -rev2 and -rev3 are
+		 * gone (and upstream certainly shouldn't take it).
+		 *
+		 * HACK!
+		 */
+		if (of_machine_is_compatible("google,kevin-rev2") ||
+		    of_machine_is_compatible("google,kevin-rev3")) {
+			pr_warn("Detected old kevin; hacking to BT UART FW\n");
+			version = CHIP_VER_PCIEUART;
+		}
+
 		switch (revision_id) {
 		case PCIE8997_V2:
 			if (version == CHIP_VER_PCIEUART)
