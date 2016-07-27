@@ -180,7 +180,22 @@ static int rockchip_sound_da7219_hw_params(struct snd_pcm_substream *substream,
 static int rockchip_sound_da7219_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec_dais[0]->codec;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	int ret;
+
+	/* We need default MCLK and PLL settings for the accessory detection */
+	ret = snd_soc_dai_set_sysclk(codec_dai, 0, 12288000,
+				     SND_SOC_CLOCK_IN);
+	if (ret < 0) {
+		dev_err(codec_dai->dev, "Init can't set codec clock in %d\n", ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_pll(codec_dai, 0, DA7219_SYSCLK_MCLK, 0, 0);
+	if (ret < 0) {
+		dev_err(codec_dai->dev, "Init can't set pll sysclk mclk %d\n", ret);
+		return ret;
+	}
 
 	/* Enable Headset and 4 Buttons Jack detection */
 	ret = snd_soc_card_jack_new(rtd->card, "Headset Jack",
