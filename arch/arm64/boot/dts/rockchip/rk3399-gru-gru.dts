@@ -121,6 +121,14 @@
 	};
 };
 
+&cpu_b0 {
+	dynamic-power-coefficient = <1068>;
+};
+
+&cpu_l0 {
+	dynamic-power-coefficient = <121>;
+};
+
 &edp {
 	status = "okay";
 
@@ -134,6 +142,35 @@
 				reg = <0>;
 				remote-endpoint = <&panel_in_edp>;
 			};
+		};
+	};
+};
+
+&gpu_power_model {
+	dynamic-power = <1780>;
+};
+
+&soc_thermal {
+	sustainable-power = <2600>; /* milliwatts */
+
+	cooling-maps {
+		map0 {
+			trip = <&target>;
+			cooling-device =
+				<&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+			contribution = <2048>;
+		};
+		map1 {
+			trip = <&target>;
+			cooling-device =
+				<&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+			contribution = <1024>;
+		};
+		map2 {
+			trip = <&target>;
+			cooling-device =
+				<&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+			contribution = <2048>;
 		};
 	};
 };

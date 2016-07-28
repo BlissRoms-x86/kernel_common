@@ -117,7 +117,7 @@
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			#cooling-cells = <2>; /* min followed by max */
-			dynamic-power-coefficient = <121>;
+			dynamic-power-coefficient = <100>;
 			clocks = <&cru ARMCLKL>;
 		};
 
@@ -151,7 +151,7 @@
 			reg = <0x0 0x100>;
 			enable-method = "psci";
 			#cooling-cells = <2>; /* min followed by max */
-			dynamic-power-coefficient = <1068>;
+			dynamic-power-coefficient = <436>;
 			clocks = <&cru ARMCLKB>;
 		};
 
@@ -629,7 +629,7 @@
 		soc_thermal: soc-thermal {
 			polling-delay-passive = <100>; /* milliseconds */
 			polling-delay = <1000>; /* milliseconds */
-			sustainable-power = <2600>; /* milliwatts */
+			sustainable-power = <1000>; /* milliwatts */
 
 			thermal-sensors = <&tsadc 0>;
 
@@ -656,7 +656,7 @@
 					trip = <&target>;
 					cooling-device =
 						<&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <2048>;
+					contribution = <4096>;
 				};
 				map1 {
 					trip = <&target>;
@@ -668,7 +668,7 @@
 					trip = <&target>;
 					cooling-device =
 						<&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <2048>;
+					contribution = <4096>;
 				};
 			};
 		};
@@ -1142,12 +1142,12 @@
 		power-domains = <&power RK3399_PD_GPU>;
 		status = "disabled";
 
-		power_model {
+		gpu_power_model: power_model {
 			compatible = "arm,mali-simple-power-model";
 			voltage = <900>;
 			frequency = <500>;
 			static-power = <300>;
-			dynamic-power = <1780>;
+			dynamic-power = <396>;
 			ts = <32000 4700 (-80) 2>;
 			thermal-zone = "gpu-thermal";
 		};
