@@ -1,5 +1,5 @@
 /*
- * Google Gru-Gru Rev 0+ board device tree source
+ * Google Gru-Gru board device tree source
  *
  * Copyright 2016 Google, Inc
  *
@@ -42,22 +42,9 @@
  *     OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/dts-v1/;
 #include "rk3399-gru.dtsi"
-#include "rk3399-early-opp.dtsi"
 
 / {
-	model = "Google Gru";
-	compatible = "google,gru-rev15", "google,gru-rev14",
-		     "google,gru-rev13", "google,gru-rev12",
-		     "google,gru-rev11", "google,gru-rev10",
-		     "google,gru-rev9", "google,gru-rev8",
-		     "google,gru-rev7", "google,gru-rev6",
-		     "google,gru-rev5", "google,gru-rev4",
-		     "google,gru-rev3", "google,gru-rev2",
-		     "google,gru-rev1", "google,gru-rev0",
-		     "google,gru", "rockchip,rk3399";
-
 	// TODO: Model:
 	// - pp1200_mipi_cam
 	// - pp1800_mipi_cam
@@ -121,12 +108,8 @@
 	};
 };
 
-&cpu_b0 {
-	dynamic-power-coefficient = <1068>;
-};
-
-&cpu_l0 {
-	dynamic-power-coefficient = <121>;
+/* pp1800 alias; EC turns on w/ pp1800_s0_en_l */
+pp1800_gps: &pp1800_s0 {
 };
 
 &edp {
@@ -143,59 +126,6 @@
 				remote-endpoint = <&panel_in_edp>;
 			};
 		};
-	};
-};
-
-&gpu_power_model {
-	dynamic-power = <1780>;
-};
-
-&soc_thermal {
-	sustainable-power = <2600>; /* milliwatts */
-
-	cooling-maps {
-		map0 {
-			trip = <&target>;
-			cooling-device =
-				<&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-			contribution = <2048>;
-		};
-		map1 {
-			trip = <&target>;
-			cooling-device =
-				<&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-			contribution = <1024>;
-		};
-		map2 {
-			trip = <&target>;
-			cooling-device =
-				<&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-			contribution = <2048>;
-		};
-	};
-};
-
-ap_i2c_dvs: &i2c0 {
-	status = "okay";
-
-	clock-frequency = <400000>;
-
-	/* These are relatively safe rise/fall times; TODO: measure */
-	i2c-scl-falling-time-ns = <50>;
-	i2c-scl-rising-time-ns = <300>;
-
-	/* LP8556 */
-	backlight: backlight@2c {
-		compatible = "ti,lp8556";
-		reg = <0x2c>;
-
-		bl-name = "lcd-bl";
-
-		dev-ctrl = /bits/ 8 <0x85>;
-		init-brt = /bits/ 8 <0x80>;
-
-		enable-supply = <&ppvar_bl_en>;
-		power-supply = <&pp3300_disp>;
 	};
 };
 
@@ -282,6 +212,24 @@ ap_i2c_nfc: &i2c7 {
 		fp_en: fp-en {
 			rockchip,pins = <RK_GPIO1 1 RK_FUNC_GPIO
 					 &pcfg_pull_none>;
+		};
+	};
+
+	// TODO: GPS not handled: http://crosbug.com/p/55782
+	gps {
+		gps_en: gps-en {
+			rockchip,pins =
+				<RK_GPIO4 28 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+
+		gps_host_wake: gps-host-wake {
+			rockchip,pins =
+				<RK_GPIO1 14 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+
+		gps_reset_l: gps-reset-l {
+			rockchip,pins =
+				<RK_GPIO1 24 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
