@@ -76,3 +76,19 @@
 &ppvar_litcpu {
 	regulator-microvolt-offset = <50000>;
 };
+
+/* No i2c-based TPM */
+&ap_i2c_tpm {
+	status = "disabled";
+	/delete-node/ tpm@20;
+};
+
+&spi0 {
+	status = "okay";
+
+	cr50@0 {
+		compatible = "google,cr50", "tcg,tpm_tis-spi";
+		reg = <0>;
+		spi-max-frequency = <800000>; // TODO: review later
+	};
+};

@@ -128,6 +128,22 @@
 	};
 };
 
+ap_i2c_tpm: &i2c0 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	/* These are relatively safe rise/fall times; TODO: measure */
+	i2c-scl-falling-time-ns = <50>;
+	i2c-scl-rising-time-ns = <300>;
+
+	tpm: tpm@20 {
+		compatible = "infineon,slb9645tt";
+		reg = <0x20>;
+		powered-while-suspended;
+	};
+};
+
 ap_i2c_dig: &i2c2 {
 	status = "okay";
 
