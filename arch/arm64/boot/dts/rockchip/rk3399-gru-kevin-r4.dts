@@ -58,17 +58,12 @@
  * frequencies from 2088M/1608M to 600M/408M. But after testing stressapptest
  * on 5pcs, there is 1/5 failed.
  *
- * For the Gpu, the OPP in rk3399-opp.dtsi is from EVB boards, but on kevin,
- * it's easy to get error like "mali reset". A higher voltage helps.
  */
 
 &ppvar_bigcpu {
 	regulator-microvolt-offset = <50000>;
 };
 &ppvar_centerlogic {
-	regulator-microvolt-offset = <50000>;
-};
-&ppvar_gpu {
 	regulator-microvolt-offset = <50000>;
 };
 &ppvar_litcpu {
