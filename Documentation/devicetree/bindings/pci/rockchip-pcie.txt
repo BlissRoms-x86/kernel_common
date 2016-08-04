@@ -17,8 +17,8 @@ Required properties:
 	- "aclk-perf"
 	- "hclk"
 	- "pm"
-- msi-map: Maps a Requester ID to an MSI controller and associated.
-		See ./pci-msi.txt
+- msi-map: Maps a Requester ID to an MSI controller and associated
+	msi-specifier data. See ./pci-msi.txt
 - phys: From PHY bindings: Phandle for the Generic PHY for PCIe.
 - phy-names:  MUST be "pcie-phy".
 - interrupts: Three interrupt entries must be specified.
@@ -42,16 +42,16 @@ Required properties:
 Optional Property:
 - ep-gpios: contain the entry for pre-reset gpio
 - num-lanes: number of lanes to use
-- vpcie3v3-supply: The phandle to the 3.3v regulator to use for pcie.
-- vpcie1v8-supply: The phandle to the 1.8v regulator to use for pcie.
-- vpcie0v9-supply: The phandle to the 0.9v regulator to use for pcie.
-
+- vpcie3v3-supply: The phandle to the 3.3v regulator to use for PCIe.
+- vpcie1v8-supply: The phandle to the 1.8v regulator to use for PCIe.
+- vpcie0v9-supply: The phandle to the 0.9v regulator to use for PCIe.
 
 *Interrupt controller child node*
-The core controller provides a single interrupt for legacy INTx. The pcie node
+The core controller provides a single interrupt for legacy INTx. The PCIe node
 should contain an interrupt controller node as a target for the PCI
 'interrupt-map' property. This node represents the domain at which the four
 INTx interrupts are decoded and routed.
+
 
 Required properties for Interrupt controller child node:
 - interrupt-controller: identifies the node as an interrupt controller
@@ -71,8 +71,9 @@ pcie0: pcie@f8000000 {
 	clock-names = "aclk", "aclk-perf",
 		      "hclk", "pm";
 	bus-range = <0x0 0x1>;
-	interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>, <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>,
-		     <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>;
+	interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH 0>,
+		     <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH 0>,
+		     <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH 0>;
 	interrupt-names = "sys", "legacy", "client";
 	assigned-clocks = <&cru SCLK_PCIEPHY_REF>;
 	assigned-clock-parents = <&cru SCLK_PCIEPHY_REF100M>;
