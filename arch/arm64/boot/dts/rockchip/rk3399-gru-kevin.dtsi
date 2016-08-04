@@ -93,6 +93,7 @@
 				     87 88 89 90 91 92 93 94 95 96 97 98 99 100>;
 		default-brightness-level = <51>;
 		enable-gpios = <&gpio1 17 GPIO_ACTIVE_HIGH>;
+		power-supply = <&pp3300_disp>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&bl_en>;
 		pwm-delay-us = <10000>;
