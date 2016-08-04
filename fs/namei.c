@@ -893,6 +893,7 @@ void nameidata_restore_temporary(void)
 	struct nameidata *tmp = current->nameidata;
 
 	restore_nameidata();
+	putname(tmp->name);
 	kfree(tmp);
 }
 
