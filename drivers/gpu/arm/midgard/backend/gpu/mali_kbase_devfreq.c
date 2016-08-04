@@ -124,7 +124,7 @@ static int
 kbase_devfreq_status(struct device *dev, struct devfreq_dev_status *stat)
 {
 	struct kbase_device *kbdev = dev_get_drvdata(dev);
-	struct devfreq __maybe_unused *df = kbdev->devfreq;
+	struct devfreq *df = kbdev->devfreq;
 	stat->current_frequency = kbdev->current_freq;
 
 	kbase_pm_get_dvfs_utilisation(kbdev,

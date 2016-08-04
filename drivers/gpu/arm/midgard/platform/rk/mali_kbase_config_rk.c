@@ -16,6 +16,22 @@
 
 #include "mali_kbase_rk.h"
 
+static int kbase_pm_notifier(struct notifier_block *nb, unsigned long action,
+		void *data)
+{
+	struct rk_context *platform = container_of(nb, struct rk_context, pm_nb);
+	struct device *dev = platform->kbdev->dev;
+
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		return pm_runtime_get_sync(dev);
+	case PM_POST_SUSPEND:
+		return pm_runtime_put(dev);
+	}
+
+	return 0;
+}
+
 static int kbase_platform_rk_init(struct kbase_device *kbdev)
 {
 	struct rk_context *platform;
@@ -27,6 +43,7 @@ static int kbase_platform_rk_init(struct kbase_device *kbdev)
 	platform->is_powered = false;
 
 	kbdev->platform_context = platform;
+	platform->kbdev = kbdev;
 
 	return 0;
 }
@@ -182,8 +199,19 @@ static void rk_pm_callback_power_off(struct kbase_device *kbdev)
 
 int rk_kbase_device_runtime_init(struct kbase_device *kbdev)
 {
+	struct rk_context *platform = kbdev->platform_context;
+	int err;
+
 	pm_runtime_set_autosuspend_delay(kbdev->dev, 200);
 	pm_runtime_use_autosuspend(kbdev->dev);
+
+	platform->pm_nb.notifier_call = kbase_pm_notifier;
+	platform->pm_nb.priority = 0;
+	err = register_pm_notifier(&platform->pm_nb);
+	if (err) {
+		dev_err(kbdev->dev, "Couldn't register pm notifier\n");
+		return -ENODEV;
+	}
 
 	/* no need to call pm_runtime_set_active here. */
 	pm_runtime_enable(kbdev->dev);
@@ -193,7 +221,10 @@ int rk_kbase_device_runtime_init(struct kbase_device *kbdev)
 
 void rk_kbase_device_runtime_disable(struct kbase_device *kbdev)
 {
+	struct rk_context *platform = kbdev->platform_context;
+
 	pm_runtime_disable(kbdev->dev);
+	unregister_pm_notifier(&platform->pm_nb);
 }
 
 static void rk_pm_suspend_callback(struct kbase_device *kbdev)

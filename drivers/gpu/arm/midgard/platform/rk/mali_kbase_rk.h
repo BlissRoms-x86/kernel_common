@@ -15,6 +15,10 @@
 #ifndef _MALI_KBASE_RK_H_
 #define _MALI_KBASE_RK_H_
 
+#include <linux/notifier.h>
+
+#include <mali_kbase.h>
+
 /*---------------------------------------------------------------------------*/
 
 /**
@@ -23,6 +27,9 @@
  *      of common_parts calling 'power_on_callback' and 'power_off_callback'.
  */
 struct rk_context {
+	struct kbase_device *kbdev;
+	/* Notifier block to runtime resume the kbase_device on suspend. */
+	struct notifier_block pm_nb;
 	bool is_powered;
 };
 
