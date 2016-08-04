@@ -453,7 +453,7 @@
 		chromeos {
 			pinctrl-names = "default";
 			pinctrl-0 = <&ap_fw_wp>;
-			write-protect-gpio = <&gpio1 18 GPIO_ACTIVE_LOW>;
+			write-protect-gpio = <&gpio1 18 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
