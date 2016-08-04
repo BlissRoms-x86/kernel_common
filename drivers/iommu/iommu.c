@@ -908,19 +908,16 @@ static int iommu_bus_notifier(struct notifier_block *nb,
 	const struct iommu_ops *ops = dev->bus->iommu_ops;
 	struct iommu_group *group;
 	unsigned long group_action = 0;
+	int ret;
 
 	/*
 	 * ADD/DEL call into iommu driver ops if provided, which may
 	 * result in ADD/DEL notifiers to group->notifier
 	 */
-	if (action == BUS_NOTIFY_ADD_DEVICE) {
-		if (ops->add_device)
-			return ops->add_device(dev);
-	} else if (action == BUS_NOTIFY_REMOVED_DEVICE) {
-		if (ops->remove_device && dev->iommu_group) {
-			ops->remove_device(dev);
-			return 0;
-		}
+	if (action == BUS_NOTIFY_BIND_DRIVER && ops->add_device) {
+		ret = ops->add_device(dev);
+		if (ret)
+			return ret;
 	}
 
 	/*
@@ -951,6 +948,11 @@ static int iommu_bus_notifier(struct notifier_block *nb,
 					     group_action, dev);
 
 	iommu_group_put(group);
+
+	if (action == BUS_NOTIFY_UNBOUND_DRIVER
+	    && ops->remove_device && dev->iommu_group)
+		ops->remove_device(dev);
+
 	return 0;
 }
 
@@ -967,6 +969,7 @@ static int iommu_bus_init(struct bus_type *bus, const struct iommu_ops *ops)
 		return -ENOMEM;
 
 	nb->notifier_call = iommu_bus_notifier;
+	nb->priority = 100;
 
 	err = bus_register_notifier(bus, nb);
 	if (err)
