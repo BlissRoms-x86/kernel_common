@@ -67,18 +67,6 @@
 		vin-supply = <&pp1800>;
 	};
 
-	ppvar_bl_en: ppvar-bl-en {
-		compatible = "regulator-fixed";
-		regulator-name = "ppvar_bl_en";
-		pinctrl-names = "default";
-		pinctrl-0 = <&bl_en>;
-
-		enable-active-high;
-		gpio = <&gpio1 17 GPIO_ACTIVE_HIGH>;
-
-		vin-supply = <&pp1800>;
-	};
-
 	/* pp3300 children */
 
 	pp3300_fp: pp3300-fp {
