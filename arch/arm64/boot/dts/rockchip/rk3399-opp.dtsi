@@ -83,6 +83,7 @@
 		opp00 {
 			opp-hz = /bits/ 64 <600000000>;
 			opp-microvolt = <900000>;
+			clock-latency-ns = <40000>;
 		};
 		opp01 {
 			opp-hz = /bits/ 64 <816000000>;
