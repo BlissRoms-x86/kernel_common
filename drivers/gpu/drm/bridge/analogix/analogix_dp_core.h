@@ -179,6 +179,9 @@ struct analogix_dp_device {
 	unsigned char           edid[EDID_BLOCK_LENGTH * 2];
 	bool			psr_support;
 
+	struct mutex		panel_lock;
+	bool			panel_is_modeset;
+
 	struct analogix_dp_plat_data *plat_data;
 };
 
