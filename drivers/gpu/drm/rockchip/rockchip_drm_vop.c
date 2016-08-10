@@ -88,7 +88,6 @@
 #define to_vop_win(x) container_of(x, struct vop_win, base)
 #define to_vop_plane_state(x) container_of(x, struct vop_plane_state, base)
 
-#define VOP_PSR_SET_DELAY_TIME		msecs_to_jiffies(10)
 
 struct vop_plane_state {
 	struct drm_plane_state base;
@@ -119,9 +118,6 @@ struct vop {
 	struct completion dsp_hold_completion;
 	struct completion wait_update_complete;
 	struct drm_pending_vblank_event *event;
-
-	bool psr_enabled;
-	struct delayed_work psr_work;
 
 	struct completion line_flag_completion;
 
@@ -625,10 +621,7 @@ static void vop_crtc_disable(struct drm_crtc *crtc)
 	clk_disable(vop->hclk);
 	pm_runtime_put(vop->dev);
 
-	if (vop->psr_enabled) {
-		vop->psr_enabled = false;
-		schedule_delayed_work(&vop->psr_work, VOP_PSR_SET_DELAY_TIME);
-	}
+	rockchip_drm_psr_disable(&vop->crtc);
 }
 
 static void vop_plane_destroy(struct drm_plane *plane)
@@ -912,16 +905,6 @@ static const struct drm_plane_funcs vop_plane_funcs = {
 	.atomic_destroy_state = vop_atomic_plane_destroy_state,
 };
 
-static void vop_psr_work(struct work_struct *work)
-{
-	struct vop *vop = container_of(work, typeof(*vop), psr_work.work);
-
-	if (vop->psr_enabled)
-		rockchip_drm_psr_enable(&vop->crtc);
-	else
-		rockchip_drm_psr_disable(&vop->crtc);
-}
-
 static int vop_crtc_enable_vblank(struct drm_crtc *crtc)
 {
 	struct vop *vop = to_vop(crtc);
@@ -936,8 +919,7 @@ static int vop_crtc_enable_vblank(struct drm_crtc *crtc)
 
 	spin_unlock_irqrestore(&vop->irq_lock, flags);
 
-	vop->psr_enabled = false;
-	schedule_delayed_work(&vop->psr_work, VOP_PSR_SET_DELAY_TIME);
+	rockchip_drm_psr_disable(&vop->crtc);
 
 	return 0;
 }
@@ -956,8 +938,7 @@ static void vop_crtc_disable_vblank(struct drm_crtc *crtc)
 
 	spin_unlock_irqrestore(&vop->irq_lock, flags);
 
-	vop->psr_enabled = true;
-	schedule_delayed_work(&vop->psr_work, VOP_PSR_SET_DELAY_TIME);
+	rockchip_drm_psr_enable(&vop->crtc);
 }
 
 static void vop_crtc_wait_for_update(struct drm_crtc *crtc)
@@ -1653,8 +1634,7 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 
 	pm_runtime_enable(&pdev->dev);
 
-	vop->psr_enabled = false;
-	INIT_DELAYED_WORK(&vop->psr_work, vop_psr_work);
+	rockchip_drm_psr_disable(&vop->crtc);
 
 	return 0;
 }
