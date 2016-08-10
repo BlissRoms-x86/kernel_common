@@ -297,7 +297,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 	struct device *dev = info->dev;
 	int role, power_type;
 	unsigned int dr, pr;
-	bool polarity, dp, mux;
+	bool polarity, dp, mux, hpd;
 
 	power_type = cros_ec_usb_get_power_type(info);
 	if (power_type < 0) {
@@ -317,6 +317,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 		polarity = false;
 		dp = false;
 		mux = false;
+		hpd = false;
 		dev_dbg(dev, "disconnected\n");
 	} else {
 		int pd_mux_state;
@@ -330,10 +331,11 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 			pd_mux_state = USB_PD_MUX_USB_ENABLED;
 		dp = pd_mux_state & USB_PD_MUX_DP_ENABLED;
 		mux = pd_mux_state & USB_PD_MUX_USB_ENABLED;
+		hpd = pd_mux_state & USB_PD_MUX_HPD_IRQ;
 
 		dev_dbg(dev,
-			"connected role 0x%x pwr type %d dr %d pr %d pol %d mux %d dp %d\n",
-			role, power_type, dr, pr, polarity, mux, dp);
+			"connected role 0x%x pwr type %d dr %d pr %d pol %d mux %d dp %d hpd %d\n",
+			role, power_type, dr, pr, polarity, mux, dp, hpd);
 	}
 
 	/*
@@ -396,6 +398,8 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 
 		wake_up_all(&info->role_wait);
 		dual_role_instance_changed(info->drp_inst);
+	} else if (hpd) {
+		extcon_sync(info->edev, EXTCON_DISP_DP);
 	}
 	return 0;
 }
