@@ -664,7 +664,7 @@
 		status = "disabled";
 	};
 
-	thermal-zones {
+	thermal_zones: thermal-zones {
 		soc_thermal: soc-thermal {
 			polling-delay-passive = <100>; /* milliseconds */
 			polling-delay = <1000>; /* milliseconds */
