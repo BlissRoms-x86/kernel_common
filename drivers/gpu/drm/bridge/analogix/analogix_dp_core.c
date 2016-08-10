@@ -105,7 +105,6 @@ int analogix_dp_enable_psr(struct device *dev)
 	if (!dp->psr_support)
 		return -EINVAL;
 
-
 	/* Prepare VSC packet as per EDP 1.4 spec, Table 6.9 */
 	memset(&psr_vsc, 0, sizeof(psr_vsc));
 	psr_vsc.sdp_header.HB0 = 0;
