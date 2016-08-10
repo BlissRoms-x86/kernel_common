@@ -29,7 +29,7 @@ enum psr_state {
 struct psr_drv {
 	struct list_head list;
 	enum psr_state state;
-	struct mutex state_mutex;
+	spinlock_t lock;
 
 	struct timer_list flush_timer;
 
@@ -54,16 +54,33 @@ static struct psr_drv *find_psr_by_crtc(struct drm_crtc *crtc)
 	return ERR_PTR(-ENODEV);
 }
 
-static void psr_set_state(struct psr_drv *psr, enum psr_state state)
+static void psr_set_state_locked(struct psr_drv *psr, enum psr_state state)
 {
-	mutex_lock(&psr->state_mutex);
+	/*
+	 * Allowed finite state machine:
+	 *
+	 *   PSR_ENABLE  < = = = = = >  PSR_FLUSH
+	  *      | ^                        |
+	  *      | |                        |
+	  *      v |                        |
+	 *   PSR_DISABLE < - - - - - - - - -
+	 */
 
-	if (psr->state == state) {
-		mutex_unlock(&psr->state_mutex);
+	/* Forbid no state change */
+	if (state == psr->state)
 		return;
-	}
+
+	/* Forbid DISABLE change to FLUSH */
+	if (state == PSR_FLUSH && psr->state == PSR_DISABLE)
+		return;
 
 	psr->state = state;
+
+	/* Allow but no need hardware change, just need assign the state */
+	if (state == PSR_DISABLE && psr->state == PSR_FLUSH)
+		return;
+
+	/* Refact to hardware state change */
 	switch (state) {
 	case PSR_ENABLE:
 		psr->set(psr->encoder, true);
@@ -73,19 +90,30 @@ static void psr_set_state(struct psr_drv *psr, enum psr_state state)
 	case PSR_FLUSH:
 		psr->set(psr->encoder, false);
 		break;
-	};
+	}
+}
 
-	mutex_unlock(&psr->state_mutex);
+static void psr_set_state(struct psr_drv *psr, enum psr_state state)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&psr->lock, flags);
+	psr_set_state_locked(psr, state);
+	spin_unlock_irqrestore(&psr->lock, flags);
 }
 
 static void psr_flush_handler(unsigned long data)
 {
 	struct psr_drv *psr = (struct psr_drv *)data;
+	unsigned long flags;
 
-	if (!psr || psr->state != PSR_FLUSH)
+	if (!psr)
 		return;
 
-	psr_set_state(psr, PSR_ENABLE);
+	spin_lock_irqsave(&psr->lock, flags);
+	if (psr->state == PSR_FLUSH)
+		psr_set_state_locked(psr, PSR_ENABLE);
+	spin_unlock_irqrestore(&psr->lock, flags);
 }
 
 /**
@@ -145,9 +173,6 @@ void rockchip_drm_psr_flush(struct drm_device *dev)
 
 	mutex_lock(&drm_drv->psr_list_mutex);
 	list_for_each_entry(psr, &drm_drv->psr_list, list) {
-		if (psr->state == PSR_DISABLE)
-			continue;
-
 		mod_timer(&psr->flush_timer,
 			  round_jiffies_up(jiffies + PSR_FLUSH_TIMEOUT));
 
@@ -179,8 +204,7 @@ int rockchip_drm_psr_register(struct drm_encoder *encoder,
 		return -ENOMEM;
 
 	setup_timer(&psr->flush_timer, psr_flush_handler, (unsigned long)psr);
-
-	mutex_init(&psr->state_mutex);
+	spin_lock_init(&psr->lock);
 
 	psr->state = PSR_DISABLE;
 	psr->encoder = encoder;
