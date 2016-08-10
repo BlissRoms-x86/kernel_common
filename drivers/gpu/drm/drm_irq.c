@@ -68,7 +68,7 @@ static unsigned int drm_timestamp_precision = 20;  /* Default to 20 usecs. */
  */
 unsigned int drm_timestamp_monotonic = 1;
 
-static int drm_vblank_offdelay = 5000;    /* Default to 5000 msecs. */
+static int drm_vblank_offdelay = 50;    /* Default to 50 msecs. */
 
 module_param_named(vblankoffdelay, drm_vblank_offdelay, int, 0600);
 module_param_named(timestamp_precision_usec, drm_timestamp_precision, int, 0600);
