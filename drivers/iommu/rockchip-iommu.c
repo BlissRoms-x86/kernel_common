@@ -815,14 +815,14 @@ static int rk_iommu_attach_device(struct iommu_domain *domain,
 
 	ret = rk_iommu_force_reset(iommu);
 	if (ret)
-		return ret;
+		goto err_disable_stall;
 
 	iommu->domain = domain;
 
 	ret = devm_request_irq(iommu->dev, iommu->irq, rk_iommu_irq,
 			       IRQF_SHARED, dev_name(dev), iommu);
 	if (ret)
-		return ret;
+		goto err_disable_stall;
 
 	for (i = 0; i < iommu->num_mmu; i++) {
 		rk_iommu_write(iommu->bases[i], RK_MMU_DTE_ADDR,
@@ -833,7 +833,7 @@ static int rk_iommu_attach_device(struct iommu_domain *domain,
 
 	ret = rk_iommu_enable_paging(iommu);
 	if (ret)
-		return ret;
+		goto err_free_irq;
 
 	spin_lock_irqsave(&rk_domain->iommus_lock, flags);
 	list_add_tail(&iommu->node, &rk_domain->iommus);
@@ -844,6 +844,13 @@ static int rk_iommu_attach_device(struct iommu_domain *domain,
 	rk_iommu_disable_stall(iommu);
 
 	return 0;
+
+err_free_irq:
+	devm_free_irq(iommu->dev, iommu->irq, iommu);
+err_disable_stall:
+	rk_iommu_disable_stall(iommu);
+
+	return ret;
 }
 
 static void rk_iommu_detach_device(struct iommu_domain *domain,
