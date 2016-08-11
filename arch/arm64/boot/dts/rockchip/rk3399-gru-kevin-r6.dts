@@ -1,5 +1,5 @@
 /*
- * Google Gru-Gru Rev 1+ board device tree source
+ * Google Gru-Kevin Rev 6+ board device tree source
  *
  * Copyright 2016 Google, Inc
  *
@@ -43,56 +43,14 @@
  */
 
 /dts-v1/;
-#include "rk3399-gru-gru.dtsi"
+#include "rk3399-gru-kevin.dtsi"
 
 / {
-	model = "Google Gru";
-	compatible = "google,gru-rev15", "google,gru-rev14",
-		     "google,gru-rev13", "google,gru-rev12",
-		     "google,gru-rev11", "google,gru-rev10",
-		     "google,gru-rev9", "google,gru-rev8",
-		     "google,gru-rev7", "google,gru-rev6",
-		     "google,gru-rev5", "google,gru-rev4",
-		     "google,gru-rev3", "google,gru-rev2",
-		     "google,gru-rev1", "google,gru",
-		     "rockchip,rk3399";
-
-	backlight: backlight {
-		compatible = "pwm-backlight";
-		pwms = <&cros_ec_pwm 0>;
-		brightness-levels = <0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
-				     17 18 19 20 21 22 23 24 25 26 27 28 29 30
-				     31 32 33 34 35 36 37 38 39 40 41 42 43 44
-				     45 46 47 48 49 50 51 52 53 54 55 56 57 58
-				     59 60 61 62 63 64 65 66 67 68 69 70 71 72
-				     73 74 75 76 77 78 79 80 81 82 83 84 85 86
-				     87 88 89 90 91 92 93 94 95 96 97 98 99 100>;
-		default-brightness-level = <51>;
-		enable-gpios = <&gpio1 17 GPIO_ACTIVE_HIGH>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&bl_en>;
-		pwm-delay-us = <10000>;
-	};
-};
-
-/* Adjust DVFS rails back to wider range */
-
-&ppvar_bigcpu {
-	regulator-min-microvolt = <800000>;
-	regulator-max-microvolt = <1500000>;
-};
-
-&ppvar_litcpu {
-	regulator-min-microvolt = <800000>;
-	regulator-max-microvolt = <1500000>;
-};
-
-&ppvar_gpu {
-	regulator-min-microvolt = <800000>;
-	regulator-max-microvolt = <1500000>;
-};
-
-&ppvar_centerlogic {
-	regulator-min-microvolt = <800000>;
-	regulator-max-microvolt = <1500000>;
+	model = "Google Kevin";
+	compatible = "google,kevin-rev15", "google,kevin-rev14",
+		     "google,kevin-rev13", "google,kevin-rev12",
+		     "google,kevin-rev11", "google,kevin-rev10",
+		     "google,kevin-rev9", "google,kevin-rev8",
+		     "google,kevin-rev7", "google,kevin-rev6",
+		     "google,kevin", "google,gru", "rockchip,rk3399";
 };

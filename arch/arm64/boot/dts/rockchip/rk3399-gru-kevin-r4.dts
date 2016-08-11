@@ -51,6 +51,28 @@
 		     "google,gru", "rockchip,rk3399";
 };
 
+/* Adjust DVFS rails back to wider range */
+
+&ppvar_bigcpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_litcpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_gpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_centerlogic {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
 /* HACK for -rev4 to bump up voltage to make factory test more stable.
  * issue:55602(issue:54814?)
  *

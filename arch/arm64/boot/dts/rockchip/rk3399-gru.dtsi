@@ -181,8 +181,8 @@
 		regulator-always-on;
 		regulator-boot-on;
 
-		regulator-min-microvolt = <800000>;
-		regulator-max-microvolt = <1500000>;
+		regulator-min-microvolt = <798600>;
+		regulator-max-microvolt = <1305700>;
 
 		// TODO: scope; change driver to ramp slower too?
 		regulator-ramp-delay = <6000>;
@@ -203,8 +203,8 @@
 		regulator-always-on;
 		regulator-boot-on;
 
-		regulator-min-microvolt = <800000>;
-		regulator-max-microvolt = <1500000>;
+		regulator-min-microvolt = <799700>;
+		regulator-max-microvolt = <1300200>;
 
 		// TODO: scope; change driver to ramp slower too?
 		regulator-ramp-delay = <6000>;
@@ -225,8 +225,8 @@
 		regulator-always-on;
 		regulator-boot-on;
 
-		regulator-min-microvolt = <800000>;
-		regulator-max-microvolt = <1500000>;
+		regulator-min-microvolt = <791000>;
+		regulator-max-microvolt = <1213900>;
 
 		// TODO: scope; change driver to ramp slower too?
 		regulator-ramp-delay = <6000>;
@@ -247,8 +247,8 @@
 		regulator-always-on;
 		regulator-boot-on;
 
-		regulator-min-microvolt = <800000>;
-		regulator-max-microvolt = <1500000>;
+		regulator-min-microvolt = <799600>;
+		regulator-max-microvolt = <1050700>;
 
 		// TODO: scope; change driver to ramp slower too?
 		regulator-ramp-delay = <6000>;

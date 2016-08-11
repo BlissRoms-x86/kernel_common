@@ -89,6 +89,28 @@
 	};
 };
 
+/* Adjust DVFS rails back to wider range */
+
+&ppvar_bigcpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_litcpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_gpu {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
+&ppvar_centerlogic {
+	regulator-min-microvolt = <800000>;
+	regulator-max-microvolt = <1500000>;
+};
+
 /*
  * HACK for -rev3 to bump up voltage
  *
