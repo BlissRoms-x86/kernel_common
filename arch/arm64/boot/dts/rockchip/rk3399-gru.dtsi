@@ -572,19 +572,16 @@ ap_i2c_mic: &i2c1 {
 	/* These are relatively safe rise/fall times; TODO: measure */
 	i2c-scl-falling-time-ns = <50>;
 	i2c-scl-rising-time-ns = <300>;
-	// TODO: Put realtek,rt5514 here
+
 	headsetcodec: rt5514@57 {
 		compatible = "realtek,rt5514";
 		reg = <0x57>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&mic_int>;
 
-		/*
-		 * NOTE: Interrupts aren't part of the binding and driver
-		 * doesn't support it, but throw it in anyway.
-		 */
 		interrupt-parent = <&gpio1>;
 		interrupts = <13 IRQ_TYPE_LEVEL_HIGH>;
+		wakeup-source;
 	};
 };
 
