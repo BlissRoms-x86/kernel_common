@@ -270,7 +270,7 @@ static struct sched_domain_topology_level arm64_topology[] = {
 		cpu_coregroup_mask,
 		cpu_corepower_flags,
 		cpu_core_energy,
-		SD_INIT_NAME(MC),
+		SD_INIT_NAME(MC)
 	},
 #endif
 	{
