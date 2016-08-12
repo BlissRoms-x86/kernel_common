@@ -365,10 +365,35 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&wlan_module_pd_l>;
 
+		/*
+		 * Need to wait 1ms + ramp-up time before we can power on WiFi.
+		 * This has been approximated as 8ms total.
+		 */
+		regulator-enable-ramp-delay = <8000>;
+
 		enable-active-high;
 		gpio = <&gpio0 4 GPIO_ACTIVE_HIGH>;
 
 		vin-supply = <&pp1800>;
+	};
+
+	/*
+	 * See http://crosbug.com/p/56069/
+	 *
+	 * This is a bit of a hack. The WiFi module should be reset at least
+	 * 1ms after its regulators have ramped up (max rampup time is ~7ms).
+	 * With some stretching of the imagination, we can call the 1.8V
+	 * regulator a supply.
+	 */
+	wlan_pd_n: wlan-pd-n {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan_pd_n";
+
+		/* Note the wlan_module_reset_l pinctrl */
+		enable-active-high;
+		gpio = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+
+		vin-supply = <&pp1800_pcie>;
 	};
 
 	/* pp3000 aliases; these are always on for AP so just use alias */
@@ -655,7 +680,7 @@ ap_i2c_audio: &i2c8 {
 	ep-gpios = <&gpio2 27 GPIO_ACTIVE_HIGH>;
 
 	vpcie3v3-supply = <&pp3300_wifi_bt>;
-	vpcie1v8-supply = <&pp1800_pcie>;
+	vpcie1v8-supply = <&wlan_pd_n>; /* HACK: see &wlan_pd_n */
 	vpcie0v9-supply = <&pp900_pcie>;
 };
 
@@ -858,7 +883,17 @@ ap_i2c_audio: &i2c8 {
 	pinctrl-names = "default";
 	pinctrl-0 = <
 		&ap_pwroff	/* AP will auto-assert this when in S3 */
+
+		/*
+		 * We want this driven low ASAP; firmware should help us, but
+		 * we can help ourselves too.
+		 */
+		&wlan_module_reset_l
 	>;
+
+	pcfg_output_low: pcfg-output-low {
+		output-low;
+	};
 
 	pcfg_output_high: pcfg-output-high {
 		output-high;
@@ -1001,6 +1036,15 @@ ap_i2c_audio: &i2c8 {
 	wifi {
 		wifi_perst_l: wifi-perst-l {
 			rockchip,pins = <2 27 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		wlan_module_reset_l: wlan-module-reset-l {
+			/*
+			 * We want this driven low ASAP (As {Soon,Strongly} As
+			 * Possible), to avoid leakage through the powered-down
+			 * WiFi.
+			 */
+			rockchip,pins = <1 11 RK_FUNC_GPIO &pcfg_output_low>;
 		};
 	};
 
