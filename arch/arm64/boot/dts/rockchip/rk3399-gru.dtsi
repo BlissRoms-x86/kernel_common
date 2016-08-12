@@ -432,7 +432,7 @@
 		vin-supply = <&pp3300>;
 	};
 
-	pp3300_wifi_bt:pp3300-wifi-bt {
+	pp3300_wifi_bt: pp3300-wifi-bt {
 		compatible = "regulator-fixed";
 		regulator-name = "pp3300_wifi_bt";
 		/* NOTE: wlan_module_pd_l pinctrl in pp1800_pcie */
@@ -441,7 +441,7 @@
 
 		// TODO: I _think_ it's OK to specify the same GPIO in two
 		// regulator-fixed regulators.  See pp1800_pcie
-		gpio = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio0 4 GPIO_ACTIVE_HIGH>;
 
 		vin-supply = <&pp3300>;
 	};
