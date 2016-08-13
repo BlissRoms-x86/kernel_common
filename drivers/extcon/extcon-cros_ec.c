@@ -61,6 +61,7 @@ struct cros_ec_extcon_info {
 	unsigned int dr; /* data role */
 	unsigned int pr; /* power role */
 	bool dp; /* DisplayPort enabled */
+	bool mux; /* SuperSpeed (usb3) enabled */
 	unsigned int power_type;
 	unsigned int writeable;
 	wait_queue_head_t role_wait;
@@ -347,7 +348,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 		dr = DUAL_ROLE_PROP_DR_NONE;
 
 	if (force || info->dr != dr || info->pr != pr || info->dp != dp ||
-	    info->power_type != power_type) {
+	    info->mux != mux || info->power_type != power_type) {
 		bool host_connected = false, device_connected = false;
 
 		dev_dbg(dev, "Type/Role switch! type = %s role = %s\n",
@@ -356,6 +357,7 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 		info->dr = dr;
 		info->pr = pr;
 		info->dp = dp;
+		info->mux = mux;
 		info->power_type = power_type;
 		info->writeable = cros_ec_usb_role_is_writeable(role);
 
@@ -391,6 +393,15 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 		extcon_set_property(info->edev, EXTCON_DISP_DP,
 				    EXTCON_PROP_USB_TYPEC_POLARITY,
 				    (union extcon_property_value)(int)polarity);
+		extcon_set_property(info->edev, EXTCON_USB,
+				    EXTCON_PROP_USB_SUPERSPEED,
+				    (union extcon_property_value)(int)mux);
+		extcon_set_property(info->edev, EXTCON_USB_HOST,
+				    EXTCON_PROP_USB_SUPERSPEED,
+				    (union extcon_property_value)(int)mux);
+		extcon_set_property(info->edev, EXTCON_DISP_DP,
+				    EXTCON_PROP_USB_SUPERSPEED,
+				    (union extcon_property_value)(int)mux);
 
 		extcon_sync(info->edev, EXTCON_USB);
 		extcon_sync(info->edev, EXTCON_USB_HOST);
@@ -662,6 +673,12 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 				       EXTCON_PROP_USB_TYPEC_POLARITY);
 	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
 				       EXTCON_PROP_USB_TYPEC_POLARITY);
+	extcon_set_property_capability(info->edev, EXTCON_USB,
+				       EXTCON_PROP_USB_SUPERSPEED);
+	extcon_set_property_capability(info->edev, EXTCON_USB_HOST,
+				       EXTCON_PROP_USB_SUPERSPEED);
+	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
+				       EXTCON_PROP_USB_SUPERSPEED);
 
 	info->dr = DUAL_ROLE_PROP_DR_NONE;
 	info->pr = DUAL_ROLE_PROP_PR_NONE;
