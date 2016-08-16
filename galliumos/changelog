@@ -1,3 +1,9 @@
+linux-4.4.15-galliumos (4.4.15-galliumos1+wip20) xenon; urgency=medium
+
+  * WIP add SAMUS audio
+
+ -- reynhout <reynhout@galliumos.org>  Sat, 30 Jul 2016 16:11:30 +0000
+
 linux-4.4.15-galliumos (4.4.15-galliumos1) xenon; urgency=medium
 
   * Add GalliumOS customizations
