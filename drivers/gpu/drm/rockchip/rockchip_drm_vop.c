@@ -1112,13 +1112,17 @@ static void vop_crtc_atomic_begin(struct drm_crtc *crtc,
 				  struct drm_crtc_state *old_crtc_state)
 {
 	struct vop *vop = to_vop(crtc);
+	struct drm_device *drm = vop->drm_dev;
+	unsigned long flags;
 
+	spin_lock_irqsave(&drm->event_lock, flags);
 	if (crtc->state->event) {
 		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 		vop->event = crtc->state->event;
 		crtc->state->event = NULL;
 	}
+	spin_unlock_irqrestore(&drm->event_lock, flags);
 }
 
 static const struct drm_crtc_helper_funcs vop_crtc_helper_funcs = {
@@ -1201,15 +1205,14 @@ static void vop_handle_vblank(struct vop *vop)
 			return;
 	}
 
+	spin_lock_irqsave(&drm->event_lock, flags);
 	if (vop->event) {
-		spin_lock_irqsave(&drm->event_lock, flags);
-
 		drm_crtc_send_vblank_event(crtc, vop->event);
 		drm_crtc_vblank_put(crtc);
 		vop->event = NULL;
-
-		spin_unlock_irqrestore(&drm->event_lock, flags);
 	}
+	spin_unlock_irqrestore(&drm->event_lock, flags);
+
 	if (!completion_done(&vop->wait_update_complete))
 		complete(&vop->wait_update_complete);
 }
