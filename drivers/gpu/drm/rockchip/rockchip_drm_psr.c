@@ -27,13 +27,14 @@ enum psr_state {
 };
 
 struct psr_drv {
-	struct list_head list;
-	enum psr_state state;
-	spinlock_t lock;
+	struct list_head	list;
+	struct drm_encoder	*encoder;
 
-	struct timer_list flush_timer;
+	spinlock_t		lock;
+	enum psr_state		state;
 
-	struct drm_encoder *encoder;
+	struct timer_list	flush_timer;
+
 	void (*set)(struct drm_encoder *encoder, bool enable);
 };
 
@@ -61,28 +62,26 @@ static void psr_set_state_locked(struct psr_drv *psr, enum psr_state state)
 	 * Allowed finite state machine:
 	 *
 	 *   PSR_ENABLE  < = = = = = >  PSR_FLUSH
-	  *      | ^                        |
-	  *      | |                        |
-	  *      v |                        |
+	 *       | ^                        |
+	 *       | |                        |
+	 *       v |                        |
 	 *   PSR_DISABLE < - - - - - - - - -
 	 */
-
-	/* Forbid no state change */
 	if (state == psr->state)
 		return;
 
-	/* Forbid DISABLE change to FLUSH */
+	/* Requesting a flush when disabled is a noop */
 	if (state == PSR_FLUSH && psr->state == PSR_DISABLE)
 		return;
 
 	psr->state = state;
 
-	/* Allow but no need hardware change, just need assign the state */
+	/* Already disabled in flush, change the state, but not the hardware */
 	if (state == PSR_DISABLE && psr->state == PSR_FLUSH)
 		return;
 
-	/* Refact to hardware state change */
-	switch (state) {
+	/* Actually commit the state change to hardware */
+	switch (psr->state) {
 	case PSR_ENABLE:
 		psr->set(psr->encoder, true);
 		break;
@@ -108,9 +107,7 @@ static void psr_flush_handler(unsigned long data)
 	struct psr_drv *psr = (struct psr_drv *)data;
 	unsigned long flags;
 
-	if (!psr)
-		return;
-
+	/* If the state has changed since we initiated the flush, do nothing */
 	spin_lock_irqsave(&psr->lock, flags);
 	if (psr->state == PSR_FLUSH)
 		psr_set_state_locked(psr, PSR_ENABLE);
