@@ -899,6 +899,7 @@ ap_i2c_audio: &i2c8 {
 
 &usbdrd3_0 {
 	status = "okay";
+	extcon = <&usbc_extcon0>;
 };
 
 &usbdrd_dwc3_0 {
@@ -908,6 +909,7 @@ ap_i2c_audio: &i2c8 {
 
 &usbdrd3_1 {
 	status = "okay";
+	extcon = <&usbc_extcon1>;
 };
 
 &usbdrd_dwc3_1 {
