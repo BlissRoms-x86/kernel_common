@@ -573,6 +573,8 @@ static void vop_crtc_disable(struct drm_crtc *crtc)
 	if (!vop->is_enabled)
 		return;
 
+	rockchip_drm_psr_deactivate(&vop->crtc);
+
 	/*
 	 * We need to make sure that all windows are disabled before we
 	 * disable that crtc. Otherwise we might try to scan from a destroyed
@@ -624,8 +626,6 @@ static void vop_crtc_disable(struct drm_crtc *crtc)
 	clk_disable(vop->aclk);
 	clk_disable(vop->hclk);
 	pm_runtime_put(vop->dev);
-
-	rockchip_drm_psr_disable(&vop->crtc);
 }
 
 static void vop_plane_destroy(struct drm_plane *plane)
@@ -923,8 +923,6 @@ static int vop_crtc_enable_vblank(struct drm_crtc *crtc)
 
 	spin_unlock_irqrestore(&vop->irq_lock, flags);
 
-	rockchip_drm_psr_disable(&vop->crtc);
-
 	return 0;
 }
 
@@ -941,8 +939,6 @@ static void vop_crtc_disable_vblank(struct drm_crtc *crtc)
 	VOP_INTR_SET_TYPE(vop, enable, FS_INTR, 0);
 
 	spin_unlock_irqrestore(&vop->irq_lock, flags);
-
-	rockchip_drm_psr_enable(&vop->crtc);
 }
 
 static void vop_crtc_wait_for_update(struct drm_crtc *crtc)
@@ -1095,6 +1091,8 @@ static void vop_crtc_enable(struct drm_crtc *crtc)
 	clk_set_rate(vop->dclk, adjusted_mode->clock * 1000);
 
 	VOP_CTRL_SET(vop, standby, 0);
+
+	rockchip_drm_psr_activate(&vop->crtc);
 }
 
 static void vop_crtc_atomic_flush(struct drm_crtc *crtc,
@@ -1118,6 +1116,8 @@ static void vop_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct vop *vop = to_vop(crtc);
 	struct drm_device *drm = vop->drm_dev;
 	unsigned long flags;
+
+	rockchip_drm_psr_flush(crtc);
 
 	spin_lock_irqsave(&drm->event_lock, flags);
 	if (crtc->state->event) {
@@ -1640,8 +1640,6 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 		return ret;
 
 	pm_runtime_enable(&pdev->dev);
-
-	rockchip_drm_psr_disable(&vop->crtc);
 
 	return 0;
 }
