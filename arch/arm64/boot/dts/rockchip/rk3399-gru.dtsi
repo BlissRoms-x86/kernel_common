@@ -877,6 +877,16 @@ ap_i2c_audio: &i2c8 {
 	rockchip,hw-tshut-polarity = <1>; /* tshut polarity 0:LOW 1:HIGH */
 };
 
+&tcphy0 {
+	status = "okay";
+	extcon = <&usbc_extcon0>;
+};
+
+&tcphy1 {
+	status = "okay";
+	extcon = <&usbc_extcon1>;
+};
+
 &uart2 {
 	status = "okay";
 };
