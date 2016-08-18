@@ -386,6 +386,8 @@
 			reg = <0x0 0xfe800000 0x0 0x100000>;
 			interrupts = <GIC_SPI 105 IRQ_TYPE_LEVEL_HIGH 0>;
 			dr_mode = "otg";
+			phys = <&tcphy0_usb3>;
+			phy-names = "usb3-phy";
 			snps,dis_enblslpm_quirk;
 			// TODO: replace with upstream property
 			snps,phyif_utmi_16_bits;
@@ -417,6 +419,8 @@
 			reg = <0x0 0xfe900000 0x0 0x100000>;
 			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH 0>;
 			dr_mode = "otg";
+			phys = <&tcphy1_usb3>;
+			phy-names = "usb3-phy";
 			snps,dis_enblslpm_quirk;
 			// TODO: replace with upstream property
 			snps,phyif_utmi_16_bits;
