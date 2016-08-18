@@ -111,15 +111,24 @@ EXPORT_SYMBOL(cros_ec_get_host_event);
 static irqreturn_t ec_irq_thread(int irq, void *data)
 {
 	struct cros_ec_device *ec_dev = data;
+	int wake_event = 1;
+	u32 host_event;
 	int ret;
 
-	if (device_may_wakeup(ec_dev->dev))
-		pm_wakeup_event(ec_dev->dev, 0);
-
-	if (ec_dev->mkbp_event_supported)
+	if (ec_dev->mkbp_event_supported) {
 		ret = cros_ec_get_next_event(ec_dev);
-	else
+
+		/* Don't signal wake event for non-wake host events */
+		host_event = cros_ec_get_host_event(ec_dev);
+		if (ret > 0 && host_event &&
+		   !(host_event & ec_dev->host_event_wake_mask))
+			wake_event = 0;
+	} else {
 		ret = cros_ec_get_keyboard_state_event(ec_dev);
+	}
+
+	if (device_may_wakeup(ec_dev->dev) && wake_event)
+		pm_wakeup_event(ec_dev->dev, 0);
 
 	if (ret > 0)
 		blocking_notifier_call_chain(&ec_dev->event_notifier,

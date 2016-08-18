@@ -188,6 +188,38 @@ static int cros_ec_get_host_command_version_mask(struct cros_ec_device *ec_dev,
 	return ret;
 }
 
+/*
+ * cros_ec_get_host_event_wake_mask
+ *
+ * Get the mask of host events that cause wake from suspend.
+ *
+ * @ec_dev: EC device to call
+ * @msg: message structure to use
+ * @mask: result when function returns >=0.
+ *
+ * LOCKING:
+ * the caller has ec_dev->lock mutex, or the caller knows there is
+ * no other command in progress.
+ */
+static int cros_ec_get_host_event_wake_mask(struct cros_ec_device *ec_dev,
+					    struct cros_ec_command *msg,
+					    uint32_t *mask)
+{
+	struct ec_response_host_event_mask *r;
+	int ret;
+
+	msg->command = EC_CMD_HOST_EVENT_GET_WAKE_MASK;
+	msg->version = 0;
+	msg->outsize = 0;
+	msg->insize = sizeof(*r);
+
+	r = (struct ec_response_host_event_mask *)msg->data;
+	ret = send_command(ec_dev, msg);
+	if (ret > 0)
+		*mask = r->mask;
+	return ret;
+}
+
 static int cros_ec_host_command_proto_query(struct cros_ec_device *ec_dev,
 					    int devidx,
 					    struct cros_ec_command *msg)
@@ -376,6 +408,16 @@ int cros_ec_query_all(struct cros_ec_device *ec_dev)
 		ec_dev->mkbp_event_supported = 0;
 	else
 		ec_dev->mkbp_event_supported = 1;
+
+	/*
+	 * Get host event wake mask, assume all events are wake events
+	 * if unavailable.
+	 */
+	ret = cros_ec_get_host_event_wake_mask(ec_dev, proto_msg,
+					       &ec_dev->host_event_wake_mask);
+	if (ret < 0)
+		ec_dev->host_event_wake_mask = (u32)-1;
+
 	ret = 0;
 
 exit:
