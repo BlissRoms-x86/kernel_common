@@ -72,10 +72,6 @@
 			opp-hz = /bits/ 64 <1416000000>;
 			opp-microvolt = <1025000>;
 		};
-		opp06 {
-			opp-hz = /bits/ 64 <1608000000>;
-			opp-microvolt = <1175000>;
-		};
 	};
 
 	cluster1_opp: opp-table1 {
