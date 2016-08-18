@@ -2633,6 +2633,7 @@ struct ec_response_get_next_event {
 
 /* Switches */
 #define EC_MKBP_LID_OPEN	0
+#define EC_MKBP_TABLET_MODE	1
 
 /* Run keyboard factory test scanning */
 #define EC_CMD_KEYBOARD_FACTORY_TEST 0x68
