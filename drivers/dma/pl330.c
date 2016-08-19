@@ -1564,6 +1564,19 @@ static void pl330_dotask(unsigned long data)
 	return;
 }
 
+static struct dma_pl330_chan *get_dma_channel(struct pl330_dmac *pl330,
+					      struct pl330_thread *thrd)
+{
+	struct dma_pl330_chan *pch;
+	int i;
+	for (i = 0; i < pl330->num_peripherals; i++) {
+		pch = &pl330->peripherals[i];
+		if (pch && pch->thread == thrd)
+			return pch;
+	}
+	return NULL;
+}
+
 /* Returns 1 if state was updated, 0 otherwise */
 static int pl330_update(struct pl330_dmac *pl330)
 {
@@ -1613,6 +1626,7 @@ static int pl330_update(struct pl330_dmac *pl330)
 	for (ev = 0; ev < pl330->pcfg.num_events; ev++) {
 		if (val & (1 << ev)) { /* Event occurred */
 			struct pl330_thread *thrd;
+			struct dma_pl330_chan *pch;
 			u32 inten = readl(regs + INTEN);
 			int active;
 
@@ -1625,6 +1639,9 @@ static int pl330_update(struct pl330_dmac *pl330)
 			id = pl330->events[ev];
 
 			thrd = &pl330->channels[id];
+			pch = get_dma_channel(pl330, thrd);
+			if (pch)
+				spin_lock_irqsave(&pch->lock, flags);
 
 			active = thrd->req_running;
 			if (active == -1) /* Aborted */
@@ -1638,6 +1655,8 @@ static int pl330_update(struct pl330_dmac *pl330)
 
 			/* Get going again ASAP */
 			_start(thrd);
+			if (pch)
+				spin_unlock_irqrestore(&pch->lock, flags);
 
 			/* For now, just make a list of callbacks to be done */
 			list_add_tail(&descdone->rqd, &pl330->req_done);
