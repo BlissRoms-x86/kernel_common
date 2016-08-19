@@ -505,6 +505,7 @@
 
 		compatible = "maxim,max98357a";
 		sdmode-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+		sdmode-delay = <2>;
 	};
 
 	pmu-io-domains {
