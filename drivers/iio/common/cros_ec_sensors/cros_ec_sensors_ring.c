@@ -425,8 +425,6 @@ static void __maybe_unused cros_ec_ring_complete(struct device *dev)
 #define CROS_EC_RING_ID(_id, _name)		\
 {						\
 	.type = IIO_ACCEL,			\
-	.modified = 1,				\
-	.channel2 = IIO_NO_MOD,			\
 	.scan_index = _id,			\
 	.scan_type = {				\
 		.sign = 'u',			\
