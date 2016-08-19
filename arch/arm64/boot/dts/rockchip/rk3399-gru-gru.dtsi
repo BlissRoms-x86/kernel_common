@@ -188,15 +188,26 @@ ap_i2c_nfc: &i2c7 {
 		// TODO: determine a proper description; kernel complains
 		// loudly about 'spidev' in DTS
 		//compatible = "spidev";
-		spi-max-frequency = <10000000>;
 		reg = <0>;
+		spi-max-frequency = <10000000>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&fp_int>;
+
+		interrupt-parent = <&gpio1>;
+		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 	};
 };
 
 /* PINCTRL: always below everything else */
 
 &pinctrl {
-	discrete-regulators {
+	fingerprint {
+		fp_int: fp-int {
+			rockchip,pins = <RK_GPIO1 0 RK_FUNC_GPIO
+					 &pcfg_pull_up>;
+		};
+
 		fp_en: fp-en {
 			rockchip,pins = <RK_GPIO1 1 RK_FUNC_GPIO
 					 &pcfg_pull_none>;
