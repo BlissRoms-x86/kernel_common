@@ -69,7 +69,6 @@ struct cros_ec_fifo_info {
 	uint16_t lost[CROS_EC_SENSOR_MAX];
 };
 
-
 struct cros_ec_sensors_ring_sample {
 	uint8_t sensor_id;
 	uint8_t flag;
@@ -88,9 +87,8 @@ struct cros_ec_sensors_ring_state {
 	/* Preprocessed ring to send to kfifo */
 	struct cros_ec_sensors_ring_sample *ring;
 
-	struct iio_trigger *trig;
 	s64    fifo_timestamp[ALL_TS];
-	struct ec_response_motion_sense_fifo_info fifo_info;
+	struct cros_ec_fifo_info fifo_info;
 };
 
 static const struct iio_info ec_sensors_info = {
@@ -104,22 +102,6 @@ static s64 cros_ec_get_time_ns(void)
 	get_monotonic_boottime(&ts);
 	return timespec_to_ns(&ts);
 }
-
-static int cros_ec_ring_trigger_set_state(struct iio_trigger *trig,
-					  bool trig_state)
-{
-	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
-	struct cros_ec_sensors_ring_state *state = iio_priv(indio_dev);
-
-	state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INT_ENABLE;
-	state->core.param.fifo_int_enable.enable = trig_state;
-	return cros_ec_motion_send_host_cmd(&state->core, 0);
-}
-
-static const struct iio_trigger_ops cros_ec_ring_trigger_ops = {
-	.owner = THIS_MODULE,
-	.set_trigger_state = &cros_ec_ring_trigger_set_state,
-};
 
 /*
  * cros_ec_ring_process_event: process one EC FIFO event
@@ -177,20 +159,14 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 /*
  * cros_ec_ring_handler - the trigger handler function
  *
- * @irq: the interrupt number
- * @p: private data - always a pointer to the poll func.
+ * @state: device information.
  *
- * On a trigger event occurring, if the pollfunc is attached then this
- * handler is called as a threaded interrupt (and hence may sleep). It
- * is responsible for grabbing data from the device and pushing it into
- * the associated buffer.
+ * Called by the notifier, process the EC sensor FIFO queue.
  */
-static irqreturn_t cros_ec_ring_handler(int irq, void *p)
+static void cros_ec_ring_handler(struct cros_ec_sensors_ring_state *state)
 {
-	struct iio_poll_func *pf = p;
-	struct iio_dev *indio_dev = pf->indio_dev;
-	struct cros_ec_sensors_ring_state *state = iio_priv(indio_dev);
-	struct cros_ec_fifo_info fifo_info;
+	struct iio_dev *indio_dev = state->core.indio_dev;
+	struct cros_ec_fifo_info *fifo_info = &state->fifo_info;
 	s64    fifo_timestamp, current_timestamp;
 	int    i, j, number_data, ret;
 	unsigned long sensor_mask = 0;
@@ -199,28 +175,25 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 
 
 	/* Get FIFO information */
-	mutex_lock(&state->core.cmd_lock);
-	memcpy(&fifo_info, &state->fifo_info, sizeof(state->fifo_info));
-	fifo_timestamp = state->fifo_timestamp[NEW_TS];
-	mutex_unlock(&state->core.cmd_lock);
 
+	fifo_timestamp = state->fifo_timestamp[NEW_TS];
 	/* Copy elements in the main fifo */
-	if (fifo_info.info.total_lost) {
+	if (fifo_info->info.total_lost) {
 		/* Need to retrieve the number of lost vectors per sensor */
 		state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INFO;
 		if (cros_ec_motion_send_host_cmd(&state->core, 0))
 			goto ring_handler_end;
-		memcpy(&fifo_info, &state->core.resp->fifo_info,
-		       sizeof(fifo_info));
+		memcpy(fifo_info, &state->core.resp->fifo_info,
+		       sizeof(*fifo_info));
 		fifo_timestamp = cros_ec_get_time_ns();
 	}
 
 	current_timestamp = state->fifo_timestamp[LAST_TS];
 	out = state->ring;
-	for (i = 0; i < fifo_info.info.count; i += number_data) {
+	for (i = 0; i < fifo_info->info.count; i += number_data) {
 		state->core.param.cmd = MOTIONSENSE_CMD_FIFO_READ;
 		state->core.param.fifo_read.max_data_vector =
-			fifo_info.info.count - i;
+			fifo_info->info.count - i;
 		ret = cros_ec_motion_send_host_cmd(&state->core,
 			       sizeof(state->core.resp->fifo_read) +
 			       state->core.param.fifo_read.max_data_vector *
@@ -238,9 +211,9 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 
 		for (in = state->core.resp->fifo_read.data, j = 0;
 		     j < number_data; j++, in++) {
-			BUG_ON(out >= state->ring + fifo_info.info.size);
+			BUG_ON(out >= state->ring + fifo_info->info.size);
 			if (cros_ec_ring_process_event(
-					&fifo_info, fifo_timestamp,
+					fifo_info, fifo_timestamp,
 					&current_timestamp, in, out)) {
 				sensor_mask |= (1 << in->sensor_num);
 				out++;
@@ -296,13 +269,13 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 		struct cros_ec_sensors_ring_sample *next_out;
 		int count = 1;
 
-		if (fifo_info.info.total_lost) {
-			int lost = fifo_info.lost[i];
+		if (fifo_info->info.total_lost) {
+			int lost = fifo_info->lost[i];
 
 			if (lost)
 				dev_warn(&indio_dev->dev,
 					"Sensor %d: lost: %d out of %d\n", i,
-					lost, fifo_info.info.total_lost);
+					lost, fifo_info->info.total_lost);
 		}
 
 		for (out = state->ring; out < last_out; out = next_out) {
@@ -357,8 +330,6 @@ static irqreturn_t cros_ec_ring_handler(int irq, void *p)
 
 ring_handler_end:
 	state->fifo_timestamp[LAST_TS] = current_timestamp;
-	iio_trigger_notify_done(indio_dev->trig);
-	return IRQ_HANDLED;
 }
 
 static int cros_ec_ring_event(struct notifier_block *nb,
@@ -381,17 +352,10 @@ static int cros_ec_ring_event(struct notifier_block *nb,
 	if (queued_during_suspend)
 		return NOTIFY_OK;
 
-	mutex_lock(&state->core.cmd_lock);
-	memcpy(&state->fifo_info, &ec->event_data.data.sensor_fifo.info,
-			ec->event_size);
+	memcpy(&state->fifo_info.info, &ec->event_data.data.sensor_fifo.info,
+	       ec->event_size);
 	state->fifo_timestamp[NEW_TS] = cros_ec_get_time_ns();
-	mutex_unlock(&state->core.cmd_lock);
-
-	/*
-	 * We are not in a low level interrupt,
-	 * we can not call iio_trigger_poll().
-	 */
-	iio_trigger_poll_chained(state->trig);
+	cros_ec_ring_handler(state);
 	return NOTIFY_OK;
 }
 
@@ -463,6 +427,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	struct cros_ec_dev *ec_dev = dev_get_drvdata(dev->parent);
 	struct cros_ec_device *ec_device;
 	struct iio_dev *indio_dev;
+	struct iio_buffer *buffer;
 	struct cros_ec_sensors_ring_state *state;
 	int ret;
 
@@ -505,29 +470,18 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 
 	indio_dev->channels = cros_ec_ring_channels;
 	indio_dev->num_channels = ARRAY_SIZE(cros_ec_ring_channels);
-
 	indio_dev->info = &ec_sensors_info;
+	indio_dev->modes = INDIO_BUFFER_SOFTWARE;
 
-	state->trig = devm_iio_trigger_alloc(&pdev->dev,
-			"%s-trigger%d", indio_dev->name, indio_dev->id);
-	if (!state->trig)
+	buffer = devm_iio_kfifo_allocate(indio_dev->dev.parent);
+	if (!buffer)
 		return -ENOMEM;
-	state->trig->dev.parent = &pdev->dev;
-	state->trig->ops = &cros_ec_ring_trigger_ops;
-	iio_trigger_set_drvdata(state->trig, indio_dev);
 
-	ret = iio_trigger_register(state->trig);
-	if (ret)
+	iio_device_attach_buffer(indio_dev, buffer);
+
+	ret = devm_iio_device_register(indio_dev->dev.parent, indio_dev);
+	if (ret < 0)
 		return ret;
-
-	ret = iio_triggered_buffer_setup(indio_dev, NULL,
-					 cros_ec_ring_handler, NULL);
-	if (ret < 0)
-		goto err_trigger_unregister;
-
-	ret = iio_device_register(indio_dev);
-	if (ret < 0)
-		goto err_buffer_cleanup;
 
 	/* register the notifier that will act as a top half interrupt. */
 	state->notifier.notifier_call = cros_ec_ring_event;
@@ -535,17 +489,11 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 					       &state->notifier);
 	if (ret < 0) {
 		dev_warn(&indio_dev->dev, "failed to register notifier\n");
-		goto err_device_unregister;
+		return ret;
 	}
-	return ret;
-
-err_device_unregister:
-	iio_device_unregister(indio_dev);
-err_buffer_cleanup:
-	iio_triggered_buffer_cleanup(indio_dev);
-err_trigger_unregister:
-	iio_trigger_unregister(state->trig);
-	return ret;
+	state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INT_ENABLE;
+	state->core.param.fifo_int_enable.enable = 1;
+	return cros_ec_motion_send_host_cmd(&state->core, 0);
 }
 
 static int cros_ec_ring_remove(struct platform_device *pdev)
@@ -554,11 +502,12 @@ static int cros_ec_ring_remove(struct platform_device *pdev)
 	struct cros_ec_sensors_ring_state *state = iio_priv(indio_dev);
 	struct cros_ec_device *ec = state->core.ec;
 
+	state->core.param.cmd = MOTIONSENSE_CMD_FIFO_INT_ENABLE;
+	state->core.param.fifo_int_enable.enable = 0;
+	cros_ec_motion_send_host_cmd(&state->core, 0);
+
 	blocking_notifier_chain_unregister(&ec->event_notifier,
 					   &state->notifier);
-	iio_device_unregister(indio_dev);
-	iio_triggered_buffer_cleanup(indio_dev);
-	iio_trigger_unregister(state->trig);
 	return 0;
 }
 

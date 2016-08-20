@@ -57,6 +57,7 @@ cros_ec_sensors_read_t cros_ec_sensors_read_cmd;
 /* State data for ec_sensors iio driver. */
 struct cros_ec_sensors_core_state {
 	struct cros_ec_device *ec;
+	struct iio_dev *indio_dev;
 	/*
 	 *  Location to store command and response to the EC.
 	 */
