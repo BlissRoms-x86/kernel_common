@@ -11,6 +11,38 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * The ROCKCHIP Type-C PHY has two PLL clocks. The first PLL clock
+ * is used for USB3, the second PLL clock is used for DP. This Type-C PHY has
+ * 3 working modes: USB3 only mode, DP only mode, and USB3+DP mode.
+ * At USB3 only mode, both PLL clocks need to be initialized, this allows the
+ * PHY to switch mode between USB3 and USB3+DP, without disconnecting the USB
+ * device.
+ * In The DP only mode, only the DP PLL needs to be powered on, and the 4 lanes
+ * are all used for DP.
+ *
+ * This driver gets extcon cable state and property, then decides which mode to
+ * select:
+ *
+ * 1. USB3 only mode:
+ *    EXTCON_USB or EXTCON_USB_HOST state is true, and
+ *    EXTCON_PROP_USB_SS property is true.
+ *    EXTCON_DISP_DP state is false.
+ *
+ * 2. DP only mode:
+ *    EXTCON_DISP_DP state is true, and
+ *    EXTCON_PROP_USB_SS property is false.
+ *    If EXTCON_USB_HOST state is true, it is DP + USB2 mode, since the USB2 phy
+ *    is a separate phy, so this case is still DP only mode.
+ *
+ * 3. USB3+DP mode:
+ *    EXTCON_USB_HOST and EXTCON_DISP_DP are both true, and
+ *    EXTCON_PROP_USB_SS property is true.
+ *
+ * This Type-C PHY driver supports normal and flip orientation. The orientation
+ * is reported by the EXTCON_PROP_USB_TYPEC_POLARITY property: true is flip
+ * orientation, false is normal orientation.
+ *
  */
 
 #include <linux/clk.h>
@@ -165,6 +197,7 @@
 #define RX_SLC_QEN1_OVRD		(0x8155 << 2)
 #define RX_SLC_EEN0_OVRD		(0x8159 << 2)
 #define RX_SLC_EEN1_OVRD		(0x815d << 2)
+#define RX_REE_CTRL_DATA_MASK(n)	((0x81bb | ((n) << 9)) << 2)
 #define RX_DIAG_SIGDET_TUNE(n)		((0x81dc | ((n) << 9)) << 2)
 #define RX_DIAG_SC2C_DELAY		(0x81e1 << 2)
 
@@ -259,7 +292,7 @@ struct phy_reg {
 	u32 addr;
 };
 
-struct phy_reg usb_pll_cfg[] = {
+struct phy_reg usb3_pll_cfg[] = {
 	{ 0xf0,		CMN_PLL0_VCOCAL_INIT },
 	{ 0x18,		CMN_PLL0_VCOCAL_ITER },
 	{ 0xd0,		CMN_PLL0_INTDIV },
@@ -323,13 +356,14 @@ static void tcphy_cfg_24m(struct rockchip_typec_phy *tcphy)
 	writel(rdata, tcphy->base + CMN_DIAG_HSCLK_SEL);
 }
 
-static void tcphy_cfg_usb_pll(struct rockchip_typec_phy *tcphy)
+static void tcphy_cfg_usb3_pll(struct rockchip_typec_phy *tcphy)
 {
 	u32 i;
 
 	/* load the configuration of PLL0 */
-	for (i = 0; i < ARRAY_SIZE(usb_pll_cfg); i++)
-		writel(usb_pll_cfg[i].value, tcphy->base + usb_pll_cfg[i].addr);
+	for (i = 0; i < ARRAY_SIZE(usb3_pll_cfg); i++)
+		writel(usb3_pll_cfg[i].value,
+		       tcphy->base + usb3_pll_cfg[i].addr);
 }
 
 static void tcphy_cfg_dp_pll(struct rockchip_typec_phy *tcphy)
@@ -345,7 +379,7 @@ static void tcphy_cfg_dp_pll(struct rockchip_typec_phy *tcphy)
 		writel(dp_pll_cfg[i].value, tcphy->base + dp_pll_cfg[i].addr);
 }
 
-static void tcphy_tx_usb_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
+static void tcphy_tx_usb3_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
 {
 	writel(0x7799, tcphy->base + TX_PSC_A0(lane));
 	writel(0x7798, tcphy->base + TX_PSC_A1(lane));
@@ -355,7 +389,7 @@ static void tcphy_tx_usb_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
 	writel(0xbf, tcphy->base + XCVR_DIAG_BIDI_CTRL(lane));
 }
 
-static void tcphy_rx_usb_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
+static void tcphy_rx_usb3_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
 {
 	writel(0xa6fd, tcphy->base + RX_PSC_A0(lane));
 	writel(0xa6fd, tcphy->base + RX_PSC_A1(lane));
@@ -363,6 +397,7 @@ static void tcphy_rx_usb_cfg_lane(struct rockchip_typec_phy *tcphy, u32 lane)
 	writel(0x2410, tcphy->base + RX_PSC_A3(lane));
 	writel(0x23ff, tcphy->base + RX_PSC_CAL(lane));
 	writel(0x13, tcphy->base + RX_SIGDET_HL_FILT_TMR(lane));
+	writel(0x03e7, tcphy->base + RX_REE_CTRL_DATA_MASK(lane));
 	writel(0x1004, tcphy->base + RX_DIAG_SIGDET_TUNE(lane));
 	writel(0x2010, tcphy->base + RX_PSC_RDY(lane));
 	writel(0xfb, tcphy->base + XCVR_DIAG_BIDI_CTRL(lane));
@@ -530,16 +565,16 @@ static int tcphy_phy_init(struct rockchip_typec_phy *tcphy, u8 mode)
 
 		writel(PIN_ASSIGN_C_E, tcphy->base + PMA_LANE_CFG);
 	} else {
-		tcphy_cfg_usb_pll(tcphy);
+		tcphy_cfg_usb3_pll(tcphy);
 		tcphy_cfg_dp_pll(tcphy);
 		if (tcphy->flip) {
-			tcphy_tx_usb_cfg_lane(tcphy, 3);
-			tcphy_rx_usb_cfg_lane(tcphy, 2);
+			tcphy_tx_usb3_cfg_lane(tcphy, 3);
+			tcphy_rx_usb3_cfg_lane(tcphy, 2);
 			tcphy_dp_cfg_lane(tcphy, 0);
 			tcphy_dp_cfg_lane(tcphy, 1);
 		} else {
-			tcphy_tx_usb_cfg_lane(tcphy, 0);
-			tcphy_rx_usb_cfg_lane(tcphy, 1);
+			tcphy_tx_usb3_cfg_lane(tcphy, 0);
+			tcphy_rx_usb3_cfg_lane(tcphy, 1);
 			tcphy_dp_cfg_lane(tcphy, 2);
 			tcphy_dp_cfg_lane(tcphy, 3);
 		}
@@ -604,10 +639,11 @@ static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
 	} else if (dp) {
 		mode = MODE_DFP_DP;
 		id = EXTCON_DISP_DP;
+
 		ret = extcon_get_property(edev, id, EXTCON_PROP_USB_SS,
 					  &property);
 		if (ret) {
-			dev_err(tcphy->dev, "get property failed\n");
+			dev_err(tcphy->dev, "get superspeed property failed\n");
 			return ret;
 		}
 
@@ -615,11 +651,10 @@ static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
 			mode |= MODE_DFP_USB;
 	}
 
-
 	ret = extcon_get_property(edev, id, EXTCON_PROP_USB_TYPEC_POLARITY,
 				  &property);
 	if (ret) {
-		dev_err(tcphy->dev, "get property failed\n");
+		dev_err(tcphy->dev, "get polarity property failed\n");
 		return ret;
 	}
 
@@ -644,10 +679,9 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
 		goto unlock_ret;
 	}
 
-	if (!(new_mode & (MODE_DFP_USB | MODE_UFP_USB))) {
-		ret = -ENODEV;
+	/* DP-only mode; fall back to USB2 */
+	if (!(new_mode & (MODE_DFP_USB | MODE_UFP_USB)))
 		goto unlock_ret;
-	}
 
 	if (tcphy->mode == new_mode)
 		goto unlock_ret;
