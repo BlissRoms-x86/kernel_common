@@ -26,7 +26,6 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/usb/class-dual-role.h>
-#include <linux/wakelock.h>
 
 #define CROS_EC_USB_POLLING_DELAY msecs_to_jiffies(1000)
 
@@ -55,8 +54,6 @@ struct cros_ec_extcon_info {
 	struct cros_ec_device *ec;
 
 	struct notifier_block notifier;
-	struct wake_lock wakelock;
-	bool wakelock_held;
 
 	unsigned int dr; /* data role */
 	unsigned int pr; /* power role */
@@ -365,15 +362,6 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 			device_connected = true;
 		else if (dr == DUAL_ROLE_PROP_DR_HOST)
 			host_connected = true;
-
-		/* Set a wakelock if device is connected, otherwise release */
-		if (device_connected && !info->wakelock_held) {
-			wake_lock(&info->wakelock);
-			info->wakelock_held = true;
-		} else if (!device_connected && info->wakelock_held) {
-			wake_unlock(&info->wakelock);
-			info->wakelock_held = false;
-		}
 
 		extcon_set_state(info->edev, EXTCON_USB, device_connected);
 		extcon_set_state(info->edev, EXTCON_USB_HOST, host_connected);
@@ -694,11 +682,6 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 		info->drp_inst = inst;
 	}
 
-	/* Initialize wakelock to hold off suspend when USB is attached */
-	wake_lock_init(&info->wakelock, WAKE_LOCK_SUSPEND,
-		       dev_name(&pdev->dev));
-	info->wakelock_held = false;
-
 	/* Get PD events from the EC */
 	info->notifier.notifier_call = extcon_cros_ec_event;
 	ret = blocking_notifier_chain_register(&info->ec->event_notifier,
@@ -720,8 +703,6 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 unregister_notifier:
 	blocking_notifier_chain_unregister(&info->ec->event_notifier,
 					   &info->notifier);
-	if (info->wakelock_held)
-		wake_unlock(&info->wakelock);
 	return ret;
 }
 
@@ -735,9 +716,6 @@ static int extcon_cros_ec_remove(struct platform_device *pdev)
 
 	blocking_notifier_chain_unregister(&info->ec->event_notifier,
 					   &info->notifier);
-
-	if (info->wakelock_held)
-		wake_unlock(&info->wakelock);
 
 	return 0;
 }
