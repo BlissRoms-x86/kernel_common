@@ -887,8 +887,8 @@ ap_i2c_audio: &i2c8 {
 
 &vopb {
 	status = "okay";
-	assigned-clocks = <&cru ACLK_VOP0>, <&cru HCLK_VOP0>;
-	assigned-clock-rates = <400000000>, <200000000>;
+	assigned-clocks = <&cru DCLK_VOP0>, <&cru ACLK_VOP0>, <&cru HCLK_VOP0>;
+	assigned-clock-rates = <100000000>, <400000000>, <200000000>;
 };
 
 &vopb_mmu {
@@ -897,8 +897,8 @@ ap_i2c_audio: &i2c8 {
 
 &vopl {
 	status = "okay";
-	assigned-clocks = <&cru ACLK_VOP1>, <&cru HCLK_VOP1>;
-	assigned-clock-rates = <400000000>, <200000000>;
+	assigned-clocks = <&cru DCLK_VOP1>, <&cru ACLK_VOP1>, <&cru HCLK_VOP1>;
+	assigned-clock-rates = <100000000>, <400000000>, <200000000>;
 };
 
 &vopl_mmu {
