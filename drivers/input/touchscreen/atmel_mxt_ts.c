@@ -319,7 +319,8 @@
 #define MXT_PIXELS_PER_MM	20
 
 /* Define for TOUCH_MOUTITOUCHSCREEN_T100 Touch Status */
-#define TOUCH_STATUS_DETECT			0x80
+#define TOUCH_STATUS_DETECT		0x80
+#define TOUCH_STATUS_EVENT_NO_EVENT	0x00
 #define TOUCH_STATUS_EVENT_MOVE		0x01
 #define TOUCH_STATUS_EVENT_UNSUP	0x02
 #define TOUCH_STATUS_EVENT_SUP		0x03
@@ -509,6 +510,23 @@ static void mxt_free_object_table(struct mxt_data *data);
 static int mxt_initialize(struct mxt_data *data);
 static int mxt_input_dev_create(struct mxt_data *data);
 static int get_touch_major_pixels(struct mxt_data *data, int touch_channels);
+
+static const char *mxt_event_to_string(int event)
+{
+	static const char *const str[] = {
+		"NO_EVENT",
+		"MOVE    ",
+		"UNSUP   ",
+		"SUP     ",
+		"DOWN    ",
+		"UP      ",
+		"UNSUPSUP",
+		"UNSUPUP ",
+		"DOWNSUP ",
+		"DOWNUP  ",
+	};
+	return event < ARRAY_SIZE(str) ? str[event] : "UNKNOWN ";
+}
 
 static inline bool is_mxt_33x_t(struct mxt_data *data)
 {
@@ -1270,29 +1288,20 @@ static void mxt_input_touchevent_T100(struct mxt_data *data, u8 *message)
 	}
 
 	dev_dbg(dev,
-		"[%u] T%d%c%c%c%c%c%c%c%c%c%c x: %5u y: %5u a: %5u p: %5u m: %d v: [%d,%d]\n",
+		"[%u] T%d%c %s x: %5u y: %5u a: %5u p: %5u m: %d v: [%d,%d]\n",
 		id,
 		touch_type,
-		(status & TOUCH_STATUS_DETECT) ? 'D' : '.',
-		(status & TOUCH_STATUS_EVENT_MOVE) ? 'M' : '.',
-		(status & TOUCH_STATUS_EVENT_UNSUP) ? 'U' : '.',
-		(status & TOUCH_STATUS_EVENT_SUP) ? 'S' : '.',
-		(status & TOUCH_STATUS_EVENT_DOWN) ? 'D' : '.',
-		(status & TOUCH_STATUS_EVENT_UP) ? 'U' : '.',
-		(status & TOUCH_STATUS_EVENT_UNSUPSUP) ? 'U' : '.',
-		(status & TOUCH_STATUS_EVENT_UNSUPUP) ? 'U' : '.',
-		(status & TOUCH_STATUS_EVENT_DOWNSUP) ? 'D' : '.',
-		(status & TOUCH_STATUS_EVENT_DOWNUP) ? 'D' : '.',
+		(status & TOUCH_STATUS_DETECT) ? 'D' : ' ',
+		mxt_event_to_string(event),
 		x, y, area, pressure, touch_major, vector1, vector2);
-
 
 	data->current_id[id] = status & TOUCH_STATUS_DETECT;
 	if (touch_type != TOUCH_STATUS_TYPE_STYLUS) {
 		if (status & TOUCH_STATUS_DETECT) {
-			if (event & TOUCH_STATUS_EVENT_MOVE ||
-					event & TOUCH_STATUS_EVENT_DOWN ||
-					event & TOUCH_STATUS_EVENT_UNSUP ||
-					event == 0x00) {
+			if (event == TOUCH_STATUS_EVENT_MOVE ||
+					event == TOUCH_STATUS_EVENT_DOWN ||
+					event == TOUCH_STATUS_EVENT_UNSUP ||
+					event == TOUCH_STATUS_EVENT_NO_EVENT) {
 				input_mt_slot(input_dev, id);
 				input_mt_report_slot_state(
 					input_dev, MT_TOOL_FINGER, true);
@@ -1309,9 +1318,27 @@ static void mxt_input_touchevent_T100(struct mxt_data *data, u8 *message)
 						 touch_major);
 			}
 		} else {
-			if (event & TOUCH_STATUS_EVENT_UP ||
-					event & TOUCH_STATUS_EVENT_SUP) {
+			if (event == TOUCH_STATUS_EVENT_UP) {
 				input_mt_slot(input_dev, id);
+				input_mt_report_slot_state(input_dev,
+							   MT_TOOL_FINGER,
+							   false);
+			} else if (event == TOUCH_STATUS_EVENT_SUP) {
+				/*
+				 * Suppressed touches will be reported as
+				 * touches with maximum ABS_MT_TOUCH_MAJOR.
+				 * The controller no longer reports suppressed
+				 * touches, so we have to release the touch
+				 * afterwards.
+				 */
+				int max = input_abs_get_max(input_dev,
+							    ABS_MT_TOUCH_MAJOR);
+				input_mt_slot(input_dev, id);
+				input_report_abs(input_dev,
+						 ABS_MT_TOUCH_MAJOR,
+						 max);
+				input_sync(input_dev);
+
 				input_mt_report_slot_state(input_dev,
 							   MT_TOOL_FINGER,
 							   false);
