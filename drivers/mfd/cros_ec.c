@@ -54,7 +54,7 @@ int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 
 	msg->version = 0;
 	msg->command = EC_CMD_GET_NEXT_EVENT;
-	msg->insize = ec_dev->max_response;
+	msg->insize = sizeof(struct ec_response_get_next_event);
 
 	ret = cros_ec_cmd_xfer(ec_dev, msg);
 	if (ret > 0) {
