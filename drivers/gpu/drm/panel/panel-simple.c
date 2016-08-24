@@ -1074,17 +1074,18 @@ static const struct panel_desc samsung_ltn140at29_301 = {
 };
 
 static const struct drm_display_mode sharp_lq123p1jx31_mode = {
-	.clock = 252750,
+	.clock = 266667,
 	.hdisplay = 2400,
 	.hsync_start = 2400 + 48,
 	.hsync_end = 2400 + 48 + 32,
-	.htotal = 2400 + 48 + 32 + 80,
+	.htotal = 2400 + 48 + 32 + 139,
 	.vdisplay = 1600,
 	.vsync_start = 1600 + 3,
 	.vsync_end = 1600 + 3 + 10,
-	.vtotal = 1600 + 3 + 10 + 33,
+	.vtotal = 1600 + 3 + 10 + 84,
 	.vrefresh = 60,
 	.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
+	.type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER,
 };
 
 static const struct panel_desc sharp_lq123p1jx31 = {
