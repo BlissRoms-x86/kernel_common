@@ -604,7 +604,7 @@ static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
 	} else if (dp) {
 		mode = MODE_DFP_DP;
 		id = EXTCON_DISP_DP;
-		ret = extcon_get_property(edev, id, EXTCON_PROP_USB_SUPERSPEED,
+		ret = extcon_get_property(edev, id, EXTCON_PROP_USB_SS,
 					  &property);
 		if (ret) {
 			dev_err(tcphy->dev, "get property failed\n");

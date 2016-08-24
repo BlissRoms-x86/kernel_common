@@ -382,13 +382,13 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 				    EXTCON_PROP_USB_TYPEC_POLARITY,
 				    (union extcon_property_value)(int)polarity);
 		extcon_set_property(info->edev, EXTCON_USB,
-				    EXTCON_PROP_USB_SUPERSPEED,
+				    EXTCON_PROP_USB_SS,
 				    (union extcon_property_value)(int)mux);
 		extcon_set_property(info->edev, EXTCON_USB_HOST,
-				    EXTCON_PROP_USB_SUPERSPEED,
+				    EXTCON_PROP_USB_SS,
 				    (union extcon_property_value)(int)mux);
 		extcon_set_property(info->edev, EXTCON_DISP_DP,
-				    EXTCON_PROP_USB_SUPERSPEED,
+				    EXTCON_PROP_USB_SS,
 				    (union extcon_property_value)(int)mux);
 
 		extcon_sync(info->edev, EXTCON_USB);
@@ -662,11 +662,11 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
 				       EXTCON_PROP_USB_TYPEC_POLARITY);
 	extcon_set_property_capability(info->edev, EXTCON_USB,
-				       EXTCON_PROP_USB_SUPERSPEED);
+				       EXTCON_PROP_USB_SS);
 	extcon_set_property_capability(info->edev, EXTCON_USB_HOST,
-				       EXTCON_PROP_USB_SUPERSPEED);
+				       EXTCON_PROP_USB_SS);
 	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
-				       EXTCON_PROP_USB_SUPERSPEED);
+				       EXTCON_PROP_USB_SS);
 
 	info->dr = DUAL_ROLE_PROP_DR_NONE;
 	info->pr = DUAL_ROLE_PROP_PR_NONE;
