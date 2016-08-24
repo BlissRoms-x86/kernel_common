@@ -437,12 +437,11 @@ static int rockchip_dp_probe(struct platform_device *pdev)
 		}
 
 		panel = of_drm_find_panel(panel_node);
+		of_node_put(panel_node);
 		if (!panel) {
 			DRM_ERROR("failed to find panel\n");
-			of_node_put(panel_node);
 			return -EPROBE_DEFER;
 		}
-		of_node_put(panel_node);
 	}
 
 	dp = devm_kzalloc(dev, sizeof(*dp), GFP_KERNEL);
