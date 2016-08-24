@@ -122,11 +122,6 @@ int cros_ec_motion_send_host_cmd(struct cros_ec_sensors_core_state *state,
 	ret = cros_ec_cmd_xfer_status(state->ec, state->msg);
 	if (ret < 0)
 		return -EIO;
-
-	if (ret &&
-	    state->resp != (struct ec_response_motion_sense *)state->msg->data)
-		memcpy(state->resp, state->msg->data, ret);
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(cros_ec_motion_send_host_cmd);
