@@ -520,14 +520,20 @@ static void cros_usb_pd_print_log_entry(struct ec_response_pd_log *r,
 			 >> CHARGE_FLAGS_TYPE_SHIFT;
 		chg_type = type_idx < ARRAY_SIZE(chg_type_names) ?
 			chg_type_names[type_idx] : "???";
+		meas = (struct usb_chg_measures *)r->payload;
 
 		if ((role_idx == USB_PD_PORT_POWER_DISCONNECTED) ||
 		    (role_idx == USB_PD_PORT_POWER_SOURCE)) {
 			APPEND_STRING(buf, len, "%s", role);
+
+			if ((role_idx == USB_PD_PORT_POWER_SOURCE) &&
+			    (meas->current_max))
+				APPEND_STRING(buf, len, " %dmA",
+					      meas->current_max);
+
 			break;
 		}
 
-		meas = (struct usb_chg_measures *)r->payload;
 		APPEND_STRING(buf, len, "%s %s %s %dmV max %dmV / %dmA", role,
 			r->data & CHARGE_FLAGS_DUAL_ROLE ? "DRP" : "Charger",
 			chg_type,
