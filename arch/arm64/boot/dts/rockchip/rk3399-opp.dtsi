@@ -70,7 +70,7 @@
 		};
 		opp05 {
 			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <1025000>;
+			opp-microvolt = <1050000>;
 		};
 	};
 
