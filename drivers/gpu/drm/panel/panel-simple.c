@@ -1145,6 +1145,11 @@ static const struct panel_desc starry_kr122ea0sra = {
 		.width = 263,
 		.height = 164,
 	},
+	.delay = {
+		.prepare = 10 + 200,
+		.enable = 50,
+		.unprepare = 10 + 500,
+	},
 };
 
 static const struct of_device_id platform_of_match[] = {
