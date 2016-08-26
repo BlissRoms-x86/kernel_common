@@ -179,7 +179,7 @@
 		regulator-name = "ppvar_bigcpu";
 		status = "okay";
 
-		pwms = <&pwm1 0 3333 0>;
+		pwms = <&pwm1 0 3337 0>;
 
 		/* EC turns on w/ ap_core_en; always on for AP */
 		regulator-always-on;
@@ -201,7 +201,7 @@
 		regulator-name = "ppvar_litcpu";
 		status = "okay";
 
-		pwms = <&pwm2 0 3333 0>;
+		pwms = <&pwm2 0 3337 0>;
 
 		/* EC turns on w/ ap_core_en; always on for AP */
 		regulator-always-on;
@@ -223,7 +223,7 @@
 		regulator-name = "ppvar_gpu";
 		status = "okay";
 
-		pwms = <&pwm0 0 3333 0>;
+		pwms = <&pwm0 0 3337 0>;
 
 		/* EC turns on w/ ap_core_en; always on for AP */
 		regulator-always-on;
@@ -245,7 +245,7 @@
 		regulator-name = "ppvar_centerlogic";
 		status = "okay";
 
-		pwms = <&pwm3 0 3333 0>;
+		pwms = <&pwm3 0 3337 0>;
 
 		/* EC turns on w/ ppvar_centerlogic_en; always on for AP */
 		regulator-always-on;
