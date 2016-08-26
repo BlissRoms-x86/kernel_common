@@ -246,7 +246,7 @@ int rk3399_vpu_vp8e_init(struct rockchip_vpu_ctx *ctx)
 		return ret;
 	}
 
-	mv_size = DIV_ROUND_UP(width, 16) * DIV_ROUND_UP(height, 16) / 4;
+	mv_size = DIV_ROUND_UP(width, 16) * DIV_ROUND_UP(height, 16) * 4;
 	ret = rockchip_vpu_aux_buf_alloc(vpu, &ctx->hw.vp8e.mv_buf, mv_size);
 	if (ret) {
 		vpu_err("failed to allocate MV buffer\n");
