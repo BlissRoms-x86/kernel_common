@@ -541,6 +541,10 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 
 	cpufreq_update_policy(cpu);
 
+	dev_info(cpufreq_device->cpu_dev,
+		 "Cooling state set to %lu. New max freq = %u\n",
+		 state, clip_freq);
+
 	return 0;
 }
 
