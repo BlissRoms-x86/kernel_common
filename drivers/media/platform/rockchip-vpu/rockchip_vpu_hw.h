@@ -25,6 +25,8 @@
 #define ROCKCHIP_HW_PARAMS_SIZE		5487
 #define ROCKCHIP_RET_PARAMS_SIZE	488
 
+#define ROCKCHIP_VPU_CABAC_TABLE_SIZE	(52 * 2 * 464)
+
 struct rockchip_vpu_dev;
 struct rockchip_vpu_ctx;
 struct rockchip_vpu_buf;

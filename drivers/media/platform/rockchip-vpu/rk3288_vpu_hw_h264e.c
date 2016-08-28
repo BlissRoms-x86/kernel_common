@@ -712,6 +712,14 @@ static const s32 h264_context_init[H264E_CABAC_IDC_NUM][460][2] = {
 	}
 };
 
+static void buffer_cpu_to_be64(u64 *buf, u32 size)
+{
+	u32 i;
+
+	for (i = 0; i < size; ++i)
+		buf[i] = cpu_to_be64(buf[i]);
+}
+
 #define CLIP3(v, min, max)  ((v) < (min) ? (min) : ((v) > (max) ? (max) : (v)))
 
 static void rk3288_vpu_h264e_init_cabac_table(struct rockchip_vpu_ctx *ctx)
@@ -750,6 +758,8 @@ static void rk3288_vpu_h264e_init_cabac_table(struct rockchip_vpu_ctx *ctx)
 				}
 			}
 		}
+		buffer_cpu_to_be64((u64 *)table,
+				   ROCKCHIP_VPU_CABAC_TABLE_SIZE / sizeof(u64));
 	}
 }
 
