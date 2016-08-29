@@ -1268,7 +1268,7 @@ static const struct iommu_ops rk_iommu_ops = {
 
 static int rk_iommu_power_on(struct rk_iommu *iommu)
 {
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&iommu->pm_mutex);
 
