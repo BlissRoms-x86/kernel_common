@@ -15,6 +15,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/vmalloc.h>
 
 #include "rockchip_vpu_common.h"
 
