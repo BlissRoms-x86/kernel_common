@@ -189,6 +189,8 @@
 		regulator-max-microvolt = <1318605>;
 
 		settle-time-up-us = <200>;
+		slowest-decay-rate = <225>;
+		safe-fall-percent = <16>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
@@ -210,6 +212,8 @@
 		regulator-max-microvolt = <1300000>;
 
 		settle-time-up-us = <200>;
+		slowest-decay-rate = <225>;
+		safe-fall-percent = <16>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
@@ -231,6 +235,8 @@
 		regulator-max-microvolt = <1226164>;
 
 		settle-time-up-us = <200>;
+		slowest-decay-rate = <225>;
+		safe-fall-percent = <16>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
@@ -252,6 +258,8 @@
 		regulator-max-microvolt = <1045273>;
 
 		settle-time-up-us = <200>;
+		slowest-decay-rate = <225>;
+		safe-fall-percent = <16>;
 
 		pwm-supply = <&ppvar_sys>;
 		pwm-dutycycle-range = <100 0>;
