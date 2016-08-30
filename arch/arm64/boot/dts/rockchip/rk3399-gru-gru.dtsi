@@ -61,9 +61,6 @@
 		enable-active-high;
 		gpio = <&gpio1 1 GPIO_ACTIVE_HIGH>;
 
-		regulator-always-on;		// For bringup???
-		regulator-boot-on;		// For bringup???
-
 		vin-supply = <&pp1800>;
 	};
 
@@ -76,9 +73,6 @@
 
 		enable-active-high;
 		gpio = <&gpio1 1 GPIO_ACTIVE_HIGH>;
-
-		regulator-always-on;		// For bringup???
-		regulator-boot-on;		// For bringup???
 
 		vin-supply = <&pp3300>;
 	};
@@ -196,6 +190,9 @@ ap_i2c_nfc: &i2c7 {
 
 		interrupt-parent = <&gpio1>;
 		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
+
+		vdd-supply = <&pp1800_fp>;
+		vddio-supply = <&pp3300_fp>;
 	};
 };
 
