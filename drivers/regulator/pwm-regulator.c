@@ -48,6 +48,8 @@ struct pwm_regulator_data {
 
 	/* Enable GPIO */
 	struct gpio_desc *enb_gpio;
+
+	u32 settle_time_up_us;
 };
 
 struct pwm_voltages {
@@ -195,6 +197,7 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	unsigned int max_uV_duty = drvdata->continuous.max_uV_dutycycle;
 	unsigned int duty_unit = drvdata->continuous.dutycycle_unit;
 	unsigned int ramp_delay = rdev->constraints->ramp_delay;
+	unsigned int delay = 0;
 	int min_uV = rdev->constraints->min_uV;
 	int max_uV = rdev->constraints->max_uV;
 	int diff_uV = max_uV - min_uV;
@@ -233,12 +236,17 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 		return ret;
 	}
 
-	if ((ramp_delay == 0) || !pwm_regulator_is_enabled(rdev))
+	if (req_min_uV > old_uV)
+		delay = drvdata->settle_time_up_us;
+
+	if (ramp_delay != 0)
+		/* Adjust ramp delay to uS and add to settle time. */
+		delay += DIV_ROUND_UP(abs(req_min_uV - old_uV), ramp_delay);
+
+	if ((delay == 0) || !pwm_regulator_is_enabled(rdev))
 		return 0;
 
-	/* Ramp delay is in uV/uS. Adjust to uS and delay */
-	ramp_delay = DIV_ROUND_UP(abs(req_min_uV - old_uV), ramp_delay);
-	usleep_range(ramp_delay, ramp_delay + DIV_ROUND_UP(ramp_delay, 10));
+	usleep_range(delay, delay + DIV_ROUND_UP(delay, 10));
 
 	return 0;
 }
@@ -367,6 +375,9 @@ static int pwm_regulator_probe(struct platform_device *pdev)
 					       &drvdata->desc);
 	if (!init_data)
 		return -ENOMEM;
+
+	of_property_read_u32(np, "settle-time-up-us",
+			&drvdata->settle_time_up_us);
 
 	config.of_node = np;
 	config.dev = &pdev->dev;

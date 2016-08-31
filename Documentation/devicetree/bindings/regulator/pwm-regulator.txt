@@ -34,6 +34,12 @@ Only required for Voltage Table Mode:
 			    First cell is voltage in microvolts (uV)
 			    Second cell is duty-cycle in percent (%)
 
+Optional properties:
+--------------------
+- settle-time-up-us:	Time to settle down after a voltage increase
+			(unit: us). For regulators with a ramp delay
+			the two values are added.
+
 Optional properties for Continuous mode:
 - pwm-dutycycle-unit:	Integer value encoding the dutycycle unit. If not
 			defined, <100> is assumed, meaning that
