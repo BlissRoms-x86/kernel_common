@@ -155,6 +155,11 @@ static int pwm_regulator_get_voltage(struct regulator_dev *rdev)
 
 	voltage = pwm_get_relative_duty_cycle(&pstate, duty_unit);
 
+	/*
+	 * The dutycycle for min_uV might be greater than the one for max_uV.
+	 * This is happening when the user needs an inversed polarity, but the
+	 * PWM device does not support inversing it in hardware.
+	 */
 	if (max_uV_duty < min_uV_duty) {
 		voltage = min_uV_duty - voltage;
 		diff_duty = min_uV_duty - max_uV_duty;
@@ -181,13 +186,18 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	int max_uV = rdev->constraints->max_uV;
 	int diff_uV = max_uV - min_uV;
 	struct pwm_state pstate;
+	int old_uV = pwm_regulator_get_voltage(rdev);
 	unsigned int diff_duty;
 	unsigned int dutycycle;
-	int old_uV = pwm_regulator_get_voltage(rdev);
 	int ret;
 
 	pwm_prepare_new_state(drvdata->pwm, &pstate);
 
+	/*
+	 * The dutycycle for min_uV might be greater than the one for max_uV.
+	 * This is happening when the user needs an inversed polarity, but the
+	 * PWM device does not support inversing it in hardware.
+	 */
 	if (max_uV_duty < min_uV_duty)
 		diff_duty = min_uV_duty - max_uV_duty;
 	else
