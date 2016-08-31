@@ -228,45 +228,43 @@ int vgem_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct drm_file *priv = filp->private_data;
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_vma_offset_node *node;
-	struct drm_gem_object *obj;
-	struct drm_vgem_gem_object *vgem_obj;
+	struct drm_gem_object *obj = NULL;
 	int ret = 0;
 
-	mutex_lock(&dev->struct_mutex);
+	drm_vma_offset_lock_lookup(dev->vma_offset_manager);
 
 	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
-					   vma->vm_pgoff,
-					   vma_pages(vma));
-	if (!node) {
-		ret = -EINVAL;
-		goto out_unlock;
-	} else if (!drm_vma_node_is_allowed(node, filp)) {
-		ret = -EACCES;
-		goto out_unlock;
+						  vma->vm_pgoff,
+						  vma_pages(vma));
+	if (likely(node)) {
+		obj = container_of(node, struct drm_gem_object, vma_node);
+		if (!kref_get_unless_zero(&obj->refcount))
+			obj = NULL;
 	}
+	drm_vma_offset_unlock_lookup(dev->vma_offset_manager);
 
-	obj = container_of(node, struct drm_gem_object, vma_node);
+	if (!obj)
+		return -EINVAL;
 
-	vgem_obj = to_vgem_bo(obj);
+	if (!drm_vma_node_is_allowed(node, filp)) {
+		ret = -EACCES;
+		goto unref;
+	}
 
 	if (obj->import_attach) {
 		ret = dma_buf_mmap(obj->import_attach->dmabuf, vma, 0);
-		goto out_unlock;
+		goto unref;
 	}
 
 	ret = drm_gem_mmap_obj(obj, obj->size, vma);
 	if (ret < 0)
-		goto out_unlock;
+		goto unref;
 
 	vma->vm_flags |= VM_MIXEDMAP;
 	vma->vm_flags &= ~VM_PFNMAP;
 
-	mutex_unlock(&dev->struct_mutex);
-	return ret;
-
-out_unlock:
-	mutex_unlock(&dev->struct_mutex);
-
+unref:
+	drm_gem_object_unreference_unlocked(obj);
 	return ret;
 }
 
