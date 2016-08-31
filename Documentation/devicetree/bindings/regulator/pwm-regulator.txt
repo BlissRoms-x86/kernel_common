@@ -39,6 +39,13 @@ Optional properties:
 - settle-time-up-us:	Time to settle down after a voltage increase
 			(unit: us). For regulators with a ramp delay
 			the two values are added.
+- safe-fall-percent:	If specified, it's not safe to transition the regulator
+			down faster than this amount and bigger jumps need to
+			be broken into more than one step.
+- slowest-decay-rate:	Describes how slowly the regulator voltage will
+			decay down in the worst case (lightest expected load).
+			Specified in uV / us (like main regulator ramp rate).
+			This is required when safe-fall-percent is specified.
 
 Optional properties for Continuous mode:
 - pwm-dutycycle-unit:	Integer value encoding the dutycycle unit. If not

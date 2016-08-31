@@ -50,6 +50,8 @@ struct pwm_regulator_data {
 	struct gpio_desc *enb_gpio;
 
 	u32 settle_time_up_us;
+	u32 slowest_decay_rate;
+	u32 safe_fall_percent;
 };
 
 struct pwm_voltages {
@@ -188,9 +190,8 @@ static int pwm_regulator_get_voltage(struct regulator_dev *rdev)
 	return voltage + min_uV;
 }
 
-static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
-				     int req_min_uV, int req_max_uV,
-				     unsigned int *selector)
+static int _pwm_regulator_set_voltage(struct regulator_dev *rdev,
+				      int old_uV, int req_uV)
 {
 	struct pwm_regulator_data *drvdata = rdev_get_drvdata(rdev);
 	unsigned int min_uV_duty = drvdata->continuous.min_uV_dutycycle;
@@ -202,7 +203,6 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	int max_uV = rdev->constraints->max_uV;
 	int diff_uV = max_uV - min_uV;
 	struct pwm_state pstate;
-	int old_uV = pwm_regulator_get_voltage(rdev);
 	unsigned int diff_duty;
 	unsigned int dutycycle;
 	int ret;
@@ -219,8 +219,7 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	else
 		diff_duty = max_uV_duty - min_uV_duty;
 
-	dutycycle = DIV_ROUND_CLOSEST_ULL((u64)(req_min_uV - min_uV) *
-					  diff_duty,
+	dutycycle = DIV_ROUND_CLOSEST_ULL((u64)(req_uV - min_uV) * diff_duty,
 					  diff_uV);
 
 	if (max_uV_duty < min_uV_duty)
@@ -236,17 +235,58 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 		return ret;
 	}
 
-	if (req_min_uV > old_uV)
+	if (req_uV > old_uV)
 		delay = drvdata->settle_time_up_us;
 
 	if (ramp_delay != 0)
 		/* Adjust ramp delay to uS and add to settle time. */
-		delay += DIV_ROUND_UP(abs(req_min_uV - old_uV), ramp_delay);
+		delay += DIV_ROUND_UP(abs(req_uV - old_uV), ramp_delay);
 
 	if ((delay == 0) || !pwm_regulator_is_enabled(rdev))
 		return 0;
 
 	usleep_range(delay, delay + DIV_ROUND_UP(delay, 10));
+
+	return 0;
+}
+
+static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
+				     int req_min_uV, int req_max_uV,
+				     unsigned int *selector)
+{
+	struct pwm_regulator_data *drvdata = rdev_get_drvdata(rdev);
+	int safe_fall_percent = drvdata->safe_fall_percent;
+	int slowest_decay_rate = drvdata->slowest_decay_rate;
+	int orig_uV = pwm_regulator_get_voltage(rdev);
+	int uV = orig_uV;
+	int ret;
+
+	/* If we're rising or we're falling but don't need to slow; easy */
+	if (req_min_uV >= uV || !safe_fall_percent)
+		return _pwm_regulator_set_voltage(rdev, uV, req_min_uV);
+
+	while (uV > req_min_uV) {
+		int max_drop_uV = (uV * safe_fall_percent) / 100;
+		int next_uV;
+		int delay;
+
+		/* Make sure no infinite loop even in crazy cases */
+		if (max_drop_uV == 0)
+			max_drop_uV = 1;
+
+		next_uV = max_t(int, req_min_uV, uV - max_drop_uV);
+		delay = DIV_ROUND_UP(uV - next_uV, slowest_decay_rate);
+
+		ret = _pwm_regulator_set_voltage(rdev, uV, next_uV);
+		if (ret) {
+			/* Try to go back to original */
+			_pwm_regulator_set_voltage(rdev, uV, orig_uV);
+			return ret;
+		}
+
+		usleep_range(delay, delay + DIV_ROUND_UP(delay, 10));
+		uV = next_uV;
+	}
 
 	return 0;
 }
@@ -378,6 +418,29 @@ static int pwm_regulator_probe(struct platform_device *pdev)
 
 	of_property_read_u32(np, "settle-time-up-us",
 			&drvdata->settle_time_up_us);
+	of_property_read_u32(np, "slowest-decay-rate",
+			&drvdata->slowest_decay_rate);
+	of_property_read_u32(np, "safe-fall-percent",
+			&drvdata->safe_fall_percent);
+
+	/* We treat as int above; sanity check */
+	if (drvdata->slowest_decay_rate > INT_MAX) {
+		dev_err(&pdev->dev, "slowest-decay-rate (%u) too big\n",
+			(unsigned int)drvdata->slowest_decay_rate);
+		return -EINVAL;
+	}
+
+	if (drvdata->safe_fall_percent > 100) {
+		dev_err(&pdev->dev, "safe-fall-percent (%u) > 100\n",
+			(unsigned int)drvdata->safe_fall_percent);
+		return -EINVAL;
+	}
+
+	if (drvdata->safe_fall_percent && !drvdata->slowest_decay_rate) {
+		dev_err(&pdev->dev,
+			"slowest-decay-rate required safe-fall-percent\n");
+		return -EINVAL;
+	}
 
 	config.of_node = np;
 	config.dev = &pdev->dev;
