@@ -40,11 +40,10 @@
 /* The ring is a FIFO that return sensor information from
  * the single EC FIFO.
  * There are always 5 channels returned:
-* | ID | FLAG | X | Y | Z | Timestamp |
+ * | ID | FLAG | X | Y | Z | Timestamp |
  * ID is the EC sensor id
- * FLAG is for meta data, only flush bit is defined.
+ * FLAG are extra information provided by the EC.
  */
-#define CROS_EC_FLUSH_BIT 1
 
 enum {
 	CHANNEL_SENSOR_ID,
@@ -140,7 +139,11 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 	if (in->flags & MOTIONSENSE_SENSOR_FLAG_FLUSH) {
 		out->sensor_id = in->sensor_num;
 		out->timestamp = *current_timestamp;
-		out->flag = CROS_EC_FLUSH_BIT;
+		out->flag = in->flags;
+		/*
+		 * No other payload information provided with
+		 * flush ack.
+		 */
 		return true;
 	}
 	if (in->flags & MOTIONSENSE_SENSOR_FLAG_TIMESTAMP)
@@ -150,7 +153,7 @@ bool cros_ec_ring_process_event(const struct cros_ec_fifo_info *fifo_info,
 	/* Regular sample */
 	out->sensor_id = in->sensor_num;
 	out->timestamp = *current_timestamp;
-	out->flag = 0;
+	out->flag = in->flags;
 	for (axis = X; axis < MAX_AXIS; axis++)
 		out->vector[axis] = in->data[axis];
 	return true;
