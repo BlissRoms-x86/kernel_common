@@ -962,6 +962,8 @@ static int dwc3_probe(struct platform_device *pdev)
 				"snps,dis_u2_freeclk_exists_quirk");
 	dwc->dis_del_phy_power_chg_quirk = device_property_read_bool(dev,
 				"snps,dis_del_phy_power_chg_quirk");
+	dwc->usb3_slow_suspend_quirk = device_property_read_bool(dev,
+				"snps,usb3-slow-suspend-quirk");
 
 	dwc->tx_de_emphasis_quirk = device_property_read_bool(dev,
 				"snps,tx_de_emphasis_quirk");

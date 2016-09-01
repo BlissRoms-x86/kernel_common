@@ -46,6 +46,7 @@ int dwc3_host_init(struct dwc3 *dwc)
 	memset(&pdata, 0, sizeof(pdata));
 
 	pdata.usb3_lpm_capable = dwc->usb3_lpm_capable;
+	pdata.usb3_slow_suspend = dwc->usb3_slow_suspend_quirk;
 
 	ret = platform_device_add_data(xhci, &pdata, sizeof(pdata));
 	if (ret) {
