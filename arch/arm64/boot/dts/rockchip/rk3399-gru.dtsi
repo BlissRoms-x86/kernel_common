@@ -936,6 +936,7 @@ ap_i2c_audio: &i2c8 {
 	pinctrl-names = "default";
 	pinctrl-0 = <
 		&ap_pwroff	/* AP will auto-assert this when in S3 */
+		&clk_32k	/* This pin is always 32k on gru boards */
 
 		/*
 		 * We want this driven low ASAP; firmware should help us, but
