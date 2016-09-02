@@ -581,7 +581,7 @@ static void rk3399_vdec_vp9d_config_registers(struct rockchip_vpu_ctx *ctx)
 	bit_depth = frmhdr->bit_depth;
 	align_height = round_up(ctx->dst_fmt.height, SB_DIM);
 
-	aligned_pitch = round_up(ctx->dst_fmt.width * bit_depth, 128) / 8;
+	aligned_pitch = round_up(ctx->dst_fmt.width * bit_depth, 512) / 8;
 	y_len = align_height * aligned_pitch;
 	uv_len = y_len / 2;
 	yuv_len = y_len + uv_len;
@@ -660,7 +660,7 @@ static void rk3399_vdec_vp9d_config_registers(struct rockchip_vpu_ctx *ctx)
 		vdpu_write_relaxed(vpu, reg, ref_config[i].reg_frm_size);
 
 		align_height = round_up(height, SB_DIM);
-		aligned_pitch = round_up(width * bit_depth, 128) / 8;
+		aligned_pitch = round_up(width * bit_depth, 512) / 8;
 
 		y_len = aligned_pitch * align_height;
 		uv_len = y_len / 2;
