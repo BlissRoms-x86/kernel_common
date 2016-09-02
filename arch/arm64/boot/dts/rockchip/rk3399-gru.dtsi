@@ -486,7 +486,6 @@
 	};
 
 	/* END REGULATORS */
-
 	firmware {
 		chromeos {
 			pinctrl-names = "default";
@@ -526,10 +525,21 @@
 
 	sound {
 		compatible = "rockchip,rk3399-gru-sound";
-		rockchip,cpu = <&i2s0>;
-		rockchip,codec = <&max98357a &headsetcodec &codec>;
-
+		rockchip,cpu = <&i2s0 &i2s2>;
+		rockchip,codec = <&max98357a &headsetcodec &codec &cdn_dp>;
 		dmic-delay = <20>;
+	};
+};
+
+&cdn_dp {
+	status = "okay";
+	extcon = <&usbc_extcon0>, <&usbc_extcon1>;
+
+	ports {
+		/* Don't use vopl for dp, save it for edp */
+		dp_in: port {
+			/delete-node/ endpoint@1;
+		};
 	};
 };
 
@@ -588,10 +598,6 @@
 };
 
 &display_subsystem {
-	status = "okay";
-};
-
-&edp {
 	status = "okay";
 };
 
@@ -709,6 +715,10 @@ ap_i2c_audio: &i2c8 {
 };
 
 &i2s0 {
+	status = "okay";
+};
+
+&i2s2 {
 	status = "okay";
 };
 
@@ -946,6 +956,11 @@ ap_i2c_audio: &i2c8 {
 	status = "okay";
 	assigned-clocks = <&cru ACLK_VOP1>, <&cru HCLK_VOP1>, <&cru DCLK_VOP1>;
 	assigned-clock-rates = <400000000>, <200000000>, <100000000>;
+
+	/* Don't use vopl for dp, save it for edp */
+	vopl_out: port {
+		/delete-node/ endpoint@1;
+	};
 };
 
 &vopl_mmu {
