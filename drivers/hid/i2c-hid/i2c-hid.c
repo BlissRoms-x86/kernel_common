@@ -38,6 +38,7 @@
 #include <linux/acpi.h>
 #include <linux/of.h>
 #include <linux/gpio/consumer.h>
+#include <linux/regulator/consumer.h>
 
 #include <linux/i2c/i2c-hid.h>
 
@@ -151,6 +152,7 @@ struct i2c_hid {
 	struct i2c_hid_platform_data pdata;
 
 	bool			irq_wake_enabled;
+	struct regulator	*supply;
 };
 
 static int __i2c_hid_command(struct i2c_client *client,
@@ -973,6 +975,21 @@ static int i2c_hid_probe(struct i2c_client *client,
 	if (!ihid)
 		return -ENOMEM;
 
+	ihid->supply = devm_regulator_get(&client->dev, "power");
+	if (IS_ERR(ihid->supply)) {
+		ret = PTR_ERR(ihid->supply);
+		dev_err(&client->dev, "Failed to get power regulator: %d\n",
+			ret);
+		return ret;
+	}
+
+	ret = regulator_enable(ihid->supply);
+	if (ret < 0) {
+		dev_err(&client->dev, "Failed to enable power regulator: %d\n",
+			ret);
+		return ret;
+	}
+
 	if (client->dev.of_node) {
 		ret = i2c_hid_of_probe(client, &ihid->pdata);
 		if (ret)
@@ -1103,6 +1120,8 @@ static int i2c_hid_remove(struct i2c_client *client)
 	if (ihid->desc)
 		gpiod_put(ihid->desc);
 
+	regulator_disable(ihid->supply);
+
 	kfree(ihid);
 
 	acpi_dev_remove_driver_gpios(ACPI_COMPANION(&client->dev));
@@ -1155,6 +1174,11 @@ static int i2c_hid_suspend(struct device *dev)
 		else
 			hid_warn(hid, "Failed to enable irq wake: %d\n",
 				wake_status);
+	} else {
+		ret = regulator_disable(ihid->supply);
+		if (ret < 0)
+			hid_warn(hid, "Failed to disable power supply: %d\n",
+				 ret);
 	}
 
 	return 0;
@@ -1168,7 +1192,12 @@ static int i2c_hid_resume(struct device *dev)
 	struct hid_device *hid = ihid->hid;
 	int wake_status;
 
-	if (device_may_wakeup(&client->dev) && ihid->irq_wake_enabled) {
+	if (!device_may_wakeup(&client->dev)) {
+		ret = regulator_enable(ihid->supply);
+		if (ret < 0)
+			hid_warn(hid, "Failed to enable power supply: %d\n",
+				 ret);
+	} else if (ihid->irq_wake_enabled) {
 		wake_status = disable_irq_wake(ihid->irq);
 		if (!wake_status)
 			ihid->irq_wake_enabled = false;
