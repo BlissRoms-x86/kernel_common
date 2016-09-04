@@ -17,6 +17,9 @@ Required properties:
 - interrupt-parent: the phandle for the interrupt controller
 - interrupts: interrupt line
 
+Optional properties:
+- power-supply: phandle of the regulator that provides the supply voltage.
+
 Example:
 
 	i2c-hid-dev@2c {
