@@ -70,9 +70,13 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&cpu3_pen_pwr_en>;
 
-		// TODO: Add support in hid-over-i2c for powering off?
-		regulator-always-on;
-		regulator-boot-on;
+		/*
+		 * Need to wait for regulators to ramp and for the digitizer firmware to
+		 * initialize. Testing shows 10ms is enough, but use a conservative 40ms
+		 * for now.
+		 * TODO(crosbug.com/p/56993): get proper numbers.
+		 */
+		regulator-enable-ramp-delay = <40000>;
 
 		enable-active-high;
 		gpio = <&gpio4 30 GPIO_ACTIVE_HIGH>;
@@ -256,8 +260,7 @@ ap_i2c_dig: &i2c2 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&cpu1_dig_irq_l &cpu1_dig_pdct_l>;
 
-		// TODO: hid-over-i2c should probably have regulator support?
-		// See "p3_3v_dig"
+		power-supply = <&p3_3v_dig>;
 
 		interrupt-parent = <&gpio2>;
 		interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
