@@ -320,8 +320,11 @@ static int sbs_get_battery_presence_and_health(
 					MANUFACTURER_ACCESS_STATUS);
 
 	ret = sbs_read_word_data(client, sbs_data[REG_MANUFACTURER_DATA].addr);
-	if (ret < 0)
+	if (ret < 0) {
+		if (psp == POWER_SUPPLY_PROP_PRESENT)
+			val->intval = 0; /* battery removed */
 		return ret;
+	}
 
 	if (ret < sbs_data[REG_MANUFACTURER_DATA].min_value ||
 	    ret > sbs_data[REG_MANUFACTURER_DATA].max_value) {
