@@ -20,6 +20,18 @@ Optional properties:
   - pwm-delay-us: delay between setting an initial (non-zero) PWM value and
                   enabling the backlight, and also the delay between disabling
                   the backlight and setting PWM value to 0.
+  - brightness-levels-scale: this can be used instead of 'brightness-levels',
+                             to describe a linear range of brightness levels.
+                             So rather than specifying 'brightness-levels = <0
+                             1 2 ... 65535>', one can simply say
+                             'brightness-levels-scale = <0x10000>'. Note:
+                             upstream maintainers haven't liked this sort of
+                             property, since they'd prefer we describe the
+                             levels in terms of a curve (e.g., parabolic) to
+                             represent perceived luminance (?), but we've
+                             always exposed the linear range instead, so rather
+                             than unnecessarily bloating device trees, let's do
+                             the simple thing.
 
 [0]: Documentation/devicetree/bindings/pwm/pwm.txt
 [1]: Documentation/devicetree/bindings/gpio/gpio.txt

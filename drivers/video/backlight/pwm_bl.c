@@ -155,24 +155,35 @@ static int pwm_backlight_parse_dt(struct device *dev,
 
 	/* determine the number of brightness levels */
 	prop = of_find_property(node, "brightness-levels", &length);
-	if (!prop)
-		return -EINVAL;
-
-	data->max_brightness = length / sizeof(u32);
+	if (!prop) {
+		/* total number of brightness levels */
+		ret = of_property_read_u32(node, "brightness-levels-scale",
+					   &value);
+		if (ret < 0)
+			return ret;
+		if (value > INT_MAX)
+			return -EINVAL;
+		data->max_brightness = value;
+	} else {
+		data->max_brightness = length / sizeof(u32);
+	}
 
 	/* read brightness levels from DT property */
 	if (data->max_brightness > 0) {
 		size_t size = sizeof(*data->levels) * data->max_brightness;
 
-		data->levels = devm_kzalloc(dev, size, GFP_KERNEL);
-		if (!data->levels)
-			return -ENOMEM;
+		if (prop) {
+			data->levels = devm_kzalloc(dev, size, GFP_KERNEL);
+			if (!data->levels)
+				return -ENOMEM;
 
-		ret = of_property_read_u32_array(node, "brightness-levels",
-						 data->levels,
-						 data->max_brightness);
-		if (ret < 0)
-			return ret;
+			ret = of_property_read_u32_array(node,
+							 "brightness-levels",
+							 data->levels,
+							 data->max_brightness);
+			if (ret < 0)
+				return ret;
+		}
 
 		ret = of_property_read_u32(node, "default-brightness-level",
 					   &value);
