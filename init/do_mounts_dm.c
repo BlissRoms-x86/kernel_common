@@ -260,7 +260,7 @@ parse_fail:
 	return NULL;
 }
 
-static struct dm_device *dm_parse_args(void)
+static struct dm_device * __init dm_parse_args(void)
 {
 	struct dm_device *devices = NULL;
 	struct dm_device **tail = &devices;
