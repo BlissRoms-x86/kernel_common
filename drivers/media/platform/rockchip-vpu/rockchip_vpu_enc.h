@@ -25,9 +25,8 @@
 #ifndef ROCKCHIP_VPU_ENC_H_
 #define ROCKCHIP_VPU_ENC_H_
 
-struct vb2_ops *get_enc_queue_ops(void);
-const struct v4l2_ioctl_ops *get_enc_v4l2_ioctl_ops(void);
-struct rockchip_vpu_fmt *get_enc_def_fmt(bool src);
+struct vb2_ops *rockchip_get_enc_queue_ops(void);
+const struct v4l2_ioctl_ops *rockchip_get_enc_v4l2_ioctl_ops(void);
 int rockchip_vpu_enc_init(struct rockchip_vpu_ctx *ctx);
 void rockchip_vpu_enc_exit(struct rockchip_vpu_ctx *ctx);
 int rockchip_vpu_enc_init_dummy_ctx(struct rockchip_vpu_dev *dev);

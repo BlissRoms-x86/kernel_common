@@ -37,8 +37,8 @@
 #include "rockchip_vpu_enc.h"
 #include "rockchip_vpu_hw.h"
 
-int debug;
-module_param(debug, int, S_IRUGO | S_IWUSR);
+int rockchip_vpu_debug;
+module_param_named(debug, rockchip_vpu_debug, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug,
 		 "Debug level - higher value produces more verbose messages");
 
@@ -418,9 +418,9 @@ static int rockchip_vpu_open(struct file *filp)
 	q->buf_struct_size = sizeof(struct rockchip_vpu_buf);
 
 	if (vdev == dev->vfd_enc) {
-		q->ops = get_enc_queue_ops();
+		q->ops = rockchip_get_enc_queue_ops();
 	} else if (vdev == dev->vfd_dec) {
-		q->ops = get_dec_queue_ops();
+		q->ops = rockchip_get_dec_queue_ops();
 		q->use_dma_bidirectional = 1;
 	}
 
@@ -442,9 +442,9 @@ static int rockchip_vpu_open(struct file *filp)
 	q->buf_struct_size = sizeof(struct rockchip_vpu_buf);
 
 	if (vdev == dev->vfd_enc)
-		q->ops = get_enc_queue_ops();
+		q->ops = rockchip_get_enc_queue_ops();
 	else if (vdev == dev->vfd_dec)
-		q->ops = get_dec_queue_ops();
+		q->ops = rockchip_get_dec_queue_ops();
 
 	q->mem_ops = &vb2_dma_contig_memops;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
@@ -644,12 +644,12 @@ static int rockchip_vpu_video_device_register(struct rockchip_vpu_dev *vpu,
 	vfd->vfl_dir = VFL_DIR_M2M;
 
 	if (encoder) {
-		vfd->ioctl_ops = get_enc_v4l2_ioctl_ops();
+		vfd->ioctl_ops = rockchip_get_enc_v4l2_ioctl_ops();
 		snprintf(vfd->name, sizeof(vfd->name), "%s-enc",
 			 match->compatible);
 		vpu->vfd_enc = vfd;
 	} else {
-		vfd->ioctl_ops = get_dec_v4l2_ioctl_ops();
+		vfd->ioctl_ops = rockchip_get_dec_v4l2_ioctl_ops();
 		snprintf(vfd->name, sizeof(vfd->name), "%s-dec",
 			 match->compatible);
 		vpu->vfd_dec = vfd;

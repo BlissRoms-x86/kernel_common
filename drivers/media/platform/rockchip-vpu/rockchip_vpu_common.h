@@ -617,11 +617,11 @@ struct vp9_decoder_probs_hw {
  * bit 5 - detail function enter/leave trace information
  * bit 6 - register write/read information
  */
-extern int debug;
+extern int rockchip_vpu_debug;
 
 #define vpu_debug(level, fmt, args...)				\
 	do {							\
-		if (debug & BIT(level))				\
+		if (rockchip_vpu_debug & BIT(level))		\
 			pr_debug("%s:%d: " fmt,	                \
 				 __func__, __LINE__, ##args);	\
 	} while (0)

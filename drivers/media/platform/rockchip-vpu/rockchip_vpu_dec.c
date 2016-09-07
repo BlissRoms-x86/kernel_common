@@ -1137,12 +1137,12 @@ static struct vb2_ops rockchip_vpu_dec_qops = {
 	.buf_queue = rockchip_vpu_buf_queue,
 };
 
-struct vb2_ops *get_dec_queue_ops(void)
+struct vb2_ops *rockchip_get_dec_queue_ops(void)
 {
 	return &rockchip_vpu_dec_qops;
 }
 
-const struct v4l2_ioctl_ops *get_dec_v4l2_ioctl_ops(void)
+const struct v4l2_ioctl_ops *rockchip_get_dec_v4l2_ioctl_ops(void)
 {
 	return &rockchip_vpu_dec_ioctl_ops;
 }

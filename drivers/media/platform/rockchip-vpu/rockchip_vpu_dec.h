@@ -24,9 +24,8 @@
 #ifndef ROCKCHIP_VPU_DEC_H_
 #define ROCKCHIP_VPU_DEC_H_
 
-struct vb2_ops *get_dec_queue_ops(void);
-const struct v4l2_ioctl_ops *get_dec_v4l2_ioctl_ops(void);
-struct rockchip_vpu_fmt *get_dec_def_fmt(bool src);
+struct vb2_ops *rockchip_get_dec_queue_ops(void);
+const struct v4l2_ioctl_ops *rockchip_get_dec_v4l2_ioctl_ops(void);
 int rockchip_vpu_dec_init(struct rockchip_vpu_ctx *ctx);
 void rockchip_vpu_dec_exit(struct rockchip_vpu_ctx *ctx);
 
