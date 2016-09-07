@@ -302,12 +302,8 @@ static void rk3399_vdec_h264d_assemble_hw_rps(struct rockchip_vpu_ctx *ctx)
 
 	memset(hw_rps, 0, RKV_RPS_SIZE);
 
-	for (i = 0; i < 16; i++) {
-		if (dpb[i].flags & V4L2_H264_DPB_ENTRY_FLAG_LONG_TERM)
-			p[i] = dpb[i].pic_num;
-		else
-			p[i] = dpb[i].frame_num;
-	}
+	for (i = 0; i < 16; i++)
+		p[i] = dpb[i].pic_num;
 
 	for (j = 0; j < 3; j++) {
 		for (i = 0; i < 32; i++) {
