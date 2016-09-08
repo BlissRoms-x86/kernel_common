@@ -26,7 +26,7 @@ enum {
 };
 
 /*
- * EC returns sensor values using signed 16 bit registers
+ * EC returns sensor values using 16 bit registers
  */
 #define CROS_EC_SENSOR_BITS 16
 

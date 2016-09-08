@@ -30,6 +30,13 @@ config IIO_CROS_EC_LIGHT_PROX
 	  Creates an IIO device for each functions.
 	  Only one source is exposed by the EC.
 
+config IIO_CROS_EC_BARO
+	tristate "ChromeOS EC Barometer Sensor"
+	select IIO_CROS_EC_SENSORS_CORE
+	help
+	  Module to handle Barometer sensor when
+	  presented by the ChromeOS EC Sensor hub.
+
 config IIO_CROS_EC_ACTIVITY
 	tristate "ChromeOS EC Activity Sensors"
 	select IIO_CROS_EC_SENSORS_CORE
