@@ -391,6 +391,10 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 				    EXTCON_PROP_USB_SS,
 				    (union extcon_property_value)(int)mux);
 
+		extcon_set_property(info->edev, EXTCON_DISP_DP,
+				    EXTCON_PROP_DISP_HPD,
+				    (union extcon_property_value)(int)hpd);
+
 		extcon_sync(info->edev, EXTCON_USB);
 		extcon_sync(info->edev, EXTCON_USB_HOST);
 		extcon_sync(info->edev, EXTCON_DISP_DP);
@@ -398,6 +402,9 @@ static int extcon_cros_ec_detect_cable(struct cros_ec_extcon_info *info,
 		wake_up_all(&info->role_wait);
 		dual_role_instance_changed(info->drp_inst);
 	} else if (hpd) {
+		extcon_set_property(info->edev, EXTCON_DISP_DP,
+				    EXTCON_PROP_DISP_HPD,
+				    (union extcon_property_value)(int)hpd);
 		extcon_sync(info->edev, EXTCON_DISP_DP);
 	}
 	return 0;
@@ -667,6 +674,8 @@ static int extcon_cros_ec_probe(struct platform_device *pdev)
 				       EXTCON_PROP_USB_SS);
 	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
 				       EXTCON_PROP_USB_SS);
+	extcon_set_property_capability(info->edev, EXTCON_DISP_DP,
+				       EXTCON_PROP_DISP_HPD);
 
 	info->dr = DUAL_ROLE_PROP_DR_NONE;
 	info->pr = DUAL_ROLE_PROP_PR_NONE;
