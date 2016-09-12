@@ -728,7 +728,7 @@ ap_i2c_audio: &i2c8 {
 &pcie0 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&wifi_perst_l>;
+	pinctrl-0 = <&pcie_clkreqn>, <&wifi_perst_l>;
 	ep-gpios = <&gpio2 27 GPIO_ACTIVE_HIGH>;
 
 	vpcie3v3-supply = <&pp3300_wifi_bt>;
