@@ -71,12 +71,10 @@
 		pinctrl-0 = <&cpu3_pen_pwr_en>;
 
 		/*
-		 * Need to wait for regulators to ramp and for the digitizer firmware to
-		 * initialize. Testing shows 10ms is enough, but use a conservative 40ms
-		 * for now.
-		 * TODO(crosbug.com/p/56993): get proper numbers.
+		 * Need to wait for regulators to ramp and for the digitizer
+		 * firmware to initialize.
 		 */
-		regulator-enable-ramp-delay = <40000>;
+		regulator-enable-ramp-delay = <100000>;
 
 		enable-active-high;
 		gpio = <&gpio4 30 GPIO_ACTIVE_HIGH>;
