@@ -350,6 +350,34 @@ static struct platform_driver rockchip_pcie_driver = {
 	},
 };
 
+/*
+ * TODO: We really shouldn't be exporting a symbol like this, as it circumvents
+ * the PHY API and ties this driver to the host controller driver somewhat
+ * unnecessarily. But the PHY API currently isn't very rich.
+ *
+ * Alternatives have been outlined at http://crosbug.com/p/57892, but this is
+ * the expedient approach for now.
+ */
+void rockchip_pcie_phy_laneoff(struct phy *phy, u8 map)
+{
+	struct rockchip_pcie_phy *rk_phy = phy_get_drvdata(phy);
+	int i;
+
+	for (i = 0; i < PHY_MAX_LANE_NUM; i++) {
+		if (map & BIT(i))
+			continue;
+
+		dev_dbg(&phy->dev, "idling lane %d\n", i);
+
+		regmap_write(rk_phy->reg_base,
+			     rk_phy->phy_data->pcie_laneoff,
+			     HIWORD_UPDATE(PHY_LANE_IDLE_OFF,
+					   PHY_LANE_IDLE_MASK,
+					   PHY_LANE_IDLE_A_SHIFT + i));
+	}
+}
+EXPORT_SYMBOL_GPL(rockchip_pcie_phy_laneoff);
+
 module_platform_driver(rockchip_pcie_driver);
 
 MODULE_AUTHOR("Shawn Lin <shawn.lin@rock-chips.com>");
