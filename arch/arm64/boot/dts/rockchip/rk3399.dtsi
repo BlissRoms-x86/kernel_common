@@ -1070,7 +1070,7 @@
 		compatible = "rockchip,rk3399-vpu";
 		reg = <0x0 0xff650000 0x0 0x800>;
 		interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH 0>,
-				<GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+				<GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH 0>;
 		interrupt-names = "vepu", "vdpu";
 		clocks = <&cru ACLK_VCODEC>, <&cru HCLK_VCODEC>;
 		clock-names = "aclk_vcodec", "hclk_vcodec";
