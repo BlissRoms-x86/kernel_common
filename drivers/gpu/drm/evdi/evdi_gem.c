@@ -455,5 +455,13 @@ static struct dma_buf_ops evdi_dmabuf_ops = {
 struct dma_buf *evdi_gem_prime_export(struct drm_device *dev,
 				      struct drm_gem_object *obj, int flags)
 {
-	return dma_buf_export(obj, &evdi_dmabuf_ops, obj->size, flags, NULL);
+	struct dma_buf_export_info exp_info = {
+		.exp_name = "evdi",
+		.ops = &evdi_dmabuf_ops,
+		.size = obj->size,
+		.flags = flags,
+		.resv = NULL,
+		.priv = obj
+	};
+	return dma_buf_export(&exp_info);
 }

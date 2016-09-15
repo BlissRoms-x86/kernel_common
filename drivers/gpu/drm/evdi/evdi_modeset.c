@@ -365,7 +365,7 @@ int evdi_modeset_init(struct drm_device *dev)
 
 	drm_mode_create_dirty_info_property(dev);
 
-	drm_dev_set_unique(dev, "%s", dev_name(dev->dev));
+	drm_dev_set_unique(dev, dev_name(dev->dev));
 	evdi_crtc_init(dev);
 
 	encoder = evdi_encoder_init(dev);
