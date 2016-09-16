@@ -391,7 +391,19 @@ static int rockchip_i2s_set_sysclk(struct snd_soc_dai *cpu_dai, int clk_id,
 				   unsigned int freq, int dir)
 {
 	struct rk_i2s_dev *i2s = to_info(cpu_dai);
+	unsigned int hack_freq = 11289600;
 	int ret;
+
+	/*
+	 * Set the rate away from the desired rate first.  In some situation
+	 * such as suspend/resume, the frac clocks need to be set away to a
+	 * different value before setting the desired value affects a change.
+	 */
+	if (hack_freq == freq)
+		hack_freq = 12288000;
+	ret = clk_set_rate(i2s->mclk, hack_freq);
+	if (ret)
+		dev_err(i2s->dev, "Fail to set mclk to temp rate %d\n", ret);
 
 	ret = clk_set_rate(i2s->mclk, freq);
 	if (ret)
