@@ -6,6 +6,12 @@ Required properties:
   connected to the codecs
 - rockchip,codec: The phandle of the MAX98357A/RT5514/DA7219 codecs
 
+Optional properties:
+- dmic-delay : specify delay time for DMIC ready.
+  If this option is specified, which means it's required dmic need
+  delay for DMIC to ready so that rt5514 can avoid recording before
+  DMIC send valid data
+
 Example:
 
 sound {
