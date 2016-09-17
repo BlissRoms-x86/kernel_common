@@ -115,6 +115,8 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 			usb_remove_hcd(hcd);
 		}
 
+		phy_power_off(dwc->usb3_generic_phy);
+
 		/*
 		 * Revisit: Asserting the otg reset may affect dwc chip
 		 * operation. The reset is known to clear the mode register.
@@ -169,8 +171,6 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 			return;
 
 		pm_runtime_put_sync_suspend(dwc->dev);
-
-		phy_power_off(dwc->usb3_generic_phy);
 
 		rockchip->connected = false;
 		dev_info(rockchip->dev, "USB HOST disconnected\n");
@@ -323,8 +323,6 @@ static int dwc3_rockchip_probe(struct platform_device *pdev)
 			pm_runtime_allow(&child_pdev->dev);
 			pm_runtime_put_sync(dev);
 
-			phy_power_off(dwc->usb3_generic_phy);
-
 			if (extcon_get_cable_state_(rockchip->edev,
 						    EXTCON_USB_HOST) > 0)
 				schedule_work(&rockchip->otg_work);
@@ -359,12 +357,13 @@ static int dwc3_rockchip_remove(struct platform_device *pdev)
 
 	dwc3_rockchip_extcon_unregister(rockchip);
 
+	/* Ensure clocks are enabled before unregistering xhcd */
+	if (rockchip->edev && !rockchip->connected)
+		pm_runtime_get_sync(dev);
+
 	of_platform_depopulate(dev);
 
-	if (!rockchip->edev || rockchip->connected)
-		pm_runtime_put_sync(dev);
-
-	pm_runtime_forbid(dev);
+	pm_runtime_put_sync(dev);
 	pm_runtime_disable(dev);
 
 	for (i = 0; i < rockchip->num_clocks; i++) {
