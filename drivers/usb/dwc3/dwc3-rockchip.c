@@ -486,6 +486,7 @@ static struct platform_driver dwc3_rockchip_driver = {
 		.name	= "rockchip-dwc3",
 		.of_match_table = rockchip_dwc3_match,
 		.pm	= DEV_PM_OPS,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 
