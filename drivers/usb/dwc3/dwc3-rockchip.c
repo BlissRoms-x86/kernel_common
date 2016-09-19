@@ -91,31 +91,12 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		container_of(work, struct dwc3_rockchip, otg_work);
 	struct dwc3		*dwc = rockchip->dwc;
 	struct extcon_dev	*edev = rockchip->edev;
-	struct usb_hcd		*hcd;
+	struct usb_hcd		*hcd = dev_get_drvdata(&dwc->xhci->dev);
 	unsigned long		flags;
 
 	if (extcon_get_cable_state_(edev, EXTCON_USB_HOST) > 0) {
 		if (rockchip->connected)
 			return;
-
-		/*
-		 * The usb3 phy has to be power cycled after a cable was
-		 * inserted into the Type-C port. Also, while powering on
-		 * the phy, it is necessary to hold otg in reset. HCDs must
-		 * be removed while power cycling the phy, otherwise USB
-		 * device access will fail.
-		 *
-		 * Revisit: It isn't entirely clear how this is synchronized
-		 * with the USB code, and if it is safe to remove and add
-		 * HCDs like this.
-		 */
-		hcd = dev_get_drvdata(&dwc->xhci->dev);
-		if (hcd->state != HC_STATE_HALT) {
-			usb_remove_hcd(hcd->shared_hcd);
-			usb_remove_hcd(hcd);
-		}
-
-		phy_power_off(dwc->usb3_generic_phy);
 
 		/*
 		 * Revisit: Asserting the otg reset may affect dwc chip
@@ -128,6 +109,7 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		 * registers while the reset is asserted, with unknown impact.
 		 */
 		reset_control_assert(rockchip->otg_rst);
+		reset_control_deassert(rockchip->otg_rst);
 
 		/*
 		 * Don't abort on errors. If powering on a phy fails,
@@ -136,8 +118,6 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		 */
 		if (phy_power_on(dwc->usb3_generic_phy) < 0)
 			dev_err(dwc->dev, "Failed to power on usb3 phy\n");
-
-		reset_control_deassert(rockchip->otg_rst);
 
 		pm_runtime_get_sync(dwc->dev);
 
@@ -170,7 +150,27 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		if (!rockchip->connected)
 			return;
 
+		/*
+		 * xhci does not support runtime pm. If HCDs are not removed
+		 * here and and re-added after a cable is inserted, USB3
+		 * connections will not work.
+		 * A clean(er) solution would be to implement runtime pm
+		 * support in xhci. After that is available, this code should
+		 * be removed.
+		 * HCDs have to be removed here to prevent attempts by the
+		 * xhci code to access xhci registers after the call to
+		 * pm_runtime_put_sync_suspend(). On rk3399, this can result
+		 * in a crash under certain circumstances (this was observed
+		 * if the system is running on battery).
+		 */
+		if (hcd->state != HC_STATE_HALT) {
+			usb_remove_hcd(hcd->shared_hcd);
+			usb_remove_hcd(hcd);
+		}
+
 		pm_runtime_put_sync_suspend(dwc->dev);
+
+		phy_power_off(dwc->usb3_generic_phy);
 
 		rockchip->connected = false;
 		dev_info(rockchip->dev, "USB HOST disconnected\n");
@@ -319,9 +319,18 @@ static int dwc3_rockchip_probe(struct platform_device *pdev)
 			goto err2;
 
 		if (rockchip->edev) {
+			struct usb_hcd *hcd = dev_get_drvdata(&rockchip->dwc->xhci->dev);
+
+			if (hcd->state != HC_STATE_HALT) {
+				usb_remove_hcd(hcd->shared_hcd);
+				usb_remove_hcd(hcd);
+			}
+
 			pm_runtime_dont_use_autosuspend(&child_pdev->dev);
 			pm_runtime_allow(&child_pdev->dev);
 			pm_runtime_put_sync(dev);
+
+			phy_power_off(dwc->usb3_generic_phy);
 
 			if (extcon_get_cable_state_(rockchip->edev,
 						    EXTCON_USB_HOST) > 0)
@@ -357,9 +366,26 @@ static int dwc3_rockchip_remove(struct platform_device *pdev)
 
 	dwc3_rockchip_extcon_unregister(rockchip);
 
-	/* Ensure clocks are enabled before unregistering xhcd */
-	if (rockchip->edev && !rockchip->connected)
+	/* Restore hcd state before unregistering xhci */
+	if (rockchip->edev && !rockchip->connected) {
+		struct usb_hcd *hcd = dev_get_drvdata(&rockchip->dwc->xhci->dev);
+
 		pm_runtime_get_sync(dev);
+
+		/*
+		 * The xhci code does not expect that HCDs have been removed.
+		 * It will unconditionally call usb_remove_hcd() when the xhci
+		 * driver is unloaded in of_platform_depopulate(). This results
+		 * in a crash if the HCDs were already removed. To avoid this
+		 * crash, add the HCDs here as dummy operation.
+		 * This code should be removed after pm runtime support
+		 * has been added to xhci.
+		 */
+		if (hcd->state == HC_STATE_HALT) {
+			usb_add_hcd(hcd, hcd->irq, IRQF_SHARED);
+			usb_add_hcd(hcd->shared_hcd, hcd->irq, IRQF_SHARED);
+		}
+	}
 
 	of_platform_depopulate(dev);
 
