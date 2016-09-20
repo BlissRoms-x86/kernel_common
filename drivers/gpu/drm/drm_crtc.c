@@ -5366,12 +5366,17 @@ int drm_mode_page_flip_ioctl(struct drm_device *dev,
 	}
 	if (ret)
 		goto out;
-
+	/*
+	 * TODO(dcastagna): This check is commented out to enable changing the
+	 * buffer format on the fly (b/29430506).
+	 * The comment can be removed, and the check restored, once we switch to
+	 * atomic.
 	if (crtc->primary->fb->pixel_format != fb->pixel_format) {
 		DRM_DEBUG_KMS("Page flip is not allowed to change frame buffer format.\n");
 		ret = -EINVAL;
 		goto out;
 	}
+	*/
 
 	if (page_flip->flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		e = kzalloc(sizeof *e, GFP_KERNEL);
