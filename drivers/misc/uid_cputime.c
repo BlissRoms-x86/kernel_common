@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
+#include <linux/pid_namespace.h>
 #include <linux/proc_fs.h>
 #include <linux/profile.h>
 #include <linux/sched.h>
@@ -71,10 +72,19 @@ static struct uid_entry *find_or_register_uid(kuid_t uid)
 	return uid_entry;
 }
 
+static bool pid_ns_is_descendant(struct pid_namespace *ns,
+				 struct pid_namespace *ancestor)
+{
+	while (ns != &init_pid_ns && ns != ancestor)
+		ns = ns->parent;
+	return ns == ancestor;
+}
+
 static int uid_stat_show(struct seq_file *m, void *v)
 {
 	struct uid_entry *uid_entry;
 	struct task_struct *task, *temp;
+	struct pid_namespace *current_ns, *task_ns;
 	cputime_t utime;
 	cputime_t stime;
 	unsigned long bkt;
@@ -86,6 +96,7 @@ static int uid_stat_show(struct seq_file *m, void *v)
 		uid_entry->active_utime = 0;
 	}
 
+	current_ns = task_active_pid_ns(current);
 	read_lock(&tasklist_lock);
 	do_each_thread(temp, task) {
 		uid_entry = find_or_register_uid(task_uid(task));
@@ -97,6 +108,12 @@ static int uid_stat_show(struct seq_file *m, void *v)
 				task_uid(task)));
 			return -ENOMEM;
 		}
+		task_ns = task_active_pid_ns(task);
+		/* Only account for tasks in the descendants of the current
+		 * pid-namespace.
+		 */
+		if (!pid_ns_is_descendant(task_ns, current_ns))
+			continue;
 		task_cputime_adjusted(task, &utime, &stime);
 		uid_entry->active_utime += utime;
 		uid_entry->active_stime += stime;
@@ -108,8 +125,12 @@ static int uid_stat_show(struct seq_file *m, void *v)
 							uid_entry->active_utime;
 		cputime_t total_stime = uid_entry->stime +
 							uid_entry->active_stime;
+		uid_t uid = from_kuid_munged(current_user_ns(), uid_entry->uid);
+		/* Only show uids in the current uid-namespace. */
+		if (uid == overflowuid)
+			continue;
 		seq_printf(m, "%d: %llu %llu\n",
-			   from_kuid_munged(current_user_ns(), uid_entry->uid),
+			   uid,
 			   (unsigned long long)jiffies_to_msecs(
 				cputime_to_jiffies(total_utime)) * USEC_PER_MSEC,
 			   (unsigned long long)jiffies_to_msecs(
