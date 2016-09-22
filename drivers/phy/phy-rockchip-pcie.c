@@ -121,7 +121,7 @@ static int rockchip_pcie_phy_power_off(struct phy *phy)
 
 	err = reset_control_assert(rk_phy->phy_rst);
 	if (err) {
-		pr_err("assert phy_rst err %d\n", err);
+		dev_err(&phy->dev, "assert phy_rst err %d\n", err);
 		return err;
 	}
 
@@ -137,7 +137,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 
 	err = reset_control_deassert(rk_phy->phy_rst);
 	if (err) {
-		pr_err("deassert phy_rst err %d\n", err);
+		dev_err(&phy->dev, "deassert phy_rst err %d\n", err);
 		return err;
 	}
 
@@ -159,7 +159,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 			    rk_phy->phy_data->pcie_status,
 			    &status);
 		if (status & PHY_PLL_LOCKED) {
-			pr_debug("pll locked!\n");
+			dev_dbg(&phy->dev, "pll locked!\n");
 			err = 0;
 			break;
 		}
@@ -167,7 +167,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 	}
 
 	if (err) {
-		pr_err("pll lock timeout!\n");
+		dev_err(&phy->dev, "pll lock timeout!\n");
 		goto err_pll_lock;
 	}
 
@@ -180,7 +180,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 			    rk_phy->phy_data->pcie_status,
 			    &status);
 		if (!(status & PHY_PLL_OUTPUT)) {
-			pr_debug("pll output enable done!\n");
+			dev_dbg(&phy->dev, "pll output enable done!\n");
 			err = 0;
 			break;
 		}
@@ -188,7 +188,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 	}
 
 	if (err) {
-		pr_err("pll output enable timeout!\n");
+		dev_err(&phy->dev, "pll output enable timeout!\n");
 		goto err_pll_lock;
 	}
 
@@ -202,7 +202,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 			    rk_phy->phy_data->pcie_status,
 			    &status);
 		if (status & PHY_PLL_LOCKED) {
-			pr_debug("pll relocked!\n");
+			dev_dbg(&phy->dev, "pll relocked!\n");
 			err = 0;
 			break;
 		}
@@ -210,7 +210,7 @@ static int rockchip_pcie_phy_power_on(struct phy *phy)
 	}
 
 	if (err) {
-		pr_err("pll relock timeout!\n");
+		dev_err(&phy->dev, "pll relock timeout!\n");
 		goto err_pll_lock;
 	}
 
@@ -228,13 +228,13 @@ static int rockchip_pcie_phy_init(struct phy *phy)
 
 	err = clk_prepare_enable(rk_phy->clk_pciephy_ref);
 	if (err) {
-		pr_err("Fail to enable pcie ref clock.\n");
+		dev_err(&phy->dev, "Fail to enable pcie ref clock.\n");
 		goto err_refclk;
 	}
 
 	err = reset_control_assert(rk_phy->phy_rst);
 	if (err) {
-		pr_err("assert phy_rst err %d\n", err);
+		dev_err(&phy->dev, "assert phy_rst err %d\n", err);
 		goto err_reset;
 	}
 
@@ -255,7 +255,7 @@ static int rockchip_pcie_phy_exit(struct phy *phy)
 
 	err = reset_control_deassert(rk_phy->phy_rst);
 	if (err) {
-		pr_err("deassert phy_rst err %d\n", err);
+		dev_err(&phy->dev, "deassert phy_rst err %d\n", err);
 		goto err_reset;
 	}
 
@@ -301,7 +301,7 @@ static int rockchip_pcie_phy_probe(struct platform_device *pdev)
 
 	grf = syscon_node_to_regmap(dev->parent->of_node);
 	if (IS_ERR(grf)) {
-		dev_err(dev, "Missing rockchip,grf property\n");
+		dev_err(dev, "Cannot find GRF syscon\n");
 		return PTR_ERR(grf);
 	}
 

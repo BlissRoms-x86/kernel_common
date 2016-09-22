@@ -29,4 +29,3 @@ grf: syscon@ff770000 {
 		reset-names = "phy";
 	};
 };
-
