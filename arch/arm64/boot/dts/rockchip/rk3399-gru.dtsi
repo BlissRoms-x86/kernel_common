@@ -733,6 +733,8 @@ ap_i2c_audio: &i2c8 {
 	pinctrl-0 = <&pcie_clkreqn>, <&wifi_perst_l>;
 	ep-gpios = <&gpio2 27 GPIO_ACTIVE_HIGH>;
 
+	rockchip,disable-gen2;
+
 	vpcie3v3-supply = <&pp3300_wifi_bt>;
 	vpcie1v8-supply = <&wlan_pd_n>; /* HACK: see &wlan_pd_n */
 	vpcie0v9-supply = <&pp900_pcie>;
