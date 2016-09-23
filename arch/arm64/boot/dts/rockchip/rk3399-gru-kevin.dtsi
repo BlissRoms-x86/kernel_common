@@ -308,6 +308,10 @@ ap_i2c_dig: &i2c2 {
 	vref-supply = <&pp1800_ap_io>;
 };
 
+&mvl_wifi {
+	marvell,wakeup-pin = <14>; /* GPIO_14 on Marvell */
+};
+
 /* PINCTRL: always below everything else */
 
 &pinctrl {

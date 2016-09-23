@@ -753,6 +753,24 @@ ap_i2c_audio: &i2c8 {
 	vpcie3v3-supply = <&pp3300_wifi_bt>;
 	vpcie1v8-supply = <&wlan_pd_n>; /* HACK: see &wlan_pd_n */
 	vpcie0v9-supply = <&pp900_pcie>;
+
+	pci_rootport: pcie@0,0 {
+		reg = <0x83000000 0x0 0x00000000 0x0 0x00000000>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+
+		mvl_wifi: wifi@0,0 {
+			compatible = "marvell,pcie8997";
+			reg = <0x83010000 0x0 0x00000000 0x0 0x00100000
+			       0x83010000 0x0 0x00100000 0x0 0x00100000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&wlan_host_wake_l>;
+			interrupt-parent = <&gpio0>;
+			interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+			wakeup-source;
+		};
+	};
 };
 
 &pcie_phy {
@@ -1181,6 +1199,10 @@ ap_i2c_audio: &i2c8 {
 			 * WiFi.
 			 */
 			rockchip,pins = <1 11 RK_FUNC_GPIO &pcfg_output_low>;
+		};
+
+		wlan_host_wake_l: wlan-host-wake-l {
+			rockchip,pins = <0 8 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 
