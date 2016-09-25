@@ -265,6 +265,8 @@ struct usb3phy_reg {
 struct rockchip_usb3phy_port_cfg {
 	struct usb3phy_reg typec_conn_dir;
 	struct usb3phy_reg usb3tousb2_en;
+	struct usb3phy_reg usb3_host_disable;
+	struct usb3phy_reg usb3_host_port;
 	struct usb3phy_reg external_psm;
 	struct usb3phy_reg pipe_status;
 };
@@ -689,6 +691,10 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
 	if (tcphy->mode == MODE_DISCONNECT)
 		tcphy_phy_init(tcphy, new_mode);
 
+	/* enable usb3 host */
+	property_enable(tcphy, &cfg->usb3_host_disable, 0);
+	property_enable(tcphy, &cfg->usb3_host_port, 1);
+
 	/* wait TCPHY for pipe ready */
 	for (timeout = 0; timeout < 100; timeout++) {
 		regmap_read(tcphy->grf_regs, reg->offset, &val);
@@ -856,6 +862,16 @@ static int tcphy_parse_dt(struct rockchip_typec_phy *tcphy,
 
 	ret = tcphy_get_param(dev, &cfg->usb3tousb2_en,
 			      "rockchip,usb3tousb2-en");
+	if (ret)
+		return ret;
+
+	ret = tcphy_get_param(dev, &cfg->usb3_host_disable,
+			      "rockchip,usb3-host-disable");
+	if (ret)
+		return ret;
+
+	ret = tcphy_get_param(dev, &cfg->usb3_host_port,
+			      "rockchip,usb3-host-port");
 	if (ret)
 		return ret;
 
