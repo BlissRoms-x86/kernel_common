@@ -57,6 +57,11 @@ wants to support one of the below features, it should adapt the bindings below.
 - wakeup-source
 	device can be used as a wakeup source.
 
+- linux,probed
+	If '0' or not present, then linux will instantiate the I2C device
+	normally, using i2c_new_device().  If '1' then the I2C device will be
+	probed before being added, using i2c_new_probed_device().
+
 Binding may contain optional "interrupts" property, describing interrupts
 used by the device. I2C core will assign "irq" interrupt (or the very first
 interrupt if not using interrupt names) as primary interrupt for the slave.
