@@ -6113,9 +6113,8 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	return true;
 }
 
-bool intel_dp_init(struct drm_device *dev,
-		   int output_reg,
-		   enum port port)
+void
+intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_digital_port *intel_dig_port;
@@ -6125,7 +6124,7 @@ bool intel_dp_init(struct drm_device *dev,
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
 	if (!intel_dig_port)
-		return false;
+		return;
 
 	intel_connector = intel_connector_alloc();
 	if (!intel_connector)
@@ -6180,14 +6179,15 @@ bool intel_dp_init(struct drm_device *dev,
 	if (!intel_dp_init_connector(intel_dig_port, intel_connector))
 		goto err_init_connector;
 
-	return true;
+	return;
 
 err_init_connector:
 	drm_encoder_cleanup(encoder);
 	kfree(intel_connector);
 err_connector_alloc:
 	kfree(intel_dig_port);
-	return false;
+
+	return;
 }
 
 void intel_dp_mst_suspend(struct drm_device *dev)
