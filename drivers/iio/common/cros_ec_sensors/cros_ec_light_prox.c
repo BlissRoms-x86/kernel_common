@@ -178,12 +178,12 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	int ret;
 
 	if (!ec_dev || !ec_dev->ec_dev) {
-		dev_warn(&pdev->dev, "No CROS EC device found.\n");
+		dev_warn(dev, "No CROS EC device found.\n");
 		return -EINVAL;
 	}
 	ec_device = ec_dev->ec_dev;
 
-	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*state));
+	indio_dev = devm_iio_device_alloc(dev, sizeof(*state));
 	if (!indio_dev)
 		return -ENOMEM;
 
@@ -224,7 +224,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 		channel->type = IIO_PROXIMITY;
 		break;
 	default:
-		dev_warn(&pdev->dev, "unknown\n");
+		dev_warn(dev, "unknown\n");
 		return -EINVAL;
 	}
 
@@ -242,24 +242,12 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 
 	state->core.read_ec_sensors_data = cros_ec_sensors_read_cmd;
 
-	ret = iio_triggered_buffer_setup(indio_dev, NULL,
+	ret = devm_iio_triggered_buffer_setup(dev, indio_dev, NULL,
 			cros_ec_sensors_capture, NULL);
 	if (ret)
 		return ret;
 
-	ret = iio_device_register(indio_dev);
-	if (ret)
-		iio_triggered_buffer_cleanup(indio_dev);
-	return ret;
-}
-
-static int cros_ec_sensors_remove(struct platform_device *pdev)
-{
-	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
-
-	iio_device_unregister(indio_dev);
-	iio_triggered_buffer_cleanup(indio_dev);
-	return 0;
+	return devm_iio_device_register(dev, indio_dev);
 }
 
 static const struct platform_device_id cros_ec_sensors_ids[] = {
@@ -279,7 +267,6 @@ static struct platform_driver cros_ec_sensors_platform_driver = {
 		.pm	= &cros_ec_sensors_pm_ops,
 	},
 	.probe		= cros_ec_sensors_probe,
-	.remove		= cros_ec_sensors_remove,
 	.id_table	= cros_ec_sensors_ids,
 };
 module_platform_driver(cros_ec_sensors_platform_driver);
