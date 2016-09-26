@@ -30,7 +30,6 @@
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/sysfs.h>
 #include <linux/platform_device.h>
 
 #include "cros_ec_sensors_core.h"
@@ -44,7 +43,7 @@
 #define MAX_CHANNELS (1 + 1)
 
 /* State data for ec_sensors iio driver. */
-struct cros_ec_sensors_state {
+struct cros_ec_light_prox_state {
 	/* Shared by all sensors */
 	struct cros_ec_sensors_core_state core;
 
@@ -55,7 +54,7 @@ static int cros_ec_light_prox_read(struct iio_dev *indio_dev,
 			  struct iio_chan_spec const *chan,
 			  int *val, int *val2, long mask)
 {
-	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	struct cros_ec_light_prox_state *st = iio_priv(indio_dev);
 	u16 data = 0;
 	s64 val64;
 	int ret = IIO_VAL_INT;
@@ -123,7 +122,7 @@ static int cros_ec_light_prox_write(struct iio_dev *indio_dev,
 			       struct iio_chan_spec const *chan,
 			       int val, int val2, long mask)
 {
-	struct cros_ec_sensors_state *st = iio_priv(indio_dev);
+	struct cros_ec_light_prox_state *st = iio_priv(indio_dev);
 	int ret = 0;
 	int idx = chan->scan_index;
 
@@ -161,19 +160,19 @@ static int cros_ec_light_prox_write(struct iio_dev *indio_dev,
 	return ret;
 }
 
-static const struct iio_info ec_sensors_info = {
+static const struct iio_info cros_ec_light_prox_info = {
 	.read_raw = &cros_ec_light_prox_read,
 	.write_raw = &cros_ec_light_prox_write,
 	.driver_module = THIS_MODULE,
 };
 
-static int cros_ec_sensors_probe(struct platform_device *pdev)
+static int cros_ec_light_prox_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct cros_ec_dev *ec_dev = dev_get_drvdata(dev->parent);
 	struct cros_ec_device *ec_device;
 	struct iio_dev *indio_dev;
-	struct cros_ec_sensors_state *state;
+	struct cros_ec_light_prox_state *state;
 	struct iio_chan_spec *channel;
 	int ret;
 
@@ -192,7 +191,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	indio_dev->info = &ec_sensors_info;
+	indio_dev->info = &cros_ec_light_prox_info;
 	state = iio_priv(indio_dev);
 	state->core.type = state->core.resp->info.type;
 	state->core.loc = state->core.resp->info.location;
@@ -250,7 +249,7 @@ static int cros_ec_sensors_probe(struct platform_device *pdev)
 	return devm_iio_device_register(dev, indio_dev);
 }
 
-static const struct platform_device_id cros_ec_sensors_ids[] = {
+static const struct platform_device_id cros_ec_light_prox_ids[] = {
 	{
 		.name = "cros-ec-prox",
 	},
@@ -259,17 +258,17 @@ static const struct platform_device_id cros_ec_sensors_ids[] = {
 	},
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(platform, cros_ec_sensors_ids);
+MODULE_DEVICE_TABLE(platform, cros_ec_light_prox_ids);
 
-static struct platform_driver cros_ec_sensors_platform_driver = {
+static struct platform_driver cros_ec_light_prox_platform_driver = {
 	.driver = {
 		.name	= "cros-ec-light-prox",
 		.pm	= &cros_ec_sensors_pm_ops,
 	},
-	.probe		= cros_ec_sensors_probe,
-	.id_table	= cros_ec_sensors_ids,
+	.probe		= cros_ec_light_prox_probe,
+	.id_table	= cros_ec_light_prox_ids,
 };
-module_platform_driver(cros_ec_sensors_platform_driver);
+module_platform_driver(cros_ec_light_prox_platform_driver);
 
 MODULE_DESCRIPTION("ChromeOS EC light/proximity sensors driver");
 MODULE_LICENSE("GPL v2");
