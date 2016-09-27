@@ -21,6 +21,7 @@
 #include <linux/extcon.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -35,6 +36,7 @@
 struct dwc3_rockchip {
 	int			num_clocks;
 	bool			connected;
+	bool			suspended;
 	struct device		*dev;
 	struct clk		**clks;
 	struct dwc3		*dwc;
@@ -42,6 +44,7 @@ struct dwc3_rockchip {
 	struct extcon_dev	*edev;
 	struct notifier_block	host_nb;
 	struct work_struct	otg_work;
+	struct mutex		lock;
 };
 
 static u32 rockchip_dwc3_readl(void __iomem *base, u32 offset)
@@ -80,7 +83,8 @@ static int dwc3_rockchip_host_notifier(struct notifier_block *nb,
 	struct dwc3_rockchip *rockchip =
 		container_of(nb, struct dwc3_rockchip, host_nb);
 
-	schedule_work(&rockchip->otg_work);
+	if (!rockchip->suspended)
+		schedule_work(&rockchip->otg_work);
 
 	return NOTIFY_DONE;
 }
@@ -94,9 +98,11 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 	struct usb_hcd		*hcd = dev_get_drvdata(&dwc->xhci->dev);
 	unsigned long		flags;
 
+	mutex_lock(&rockchip->lock);
+
 	if (extcon_get_cable_state_(edev, EXTCON_USB_HOST) > 0) {
 		if (rockchip->connected)
-			return;
+			goto out;
 
 		/*
 		 * Revisit: Asserting the otg reset may affect dwc chip
@@ -148,7 +154,7 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		dev_info(rockchip->dev, "USB HOST connected\n");
 	} else {
 		if (!rockchip->connected)
-			return;
+			goto out;
 
 		/*
 		 * xhci does not support runtime pm. If HCDs are not removed
@@ -175,6 +181,9 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		rockchip->connected = false;
 		dev_info(rockchip->dev, "USB HOST disconnected\n");
 	}
+
+out:
+	mutex_unlock(&rockchip->lock);
 }
 
 static int dwc3_rockchip_extcon_register(struct dwc3_rockchip *rockchip)
@@ -235,6 +244,8 @@ static int dwc3_rockchip_probe(struct platform_device *pdev)
 	if (!rockchip)
 		return -ENOMEM;
 
+	mutex_init(&rockchip->lock);
+
 	rockchip->otg_rst = devm_reset_control_get(dev, "usb3-otg");
 	if (IS_ERR(rockchip->otg_rst)) {
 		if (PTR_ERR(rockchip->otg_rst) != -EPROBE_DEFER)
@@ -262,6 +273,8 @@ static int dwc3_rockchip_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, rockchip);
 
 	rockchip->dev = dev;
+
+	mutex_lock(&rockchip->lock);
 
 	for (i = 0; i < rockchip->num_clocks; i++) {
 		struct clk	*clk;
@@ -338,6 +351,8 @@ static int dwc3_rockchip_probe(struct platform_device *pdev)
 		}
 	}
 
+	mutex_unlock(&rockchip->lock);
+
 	return ret;
 
 err2:
@@ -354,6 +369,8 @@ err0:
 		clk_unprepare(rockchip->clks[i]);
 		clk_put(rockchip->clks[i]);
 	}
+
+	mutex_unlock(&rockchip->lock);
 
 	return ret;
 }
@@ -425,7 +442,27 @@ static int dwc3_rockchip_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int dwc3_rockchip_suspend(struct device *dev)
+{
+	struct dwc3_rockchip *rockchip = dev_get_drvdata(dev);
+
+	rockchip->suspended = true;
+	cancel_work_sync(&rockchip->otg_work);
+
+	return 0;
+}
+
+static int dwc3_rockchip_resume(struct device *dev)
+{
+	struct dwc3_rockchip *rockchip = dev_get_drvdata(dev);
+
+	rockchip->suspended = false;
+
+	return 0;
+}
+
 static const struct dev_pm_ops dwc3_rockchip_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(dwc3_rockchip_suspend, dwc3_rockchip_resume)
 	SET_RUNTIME_PM_OPS(dwc3_rockchip_runtime_suspend,
 			   dwc3_rockchip_runtime_resume, NULL)
 };
