@@ -278,7 +278,7 @@ int cros_ec_cmd_xfer(struct cros_ec_device *ec_dev,
 /**
  * cros_ec_cmd_xfer_status - Send a command to the ChromeOS EC
  *
- * This function is identical to cros_ec_cmd_xfer, except it returns succes
+ * This function is identical to cros_ec_cmd_xfer, except it returns success
  * status only if both the command was transmitted successfully and the EC
  * replied with success status. It's not necessary to check msg->result when
  * using this function.
