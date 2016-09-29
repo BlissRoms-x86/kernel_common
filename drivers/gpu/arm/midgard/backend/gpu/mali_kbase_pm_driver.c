@@ -74,6 +74,24 @@ enum kbasep_pm_action {
 	ACTION_PWRACTIVE = (SHADER_PWRACTIVE_LO - SHADER_PRESENT_LO)
 };
 
+static bool is_action_of_powering_off_l2(enum kbase_pm_core_type core_type,
+					 enum kbasep_pm_action active)
+{
+	return (core_type == KBASE_PM_CORE_L2) && (active == ACTION_PWROFF);
+}
+
+static bool is_action_of_powering_off_shader(enum kbase_pm_core_type core_type,
+					     enum kbasep_pm_action active)
+{
+	return (core_type == KBASE_PM_CORE_SHADER) && (active == ACTION_PWROFF);
+}
+
+static bool is_action_of_powering_off_tiler(enum kbase_pm_core_type core_type,
+					    enum kbasep_pm_action active)
+{
+	return (core_type == KBASE_PM_CORE_TILER) && (active == ACTION_PWROFF);
+}
+
 static u64 kbase_pm_get_state(
 		struct kbase_device *kbdev,
 		enum kbase_pm_core_type core_type,
@@ -122,6 +140,21 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
 	u32 hi = (cores >> 32) & 0xFFFFFFFF;
 
 	lockdep_assert_held(&kbdev->pm.power_change_lock);
+
+	if (is_action_of_powering_off_l2(core_type, action)) {
+		dev_dbg(kbdev->dev, "not to power off l2 actually.");
+		return;
+	}
+	if (is_action_of_powering_off_shader(core_type, action)) {
+		dev_dbg(kbdev->dev,
+		"not to power off shader actually. cores_lo : 0x%x, hi : 0x%x\n",
+		  lo, hi);
+		return;
+	}
+	if (is_action_of_powering_off_tiler(core_type, action)) {
+		dev_dbg(kbdev->dev, "not to power off tiler actually.");
+		return;
+	}
 
 	reg = core_type_to_reg(core_type, action);
 
