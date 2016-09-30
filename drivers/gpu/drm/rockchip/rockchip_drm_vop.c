@@ -645,7 +645,11 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 	if (!crtc || !fb)
 		return 0;
 
-	crtc_state = drm_atomic_get_existing_crtc_state(state->state, crtc);
+	if (state->state)
+		crtc_state = drm_atomic_get_existing_crtc_state(state->state,
+								crtc);
+	else /* Special case for asynchronous cursor updates. */
+		crtc_state = plane->crtc->state;
 	if (WARN_ON(!crtc_state))
 		return -EINVAL;
 
@@ -806,8 +810,135 @@ static const struct drm_plane_helper_funcs plane_helper_funcs = {
 	.atomic_disable = vop_plane_atomic_disable,
 };
 
+static bool vop_fs_irq_is_pending(struct vop *vop)
+{
+	return VOP_INTR_GET_TYPE(vop, status, FS_INTR);
+}
+
+static void vop_wait_for_irq_handler(struct vop *vop)
+{
+	bool pending;
+	int ret;
+
+	/*
+	 * Spin until frame start interrupt status bit goes low, which means
+	 * that interrupt handler was invoked and cleared it. The timeout of
+	 * 10 msecs is really too long, but it is just a safety measure if
+	 * something goes really wrong. The wait will only happen in the very
+	 * unlikely case of a vblank happening exactly at the same time and
+	 * shouldn't exceed microseconds range.
+	 */
+	ret = readx_poll_timeout_atomic(vop_fs_irq_is_pending, vop, pending,
+					!pending, 0, 10 * 1000);
+	if (ret)
+		DRM_DEV_ERROR(vop->dev, "VOP vblank IRQ stuck for 10 ms\n");
+
+	synchronize_irq(vop->irq);
+}
+
+static int vop_cursor_update(struct drm_plane *plane,
+			     struct drm_crtc *crtc,
+			     struct drm_framebuffer *fb,
+			     int crtc_x, int crtc_y,
+			     unsigned int crtc_w, unsigned int crtc_h,
+			     uint32_t src_x, uint32_t src_y,
+			     uint32_t src_w, uint32_t src_h)
+{
+	struct drm_device *dev = crtc->dev;
+	struct vop *vop = to_vop(crtc);
+	struct rockchip_drm_private *private = dev->dev_private;
+	struct rockchip_atomic_commit *commit = &private->commit;
+	const struct drm_plane_helper_funcs *funcs;
+	struct drm_plane_state *plane_state;
+	int ret;
+
+	funcs = plane->helper_private;
+
+	mutex_lock(&commit->lock);
+
+	/*
+	 * We need to wait for any commits that perform a modeset or update
+	 * the cursor plane using the atomic API directly.
+	 */
+	if (commit->needs_modeset || commit->has_cursor_plane)
+		flush_work(&commit->work);
+
+	plane_state = plane->funcs->atomic_duplicate_state(plane);
+
+	plane_state->crtc_x = crtc_x;
+	plane_state->crtc_y = crtc_y;
+	plane_state->crtc_h = crtc_h;
+	plane_state->crtc_w = crtc_w;
+	plane_state->src_x = src_x;
+	plane_state->src_y = src_y;
+	plane_state->src_h = src_h;
+	plane_state->src_w = src_w;
+
+	drm_atomic_set_fb_for_plane(plane_state, fb);
+
+	if (funcs && funcs->atomic_check) {
+		ret = funcs->atomic_check(plane, plane_state);
+		if (ret)
+			goto err_destroy;
+	}
+
+	swap(plane_state, plane->state);
+
+	if (vop->is_enabled) {
+		mutex_lock(&commit->hw_lock);
+
+		rockchip_drm_psr_flush(crtc);
+
+		if (fb)
+			funcs->atomic_update(plane, plane_state);
+		else
+			funcs->atomic_disable(plane, plane_state);
+
+		spin_lock(&vop->reg_lock);
+		vop_cfg_done(vop);
+		spin_unlock(&vop->reg_lock);
+
+		if (plane_state->fb && plane_state->fb != plane->state->fb) {
+			vop_wait_for_irq_handler(vop);
+
+			WARN_ON(drm_crtc_vblank_get(crtc) != 0);
+			drm_framebuffer_reference(plane_state->fb);
+			drm_flip_work_queue(&vop->fb_unref_work,
+					    plane_state->fb);
+			set_bit(VOP_PENDING_FB_UNREF, &vop->pending);
+		}
+
+		mutex_unlock(&commit->hw_lock);
+	}
+
+err_destroy:
+	mutex_unlock(&commit->lock);
+
+	plane->funcs->atomic_destroy_state(plane, plane_state);
+
+	return ret;
+}
+
+static int vop_plane_update(struct drm_plane *plane,
+			    struct drm_crtc *crtc,
+			    struct drm_framebuffer *fb,
+			    int crtc_x, int crtc_y,
+			    unsigned int crtc_w, unsigned int crtc_h,
+			    uint32_t src_x, uint32_t src_y,
+			    uint32_t src_w, uint32_t src_h)
+{
+	if (crtc && plane == crtc->cursor && plane->state->crtc == crtc)
+		return vop_cursor_update(plane, crtc, fb,
+					 crtc_x, crtc_y, crtc_w, crtc_h,
+					 src_x, src_y, src_w, src_h);
+
+	return drm_atomic_helper_update_plane(plane, crtc, fb,
+					      crtc_x, crtc_y, crtc_w, crtc_h,
+					      src_x, src_y, src_w, src_h);
+}
+
 static const struct drm_plane_funcs vop_plane_funcs = {
-	.update_plane	= drm_atomic_helper_update_plane,
+	.update_plane	= vop_plane_update,
 	.disable_plane	= drm_atomic_helper_disable_plane,
 	.destroy = vop_plane_destroy,
 	.reset = drm_atomic_helper_plane_reset,
@@ -1000,32 +1131,6 @@ static void vop_crtc_enable(struct drm_crtc *crtc)
 	VOP_CTRL_SET(vop, standby, 0);
 
 	rockchip_drm_psr_activate(&vop->crtc);
-}
-
-static bool vop_fs_irq_is_pending(struct vop *vop)
-{
-	return VOP_INTR_GET_TYPE(vop, status, FS_INTR);
-}
-
-static void vop_wait_for_irq_handler(struct vop *vop)
-{
-	bool pending;
-	int ret;
-
-	/*
-	 * Spin until frame start interrupt status bit goes low, which means
-	 * that interrupt handler was invoked and cleared it. The timeout of
-	 * 10 msecs is really too long, but it is just a safety measure if
-	 * something goes really wrong. The wait will only happen in the very
-	 * unlikely case of a vblank happening exactly at the same time and
-	 * shouldn't exceed microseconds range.
-	 */
-	ret = readx_poll_timeout_atomic(vop_fs_irq_is_pending, vop, pending,
-					!pending, 0, 10 * 1000);
-	if (ret)
-		DRM_DEV_ERROR(vop->dev, "VOP vblank IRQ stuck for 10 ms\n");
-
-	synchronize_irq(vop->irq);
 }
 
 static void vop_crtc_atomic_flush(struct drm_crtc *crtc,

@@ -256,11 +256,16 @@ rockchip_atomic_commit_complete(struct rockchip_atomic_commit *commit)
 	 *
 	 * See the kerneldoc entries for these three functions for more details.
 	 */
+
+	mutex_lock(&commit->hw_lock);
+
 	drm_atomic_helper_commit_modeset_disables(dev, state);
 
 	drm_atomic_helper_commit_modeset_enables(dev, state);
 
 	drm_atomic_helper_commit_planes(dev, state, true);
+
+	mutex_unlock(&commit->hw_lock);
 
 	drm_atomic_helper_wait_for_vblanks(dev, state);
 
@@ -283,7 +288,12 @@ int rockchip_drm_atomic_commit(struct drm_device *dev,
 {
 	struct rockchip_drm_private *private = dev->dev_private;
 	struct rockchip_atomic_commit *commit = &private->commit;
+	struct drm_plane_state *plane_state;
+	struct drm_plane *plane;
+	struct drm_crtc_state *crtc_state;
+	struct drm_crtc *crtc;
 	int ret;
+	int i;
 
 	ret = drm_atomic_helper_prepare_planes(dev, state);
 	if (ret)
@@ -292,6 +302,22 @@ int rockchip_drm_atomic_commit(struct drm_device *dev,
 	/* serialize outstanding nonblocking commits */
 	mutex_lock(&commit->lock);
 	flush_work(&commit->work);
+
+	commit->needs_modeset = false;
+	for_each_crtc_in_state(state, crtc, crtc_state, i) {
+		if (drm_atomic_crtc_needs_modeset(crtc_state)) {
+			commit->needs_modeset = true;
+			break;
+		}
+	}
+
+	commit->has_cursor_plane = false;
+	for_each_plane_in_state(state, plane, plane_state, i) {
+		if (plane->crtc && plane == plane->crtc->cursor) {
+			commit->has_cursor_plane = true;
+			break;
+		}
+	}
 
 	drm_atomic_helper_swap_state(dev, state);
 

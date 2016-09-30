@@ -185,6 +185,7 @@ static int rockchip_drm_load(struct drm_device *drm_dev, unsigned long flags)
 		return -ENOMEM;
 
 	mutex_init(&private->commit.lock);
+	mutex_init(&private->commit.hw_lock);
 	INIT_WORK(&private->commit.work, rockchip_drm_atomic_work);
 
 	drm_dev->dev_private = private;

@@ -48,6 +48,9 @@ struct rockchip_atomic_commit {
 	struct drm_atomic_state *state;
 	struct drm_device *dev;
 	struct mutex lock;
+	struct mutex hw_lock;
+	bool needs_modeset;
+	bool has_cursor_plane;
 };
 
 struct rockchip_crtc_state {
