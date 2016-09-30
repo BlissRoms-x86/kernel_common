@@ -178,6 +178,7 @@ config PCIE_ROCKCHIP
 	depends on ARCH_ROCKCHIP
 	depends on OF
 	depends on PCI_MSI_IRQ_DOMAIN
+	depends on PHY_ROCKCHIP_PCIE=y # TODO: remove; see http://crosbug.com/p/57892
 	select MFD_SYSCON
 	help
 	  Say Y here if you want internal PCI support on Rockchip SoC.
