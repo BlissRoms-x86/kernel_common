@@ -202,7 +202,8 @@ static void rk3399_vdec_h264d_assemble_hw_pps(struct rockchip_vpu_ctx *ctx)
 {
 	const struct v4l2_ctrl_h264_sps *sps = ctx->run.h264d.sps;
 	const struct v4l2_ctrl_h264_pps *pps = ctx->run.h264d.pps;
-	const struct v4l2_h264_dpb_entry *dpb = ctx->run.h264d.dpb;
+	const struct v4l2_h264_dpb_entry *dpb =
+		ctx->run.h264d.decode_param->dpb;
 	struct rk3399_vdec_h264d_priv_tbl *priv_tbl =
 		ctx->hw.h264d.priv_tbl.cpu;
 	u32 scaling_distance;
@@ -291,10 +292,9 @@ static void rk3399_vdec_h264d_assemble_hw_rps(struct rockchip_vpu_ctx *ctx)
 {
 	const struct v4l2_ctrl_h264_decode_param *dec_param =
 		ctx->run.h264d.decode_param;
-	const struct v4l2_h264_dpb_entry *dpb = ctx->run.h264d.dpb;
+	const struct v4l2_h264_dpb_entry *dpb = dec_param->dpb;
 	struct rk3399_vdec_h264d_priv_tbl *priv_tbl =
 		ctx->hw.h264d.priv_tbl.cpu;
-	const u8 *dpb_map = ctx->run.h264d.dpb_map;
 
 	u8 *hw_rps = priv_tbl->rps;
 	u32 i, j;
@@ -312,17 +312,21 @@ static void rk3399_vdec_h264d_assemble_hw_rps(struct rockchip_vpu_ctx *ctx)
 
 			switch (j) {
 			case 0:
-				idx = dpb_map[dec_param->ref_pic_list_p0[i]];
+				idx = dec_param->ref_pic_list_p0[i];
 				break;
 			case 1:
-				idx = dpb_map[dec_param->ref_pic_list_b0[i]];
+				idx = dec_param->ref_pic_list_b0[i];
 				break;
 			case 2:
-				idx = dpb_map[dec_param->ref_pic_list_b1[i]];
+				idx = dec_param->ref_pic_list_b1[i];
 				break;
 			}
 
-			dpb_valid = dpb[idx].flags != 0 ? 1 : 0;
+			if (idx >= ARRAY_SIZE(dec_param->dpb))
+				continue;
+			dpb_valid = !!(dpb[idx].flags &
+				       V4L2_H264_DPB_ENTRY_FLAG_ACTIVE);
+
 			write_header(idx | dpb_valid << 4,
 				     (u32 *)hw_rps, DPB_INFO_OFF(i, j),
 				     DPB_INFO_LEN);
@@ -427,7 +431,7 @@ static void rk3399_vdec_h264d_config_registers(struct rockchip_vpu_ctx *ctx)
 	const struct v4l2_ctrl_h264_decode_param *dec_param =
 		ctx->run.h264d.decode_param;
 	const struct v4l2_ctrl_h264_sps *sps = ctx->run.h264d.sps;
-	const struct v4l2_h264_dpb_entry *dpb = ctx->run.h264d.dpb;
+	const struct v4l2_h264_dpb_entry *dpb = dec_param->dpb;
 	struct rockchip_vpu_dev *vpu = ctx->dev;
 	dma_addr_t priv_start_addr = ctx->hw.h264d.priv_tbl.dma;
 	dma_addr_t rlc_addr;
@@ -501,8 +505,10 @@ static void rk3399_vdec_h264d_config_registers(struct rockchip_vpu_ctx *ctx)
 		else
 			vb_buf = &ctx->run.dst->b.vb2_buf;
 
-		refer_addr = vb2_dma_contig_plane_dma_addr(vb_buf, 0) |
-			     RKVDEC_COLMV_USED_FLAG_REF;
+		refer_addr = vb2_dma_contig_plane_dma_addr(vb_buf, 0)
+			| RKVDEC_COLMV_USED_FLAG_REF
+			| RKVDEC_TOPFIELD_USED_REF
+			| RKVDEC_BOTFIELD_USED_REF;
 		vdpu_write_relaxed(vpu, dpb[i].top_field_order_cnt,
 				   poc_reg_tbl_top_field[i]);
 		vdpu_write_relaxed(vpu, dpb[i].bottom_field_order_cnt,

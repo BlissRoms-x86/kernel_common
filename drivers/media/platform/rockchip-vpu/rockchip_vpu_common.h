@@ -60,6 +60,7 @@ struct rockchip_vpu_codec_ops;
  * @dec_offset:			Offset from VPU base to decoder registers.
  * @dec_reg_num:		Number of registers of decoder block.
  * @needs_enc_after_dec_war:	Needs dummy encoder.
+ * @needs_dpb_map:		Needs dpb reorder mapping.
  * @enc_fmts:			Encoder formats.
  * @num_enc_fmts:		Number of encoder formats.
  * @dec_fmts:			Decoder formats.
@@ -75,6 +76,7 @@ struct rockchip_vpu_variant {
 	unsigned dec_offset;
 	unsigned dec_reg_num;
 	bool needs_enc_after_dec_war;
+	bool needs_dpb_map;
 	const struct rockchip_vpu_fmt *enc_fmts;
 	unsigned num_enc_fmts;
 	const struct rockchip_vpu_fmt *dec_fmts;
@@ -263,9 +265,11 @@ struct rockchip_vpu_vp8d_run {
  * @scaling_matrix:	Pointer to a buffer containing scaling matrix.
  * @slice_param:	Pointer to a buffer containing slice parameters array.
  * @decode_param:	Pointer to a buffer containing decode parameters.
- * @dpb:		Array of DPB entries reordered to keep POC order.
+ * @dpb:		Array of DPB entries reordered to keep POC order, (valid
+ *			only if needs_dpb_map of hardware variant is true).
  * @dpb_map:		Map of indices used in ref_pic_list_* into indices to
- *			reordered DPB array.
+ *			reordered DPB array, (valid only if needs_dpb_map of
+ *			hardware variant is true).
  */
 struct rockchip_vpu_h264d_run {
 	const struct v4l2_ctrl_h264_sps *sps;

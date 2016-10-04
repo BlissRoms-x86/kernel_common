@@ -810,7 +810,8 @@ static int rockchip_vpu_dec_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H264_DECODE_PARAM:
 		if (ctrl->store)
 			break;
-		rockchip_vpu_dec_set_dpb(ctx, ctrl);
+		if (dev->variant->needs_dpb_map)
+			rockchip_vpu_dec_set_dpb(ctx, ctrl);
 		break;
 
 	default:

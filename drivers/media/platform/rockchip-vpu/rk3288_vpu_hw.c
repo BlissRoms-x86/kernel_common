@@ -281,6 +281,7 @@ const struct rockchip_vpu_variant rk3288_vpu_variant = {
 	.dec_offset = 0x400,
 	.dec_reg_num = 60 + 41,
 	.needs_enc_after_dec_war = 1,
+	.needs_dpb_map = 1,
 	.enc_fmts = rk3288_vpu_enc_fmts,
 	.num_enc_fmts = ARRAY_SIZE(rk3288_vpu_enc_fmts),
 	.dec_fmts = rk3288_vpu_dec_fmts,
