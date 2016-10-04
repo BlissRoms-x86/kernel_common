@@ -97,6 +97,10 @@
 #define   PCIE_CORE_PL_CONF_SPEED_MASK		0x00000018
 #define   PCIE_CORE_PL_CONF_LANE_MASK		0x00000006
 #define   PCIE_CORE_PL_CONF_LANE_SHIFT		1
+#define PCIE_CORE_CTRL_PLC1		(PCIE_CORE_CTRL_MGMT_BASE + 0x004)
+#define   PCIE_CORE_CTRL_PLC1_FTS_MASK		GENMASK(23, 8)
+#define   PCIE_CORE_CTRL_PLC1_FTS_SHIFT		8
+#define   PCIE_CORE_CTRL_PLC1_FTS_CNT		0xffff
 #define PCIE_CORE_LANE_MAP		(PCIE_CORE_CTRL_MGMT_BASE + 0x200)
 #define   PCIE_CORE_LANE_MAP_MASK		0x0000000f
 #define   PCIE_CORE_LANE_MAP_REVERSE		BIT(16)
@@ -511,6 +515,12 @@ static int rockchip_pcie_init_port(struct rockchip_pcie *rockchip)
 	 */
 	status = rockchip_pcie_read(rockchip, PCIE_RC_CONFIG_L1_SUBSTATE_CTRL2);
 	rockchip_pcie_write(rockchip, status, PCIE_RC_CONFIG_L1_SUBSTATE_CTRL2);
+
+	/* Fix the transmitted FTS count desired to exit from L0s. */
+	status = rockchip_pcie_read(rockchip, PCIE_CORE_CTRL_PLC1);
+	status = (status & PCIE_CORE_CTRL_PLC1_FTS_MASK) |
+		 (PCIE_CORE_CTRL_PLC1_FTS_CNT << PCIE_CORE_CTRL_PLC1_FTS_SHIFT);
+	rockchip_pcie_write(rockchip, status, PCIE_CORE_CTRL_PLC1);
 
 	/* Enable Gen1 training */
 	rockchip_pcie_write(rockchip, PCIE_CLIENT_LINK_TRAIN_ENABLE,
