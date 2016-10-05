@@ -156,6 +156,11 @@ out:
 	if (!buffer)
 		mei_irq_discard_msg(dev, mei_hdr);
 
+	/* Prepare for the next read */
+	if (list_empty(&cl->rd_pending) &&
+				cl->cldev->events_mask & BIT(MEI_CL_EVENT_RX))
+		mei_cl_read_start(cl, mei_cl_mtu(cl), NULL);
+
 	return 0;
 }
 
