@@ -729,6 +729,34 @@ static int extcon_cros_ec_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int extcon_cros_ec_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int extcon_cros_ec_resume(struct device *dev)
+{
+	int ret;
+	struct cros_ec_extcon_info *info = dev_get_drvdata(dev);
+
+	ret = extcon_cros_ec_detect_cable(info, true);
+	if (ret < 0)
+		dev_err(dev, "failed to detect cable state on resume\n");
+
+	return 0;
+}
+
+static const struct dev_pm_ops extcon_cros_ec_dev_pm_ops = {
+
+	SET_SYSTEM_SLEEP_PM_OPS(extcon_cros_ec_suspend, extcon_cros_ec_resume)
+};
+
+#define DEV_PM_OPS	(&extcon_cros_ec_dev_pm_ops)
+#else
+#define DEV_PM_OPS	NULL
+#endif /* CONFIG_PM_SLEEP */
+
 #ifdef CONFIG_OF
 static const struct of_device_id extcon_cros_ec_of_match[] = {
 	{ .compatible = "google,extcon-cros-ec" },
@@ -741,6 +769,7 @@ static struct platform_driver extcon_cros_ec_driver = {
 	.driver = {
 		.name  = "extcon-cros-ec",
 		.of_match_table = of_match_ptr(extcon_cros_ec_of_match),
+		.pm = DEV_PM_OPS,
 	},
 	.remove  = extcon_cros_ec_remove,
 	.probe   = extcon_cros_ec_probe,
