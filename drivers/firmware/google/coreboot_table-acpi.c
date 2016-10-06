@@ -27,7 +27,7 @@
 #include "coreboot_table.h"
 
 static const struct acpi_device_id cros_coreboot_acpi_match[] = {
-	{ "CORE0000", 0 },
+	{ "GOOGCB00", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, cros_coreboot_acpi_match);
