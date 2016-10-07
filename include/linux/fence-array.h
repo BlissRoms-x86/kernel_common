@@ -21,6 +21,7 @@
 #define __LINUX_FENCE_ARRAY_H
 
 #include <linux/fence.h>
+#include <linux/workqueue.h>
 
 /**
  * struct fence_array_cb - callback helper for fence array
@@ -36,6 +37,7 @@ struct fence_array_cb {
  * struct fence_array - fence to represent an array of fences
  * @base: fence base class
  * @lock: spinlock for fence handling
+ * @signal_work: work used for signaling the array fence
  * @num_fences: number of fences in the array
  * @num_pending: fences in the array still pending
  * @fences: array of the fences
@@ -44,6 +46,7 @@ struct fence_array {
 	struct fence base;
 
 	spinlock_t lock;
+	struct work_struct signal_work;
 	unsigned num_fences;
 	atomic_t num_pending;
 	struct fence **fences;

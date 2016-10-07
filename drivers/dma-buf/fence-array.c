@@ -33,6 +33,14 @@ static const char *fence_array_get_timeline_name(struct fence *fence)
 	return "unbound";
 }
 
+static void fence_array_signal_worker(struct work_struct *work)
+{
+	struct fence_array *array =
+		container_of(work, struct fence_array, signal_work);
+
+	fence_signal(&array->base);
+}
+
 static void fence_array_cb_func(struct fence *f, struct fence_cb *cb)
 {
 	struct fence_array_cb *array_cb =
@@ -40,7 +48,7 @@ static void fence_array_cb_func(struct fence *f, struct fence_cb *cb)
 	struct fence_array *array = array_cb->array;
 
 	if (atomic_dec_and_test(&array->num_pending))
-		fence_signal(&array->base);
+		schedule_work(&array->signal_work);
 	fence_put(&array->base);
 }
 
@@ -83,6 +91,8 @@ static void fence_array_release(struct fence *fence)
 {
 	struct fence_array *array = to_fence_array(fence);
 	unsigned i;
+
+	flush_work(&array->signal_work);
 
 	for (i = 0; i < array->num_fences; ++i)
 		fence_put(array->fences[i]);
@@ -131,6 +141,7 @@ struct fence_array *fence_array_create(int num_fences, struct fence **fences,
 	if (!array)
 		return NULL;
 
+	INIT_WORK(&array->signal_work, fence_array_signal_worker);
 	spin_lock_init(&array->lock);
 	fence_init(&array->base, &fence_array_ops, &array->lock,
 		   context, seqno);
