@@ -676,7 +676,7 @@ void tilcdc_crtc_cancel_page_flip(struct drm_crtc *crtc, struct drm_file *file)
 	event = tilcdc_crtc->event;
 	if (event && event->base.file_priv == file) {
 		tilcdc_crtc->event = NULL;
-		event->base.destroy(&event->base);
+		kfree(&event->base);
 		drm_vblank_put(dev, 0);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);

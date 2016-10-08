@@ -296,7 +296,7 @@ void rcar_du_crtc_cancel_page_flip(struct rcar_du_crtc *rcrtc,
 	event = rcrtc->event;
 	if (event && event->base.file_priv == file) {
 		rcrtc->event = NULL;
-		event->base.destroy(&event->base);
+		kfree(&event->base);
 		drm_crtc_vblank_put(&rcrtc->crtc);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);

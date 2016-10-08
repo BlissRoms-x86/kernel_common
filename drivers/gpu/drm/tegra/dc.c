@@ -997,7 +997,7 @@ void tegra_dc_cancel_page_flip(struct drm_crtc *crtc, struct drm_file *file)
 	spin_lock_irqsave(&drm->event_lock, flags);
 
 	if (dc->event && dc->event->base.file_priv == file) {
-		dc->event->base.destroy(&dc->event->base);
+		kfree(&dc->event->base);
 		drm_crtc_vblank_put(crtc);
 		dc->event = NULL;
 	}

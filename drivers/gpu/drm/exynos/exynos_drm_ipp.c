@@ -618,11 +618,6 @@ static void ipp_clean_mem_nodes(struct drm_device *drm_dev,
 	mutex_unlock(&c_node->mem_lock);
 }
 
-static void ipp_free_event(struct drm_pending_event *event)
-{
-	kfree(event);
-}
-
 static int ipp_get_event(struct drm_device *drm_dev,
 		struct drm_exynos_ipp_cmd_node *c_node,
 		struct drm_exynos_ipp_queue_buf *qbuf)
@@ -648,7 +643,6 @@ static int ipp_get_event(struct drm_device *drm_dev,
 	e->event.buf_id[EXYNOS_DRM_OPS_DST] = qbuf->buf_id;
 	e->base.event = &e->event.base;
 	e->base.file_priv = c_node->filp;
-	e->base.destroy = ipp_free_event;
 	mutex_lock(&c_node->event_lock);
 	list_add_tail(&e->base.link, &c_node->event_list);
 	mutex_unlock(&c_node->event_lock);

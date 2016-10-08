@@ -452,7 +452,7 @@ void shmob_drm_crtc_cancel_page_flip(struct shmob_drm_crtc *scrtc,
 	event = scrtc->event;
 	if (event && event->base.file_priv == file) {
 		scrtc->event = NULL;
-		event->base.destroy(&event->base);
+		kfree(&event->base);
 		drm_vblank_put(dev, 0);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);

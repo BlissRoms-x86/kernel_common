@@ -279,7 +279,7 @@ static void omap_crtc_complete_page_flip(struct drm_crtc *crtc)
 	if (event->base.file_priv)
 		drm_crtc_send_vblank_event(crtc, event);
 	else
-		event->base.destroy(&event->base);
+		kfree(&event->base);
 
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }

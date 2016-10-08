@@ -384,7 +384,7 @@ static void exynos_drm_postclose(struct drm_device *dev, struct drm_file *file)
 	/* Release all events handled by page flip handler but not freed. */
 	list_for_each_entry_safe(e, et, &file->event_list, link) {
 		list_del(&e->link);
-		e->destroy(e);
+		kfree(e);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 

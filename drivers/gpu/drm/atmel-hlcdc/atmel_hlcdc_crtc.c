@@ -291,7 +291,7 @@ void atmel_hlcdc_crtc_cancel_page_flip(struct drm_crtc *c,
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = crtc->event;
 	if (event && event->base.file_priv == file) {
-		event->base.destroy(&event->base);
+		kfree(&event->base);
 		drm_vblank_put(dev, crtc->id);
 		crtc->event = NULL;
 	}

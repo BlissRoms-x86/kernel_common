@@ -508,7 +508,7 @@ void vc4_cancel_page_flip(struct drm_crtc *crtc, struct drm_file *file)
 	spin_lock_irqsave(&dev->event_lock, flags);
 
 	if (vc4_crtc->event && vc4_crtc->event->base.file_priv == file) {
-		vc4_crtc->event->base.destroy(&vc4_crtc->event->base);
+		kfree(&vc4_crtc->event->base);
 		drm_crtc_vblank_put(crtc);
 		vc4_crtc->event = NULL;
 	}
