@@ -121,14 +121,6 @@
 				exit-latency-us = <250>;
 				min-residency-us = <900>;
 			};
-			cluster_sleep: cluster-sleep {
-				compatible = "arm,idle-state";
-				local-timer-stop;
-				arm,psci-suspend-param = <0x1010000>;
-				entry-latency-us = <400>;
-				exit-latency-us = <500>;
-				min-residency-us = <2000>;
-			};
 		};
 
 		cpu_l0: cpu@0 {
@@ -139,7 +131,7 @@
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <100>;
 			clocks = <&cru ARMCLKL>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 
 		cpu_l1: cpu@1 {
@@ -148,7 +140,7 @@
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 
 		cpu_l2: cpu@2 {
@@ -157,7 +149,7 @@
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 
 		cpu_l3: cpu@3 {
@@ -166,7 +158,7 @@
 			reg = <0x0 0x3>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKL>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 
 		cpu_b0: cpu@100 {
@@ -177,7 +169,7 @@
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <436>;
 			clocks = <&cru ARMCLKB>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 
 		cpu_b1: cpu@101 {
@@ -186,7 +178,7 @@
 			reg = <0x0 0x101>;
 			enable-method = "psci";
 			clocks = <&cru ARMCLKB>;
-			cpu-idle-states = <&cpu_sleep &cluster_sleep>;
+			cpu-idle-states = <&cpu_sleep>;
 		};
 	};
 
