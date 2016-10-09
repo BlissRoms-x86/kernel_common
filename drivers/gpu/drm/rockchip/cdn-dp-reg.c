@@ -639,8 +639,8 @@ int cdn_dp_config_video(struct cdn_dp_device *dp)
 {
 	struct video_info *video = &dp->video_info;
 	struct drm_display_mode *mode = &dp->mode;
-	u64 symbol, tmp;
-	u32 val, link_rate;
+	u64 symbol;
+	u32 val, link_rate, rem;
 	u8 bit_per_pix, tu_size_reg = TU_SIZE;
 	int ret;
 
@@ -666,15 +666,15 @@ int cdn_dp_config_video(struct cdn_dp_device *dp)
 	 */
 	do {
 		tu_size_reg += 2;
-		tmp = tu_size_reg * mode->clock * bit_per_pix;
-		tmp /= dp->link.num_lanes * link_rate * 8;
-		symbol = tmp / 1000;
+		symbol = tu_size_reg * mode->clock * bit_per_pix;
+		do_div(symbol, dp->link.num_lanes * link_rate * 8);
+		rem = do_div(symbol, 1000);
 		if (tu_size_reg > 64) {
 			ret = -EINVAL;
 			goto err_config_video;
 		}
 	} while ((symbol <= 1) || (tu_size_reg - symbol < 4) ||
-		 (tmp % 1000 > 850) || (tmp % 1000 < 100));
+		 (rem > 850) || (rem < 100));
 
 	val = symbol + (tu_size_reg << 8);
 	ret = cdn_dp_reg_write(dp, DP_FRAMER_TU, val);
@@ -682,9 +682,9 @@ int cdn_dp_config_video(struct cdn_dp_device *dp)
 		goto err_config_video;
 
 	/* set the FIFO Buffer size */
-	val = ((mode->clock * (symbol + 1) / 1000) + link_rate);
+	val = div_u64(mode->clock * (symbol + 1), 1000) + link_rate;
 	val /= (dp->link.num_lanes * link_rate);
-	val = 8 * (symbol + 1) / bit_per_pix - val;
+	val = div_u64(8 * (symbol + 1), bit_per_pix) - val;
 	val += 2;
 	ret = cdn_dp_reg_write(dp, DP_VC_TABLE(15), val);
 
