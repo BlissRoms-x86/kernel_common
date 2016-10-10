@@ -3418,22 +3418,6 @@ static void mxt_stop(struct mxt_data *data)
 				 MXT_T100_CTRL, MXT_TOUCH_CTRL_OFF);
 }
 
-static int mxt_input_open(struct input_dev *dev)
-{
-	struct mxt_data *data = input_get_drvdata(dev);
-
-	mxt_start(data);
-
-	return 0;
-}
-
-static void mxt_input_close(struct input_dev *dev)
-{
-	struct mxt_data *data = input_get_drvdata(dev);
-
-	mxt_stop(data);
-}
-
 static int mxt_input_inhibit(struct input_dev *input)
 {
 	static const u8 T7_config_deepsleep[3] = { 0x00, 0x00, 0x00 };
@@ -3534,8 +3518,6 @@ static int mxt_input_dev_create(struct mxt_data *data)
 	input_dev->phys = data->phys;
 	input_dev->id.bustype = BUS_I2C;
 	input_dev->dev.parent = &data->client->dev;
-	input_dev->open = mxt_input_open;
-	input_dev->close = mxt_input_close;
 	input_dev->inhibit = mxt_input_inhibit;
 	input_dev->uninhibit = mxt_input_uninhibit;
 
