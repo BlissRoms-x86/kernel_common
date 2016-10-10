@@ -273,6 +273,10 @@ struct mei_cl {
 	struct list_head rd_completed;
 
 	struct mei_cl_device *cldev;
+
+	struct work_struct event_work;
+	struct work_struct notify_work;
+	struct mutex work_mutex;
 };
 
 /**

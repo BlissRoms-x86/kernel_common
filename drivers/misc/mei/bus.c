@@ -240,72 +240,6 @@ ssize_t mei_cldev_recv(struct mei_cl_device *cldev, u8 *buf, size_t length)
 EXPORT_SYMBOL_GPL(mei_cldev_recv);
 
 /**
- * mei_cl_bus_event_work  - dispatch rx event for a bus device
- *    and schedule new work
- *
- * @work: work
- */
-static void mei_cl_bus_event_work(struct work_struct *work)
-{
-	struct mei_cl_device *cldev;
-	struct mei_device *bus;
-
-	cldev = container_of(work, struct mei_cl_device, event_work);
-
-	bus = cldev->bus;
-
-	if (cldev->event_cb)
-		cldev->event_cb(cldev, cldev->events, cldev->event_context);
-
-	cldev->events = 0;
-}
-
-/**
- * mei_cl_bus_notify_event - schedule notify cb on bus client
- *
- * @cl: host client
- */
-void mei_cl_bus_notify_event(struct mei_cl *cl)
-{
-	struct mei_cl_device *cldev = cl->cldev;
-
-	if (!cldev || !cldev->event_cb)
-		return;
-
-	if (!(cldev->events_mask & BIT(MEI_CL_EVENT_NOTIF)))
-		return;
-
-	if (!cl->notify_ev)
-		return;
-
-	set_bit(MEI_CL_EVENT_NOTIF, &cldev->events);
-
-	schedule_work(&cldev->event_work);
-
-	cl->notify_ev = false;
-}
-
-/**
- * mei_cl_bus_rx_event  - schedule rx evenet
- *
- * @cl: host client
- */
-void mei_cl_bus_rx_event(struct mei_cl *cl)
-{
-	struct mei_cl_device *cldev = cl->cldev;
-
-	if (!cldev || !cldev->event_cb)
-		return;
-
-	if (!(cldev->events_mask & BIT(MEI_CL_EVENT_RX)))
-		return;
-
-	set_bit(MEI_CL_EVENT_RX, &cldev->events);
-
-	schedule_work(&cldev->event_work);
-}
-
-/**
  * mei_cldev_register_event_cb - register event callback
  *
  * @cldev: me client devices
@@ -327,11 +261,9 @@ int mei_cldev_register_event_cb(struct mei_cl_device *cldev,
 	if (cldev->event_cb)
 		return -EALREADY;
 
-	cldev->events = 0;
 	cldev->events_mask = events_mask;
 	cldev->event_cb = event_cb;
 	cldev->event_context = context;
-	INIT_WORK(&cldev->event_work, mei_cl_bus_event_work);
 
 	if (cldev->events_mask & BIT(MEI_CL_EVENT_RX)) {
 		mutex_lock(&bus->device_lock);
@@ -637,7 +569,8 @@ static int mei_cl_device_remove(struct device *dev)
 
 	if (cldev->event_cb) {
 		cldev->event_cb = NULL;
-		cancel_work_sync(&cldev->event_work);
+		cancel_work_sync(&cldev->cl->event_work);
+		cancel_work_sync(&cldev->cl->notify_work);
 	}
 
 	cldrv = to_mei_cl_driver(dev->driver);

@@ -542,16 +542,102 @@ int mei_cl_flush_queues(struct mei_cl *cl, const struct file *fp)
 	return 0;
 }
 
+/**
+ * mei_cl_bus_event_work  - dispatch rx event for a bus device
+ *    and schedule new work
+ *
+ * @work: work
+ */
+static void mei_cl_event_work(struct work_struct *work)
+{
+	struct mei_cl *cl;
+	struct mei_cl_device *cldev;
+
+	cl = container_of(work, struct mei_cl, event_work);
+	cldev = cl->cldev;
+
+	if (cldev->event_cb) {
+		mutex_lock(&cl->work_mutex);
+		cldev->event_cb(cldev, BIT(MEI_CL_EVENT_RX), cldev->event_context);
+		mutex_unlock(&cl->work_mutex);
+	}
+}
 
 /**
- * mei_cl_init - initializes cl.
+ * mei_cl_bus_notify_work  - dispatch notification for a bus device
+ *    and schedule new work
  *
- * @cl: host client to be initialized
- * @dev: mei device
+ * @work: work
  */
+static void mei_cl_notify_work(struct work_struct *work)
+{
+	struct mei_cl *cl;
+	struct mei_cl_device *cldev;
+
+	cl = container_of(work, struct mei_cl, event_work);
+	cldev = cl->cldev;
+
+	if (cldev->event_cb) {
+		mutex_lock(&cl->work_mutex);
+		cldev->event_cb(cldev, BIT(MEI_CL_EVENT_NOTIF), cldev->event_context);
+		mutex_unlock(&cl->work_mutex);
+	}
+}
+
+/**
+ * mei_cl_notify_event - schedule notify cb on bus client
+ *
+ * @cl: host client
+ */
+void mei_cl_notify_event(struct mei_cl *cl)
+{
+	struct mei_cl_device *cldev = cl->cldev;
+
+	if (!cldev || !cldev->event_cb)
+		return;
+
+	if (!(cldev->events_mask & BIT(MEI_CL_EVENT_NOTIF)))
+		return;
+
+	if (!cl->notify_ev)
+		return;
+
+	schedule_work(&cl->notify_work);
+
+	cl->notify_ev = false;
+}
+
+/**
+ * mei_cl_rx_event  - schedule rx evenet
+ *
+ * @cl: host client
+ */
+void mei_cl_rx_event(struct mei_cl *cl)
+{
+	struct mei_cl_device *cldev = cl->cldev;
+
+	if (!cldev || !cldev->event_cb)
+		return;
+
+	if (!(cldev->events_mask & BIT(MEI_CL_EVENT_RX)))
+		return;
+
+	schedule_work(&cl->event_work);
+}
+
+
+/**
+* mei_cl_init - initializes cl.
+*
+* @cl: host client to be initialized
+* @dev: mei device
+*/
 void mei_cl_init(struct mei_cl *cl, struct mei_device *dev)
 {
 	memset(cl, 0, sizeof(struct mei_cl));
+	INIT_WORK(&cl->event_work, mei_cl_event_work);
+	INIT_WORK(&cl->notify_work, mei_cl_notify_work);
+	mutex_init(&cl->work_mutex);
 	init_waitqueue_head(&cl->wait);
 	init_waitqueue_head(&cl->rx_wait);
 	init_waitqueue_head(&cl->tx_wait);
@@ -1373,7 +1459,7 @@ void mei_cl_notify(struct mei_cl *cl)
 	if (cl->ev_async)
 		kill_fasync(&cl->ev_async, SIGIO, POLL_PRI);
 
-	mei_cl_bus_notify_event(cl);
+	mei_cl_notify_event(cl);
 }
 
 /**
@@ -1724,7 +1810,7 @@ void mei_cl_complete(struct mei_cl *cl, struct mei_cl_cb *cb)
 		if (waitqueue_active(&cl->rx_wait))
 			wake_up_interruptible_all(&cl->rx_wait);
 		else
-			mei_cl_bus_rx_event(cl);
+			mei_cl_rx_event(cl);
 		break;
 
 	case MEI_FOP_CONNECT:
