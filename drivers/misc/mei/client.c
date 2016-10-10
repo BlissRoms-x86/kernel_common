@@ -542,6 +542,30 @@ int mei_cl_flush_queues(struct mei_cl *cl, const struct file *fp)
 	return 0;
 }
 
+static struct mei_cl_cb *mei_cl_bus_peek_read_cb(struct mei_cl *cl)
+{
+	struct mei_device *bus;
+	struct mei_cl_cb *cb = NULL;
+
+	if (cl == NULL)
+		return NULL;
+
+	if (WARN_ON(!cl || !cl->dev))
+		return NULL;
+
+	bus = cl->dev;
+
+	mutex_lock(&bus->device_lock);
+	if (bus->dev_state != MEI_DEV_ENABLED)
+		goto out;
+
+	cb = mei_cl_read_cb(cl, NULL);
+out:
+	mutex_unlock(&bus->device_lock);
+
+	return cb;
+}
+
 /**
  * mei_cl_bus_event_work  - dispatch rx event for a bus device
  *    and schedule new work
@@ -552,14 +576,29 @@ static void mei_cl_event_work(struct work_struct *work)
 {
 	struct mei_cl *cl;
 	struct mei_cl_device *cldev;
+	struct mei_cl_cb *cb;
+	struct mei_device *bus;
 
 	cl = container_of(work, struct mei_cl, event_work);
 	cldev = cl->cldev;
+	bus = cl->dev;
 
 	if (cldev->event_cb) {
-		mutex_lock(&cl->work_mutex);
-		cldev->event_cb(cldev, BIT(MEI_CL_EVENT_RX), cldev->event_context);
-		mutex_unlock(&cl->work_mutex);
+		while ((cb = mei_cl_bus_peek_read_cb(cl)) != NULL) {
+			mutex_lock(&cl->work_mutex);
+			cldev->event_cb(cldev, BIT(MEI_CL_EVENT_RX),
+							cldev->event_context);
+			mutex_unlock(&cl->work_mutex);
+
+			if (cb == mei_cl_bus_peek_read_cb(cl)) {
+				dev_warn(&cldev->dev,
+					"callback didn't retrieve the read cb\n");
+
+				mutex_lock(&bus->device_lock);
+				mei_io_cb_free(cb); /* discard non-handled cb */
+				mutex_unlock(&bus->device_lock);
+			}
+		}
 	}
 }
 
@@ -579,7 +618,8 @@ static void mei_cl_notify_work(struct work_struct *work)
 
 	if (cldev->event_cb) {
 		mutex_lock(&cl->work_mutex);
-		cldev->event_cb(cldev, BIT(MEI_CL_EVENT_NOTIF), cldev->event_context);
+		cldev->event_cb(cldev, BIT(MEI_CL_EVENT_NOTIF),
+							cldev->event_context);
 		mutex_unlock(&cl->work_mutex);
 	}
 }

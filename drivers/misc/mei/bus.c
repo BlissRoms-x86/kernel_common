@@ -193,32 +193,6 @@ ssize_t mei_cldev_send(struct mei_cl_device *cldev, u8 *buf, size_t length)
 }
 EXPORT_SYMBOL_GPL(mei_cldev_send);
 
-bool mei_cldev_is_recv_buf_empty(struct mei_cl_device *cldev)
-{
-	struct mei_device *bus;
-	struct mei_cl *cl = cldev->cl;
-	bool is_empty = true;
-
-	if (cl == NULL)
-		return true;
-
-	if (WARN_ON(!cl || !cl->dev))
-		return true;
-
-	bus = cl->dev;
-
-	mutex_lock(&bus->device_lock);
-	if (bus->dev_state != MEI_DEV_ENABLED)
-		goto out;
-
-	is_empty = (mei_cl_read_cb(cl, NULL) == NULL);
-out:
-	mutex_unlock(&bus->device_lock);
-
-	return is_empty;
-}
-EXPORT_SYMBOL_GPL(mei_cldev_is_recv_buf_empty);
-
 /**
  * mei_cldev_recv - client receive (read)
  *
