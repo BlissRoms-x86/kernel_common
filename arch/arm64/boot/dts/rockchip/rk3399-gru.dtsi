@@ -188,7 +188,7 @@
 		regulator-min-microvolt = <798674>;
 		regulator-max-microvolt = <1302172>;
 
-		settle-time-up-us = <200>;
+		settle-time-up-us = <322>;
 		slowest-decay-rate = <225>;
 		safe-fall-percent = <16>;
 
@@ -211,7 +211,7 @@
 		regulator-min-microvolt = <799065>;
 		regulator-max-microvolt = <1303738>;
 
-		settle-time-up-us = <200>;
+		settle-time-up-us = <384>;
 		slowest-decay-rate = <225>;
 		safe-fall-percent = <16>;
 
@@ -234,7 +234,7 @@
 		regulator-min-microvolt = <785782>;
 		regulator-max-microvolt = <1217729>;
 
-		settle-time-up-us = <200>;
+		settle-time-up-us = <390>;
 		slowest-decay-rate = <225>;
 		safe-fall-percent = <16>;
 
@@ -257,7 +257,7 @@
 		regulator-min-microvolt = <800069>;
 		regulator-max-microvolt = <1049692>;
 
-		settle-time-up-us = <200>;
+		settle-time-up-us = <378>;
 		slowest-decay-rate = <225>;
 		safe-fall-percent = <16>;
 
