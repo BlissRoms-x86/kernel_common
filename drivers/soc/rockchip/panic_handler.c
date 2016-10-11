@@ -29,8 +29,10 @@ static void __iomem *rockchip_cpu_debug[6];
 #define RK3399_DEBUG_PA_BIG(x)		(RK3399_DEBUG_PA + 0x210000 + \
 					 ((x) * 0x100000))
 
-#define CPU_EDPCSR_LO			0xa0
-#define CPU_EDPCSR_HI			0xac
+#define CPU_EDPCSR_LO			0x0a0
+#define CPU_EDPCSR_HI			0x0ac
+#define CPU_EDLAR			0xfb0
+#define CPU_EDLAR_UNLOCK		0xc5acce55
 
 #define NUM_CPU_SAMPLES			100
 #define NUM_SAMPLES_TO_PRINT		32
@@ -54,6 +56,10 @@ int rockchip_panic_notify(struct notifier_block *nb, unsigned long event,
 		/* No need to print something in rockchip_panic_notify() */
 		if (smp_processor_id() == i)
 			continue;
+
+		/* Unlock EDLSR.SLK so that EDPCSRhi gets populated */
+		writel_relaxed(CPU_EDLAR_UNLOCK,
+			       rockchip_cpu_debug[i] + CPU_EDLAR);
 
 		/* Try to read a bunch of times if CPU is actually running */
 		for (j = 0; j < NUM_CPU_SAMPLES &&
