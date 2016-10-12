@@ -268,8 +268,6 @@ static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
 	u8 lanes, bpc, i;
 
 	switch (display_info->bpc) {
-	case 16:
-	case 12:
 	case 10:
 		bpc = 10;
 		break;
@@ -558,8 +556,6 @@ static void cdn_dp_encoder_mode_set(struct drm_encoder *encoder,
 	int ret, val;
 
 	switch (display_info->bpc) {
-	case 16:
-	case 12:
 	case 10:
 		video->color_depth = 10;
 		break;
