@@ -77,6 +77,7 @@ struct cdn_dp_device {
 	struct drm_display_mode mode;
 	struct platform_device *audio_pdev;
 	struct work_struct event_work;
+	struct edid *edid;
 
 	struct mutex lock;
 	bool connected;

@@ -233,10 +233,7 @@ static int cdn_dp_connector_get_modes(struct drm_connector *connector)
 	int ret = 0;
 
 	mutex_lock(&dp->lock);
-	if (WARN_ON(!dp->fw_loaded))
-		goto out;
-
-	edid = drm_do_get_edid(connector, cdn_dp_get_edid_block, dp);
+	edid = dp->edid;
 	if (edid) {
 		DRM_DEV_DEBUG_KMS(dp->dev, "got edid: width[%d] x height[%d]\n",
 				  edid->width_cm, edid->height_cm);
@@ -248,11 +245,9 @@ static int cdn_dp_connector_get_modes(struct drm_connector *connector)
 								edid);
 			drm_edid_to_eld(connector, edid);
 		}
-		kfree(edid);
 	}
-
-out:
 	mutex_unlock(&dp->lock);
+
 	return ret;
 }
 
@@ -386,6 +381,10 @@ static int cdn_dp_get_sink_capability(struct cdn_dp_device *dp,
 			DRM_DEV_ERROR(dp->dev, "Failed to get caps %d\n", ret);
 			return ret;
 		}
+
+		kfree(dp->edid);
+		dp->edid = drm_do_get_edid(&dp->connector,
+					   cdn_dp_get_edid_block, dp);
 		return 0;
 	}
 
@@ -947,6 +946,8 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 		if (ret)
 			DRM_DEV_ERROR(dp->dev, "Disable dp failed %d\n", ret);
 		dp->connected = false;
+		kfree(dp->edid);
+		dp->edid = NULL;
 		goto out;
 
 	/* Connected but not enabled, enable the block */
@@ -963,6 +964,8 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 	} else if (cdn_dp_get_sink_count(dp, &sink_count) || !sink_count) {
 		DRM_DEV_INFO(dp->dev, "Connected without sink. Assert hpd\n");
 		dp->connected = false;
+		kfree(dp->edid);
+		dp->edid = NULL;
 		goto out;
 
 	/* Enabled and connected with a sink, re-train if requested */
@@ -1106,6 +1109,8 @@ static void cdn_dp_unbind(struct device *dev, struct device *master, void *data)
 
 	pm_runtime_disable(dev);
 	release_firmware(dp->fw);
+	kfree(dp->edid);
+	dp->edid = NULL;
 }
 
 static const struct component_ops cdn_dp_component_ops = {
