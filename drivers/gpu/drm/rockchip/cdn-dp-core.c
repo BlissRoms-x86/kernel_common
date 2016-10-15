@@ -265,7 +265,11 @@ static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
 	struct cdn_dp_device *dp = connector_to_dp(connector);
 	struct drm_display_info *display_info = &dp->connector.display_info;
 	u32 requested, actual, rate, sink_max, source_max = 0;
-	u8 lanes, bpc, i;
+	u8 lanes, bpc;
+
+	/* If DP is disconnected, every mode is invalid */
+	if (!dp->connected)
+		return MODE_BAD;
 
 	switch (display_info->bpc) {
 	case 10:
@@ -281,14 +285,7 @@ static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
 
 	requested = mode->clock * bpc * 3 / 1000;
 
-	/* find the running port */
-	for (i = 0; i < dp->ports; i++) {
-		if (dp->port[i]->phy_enabled) {
-			source_max = dp->port[i]->lanes;
-			break;
-		}
-	}
-
+	source_max = dp->lanes;
 	sink_max = drm_dp_max_lane_count(dp->dpcd);
 	lanes = min(source_max, sink_max);
 
@@ -528,6 +525,7 @@ static int cdn_dp_enable(struct cdn_dp_device *dp)
 			goto err_clk_disable;
 
 		dp->active = true;
+		dp->lanes = port->lanes;
 	}
 
 	ret = cdn_dp_get_sink_capability(dp, port, &sink_count);
