@@ -973,8 +973,12 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 			goto out;
 		}
 		dp->connected = true;
+
+	/*
+	 * Enabled, connected, and trained. We can end up here if another USB
+	 * device has been connected/removed. Ignore the event.
+	 */
 	} else {
-		WARN(1, "CDN DP in unknown state\n");
 		hpd_event = false;
 	}
 
