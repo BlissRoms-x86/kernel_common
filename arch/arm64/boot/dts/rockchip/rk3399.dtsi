@@ -390,6 +390,7 @@
 			// TODO: replace with upstream property
 			snps,phyif_utmi_16_bits;
 			snps,dis_u2_freeclk_exists_quirk;
+			snps,dis_u2_susphy_quirk;
 			snps,dis_del_phy_power_chg_quirk;
 			snps,usb3-slow-suspend-quirk;
 			power-domains = <&power RK3399_PD_USB3>;
@@ -424,6 +425,7 @@
 			// TODO: replace with upstream property
 			snps,phyif_utmi_16_bits;
 			snps,dis_u2_freeclk_exists_quirk;
+			snps,dis_u2_susphy_quirk;
 			snps,dis_del_phy_power_chg_quirk;
 			snps,usb3-slow-suspend-quirk;
 			power-domains = <&power RK3399_PD_USB3>;
