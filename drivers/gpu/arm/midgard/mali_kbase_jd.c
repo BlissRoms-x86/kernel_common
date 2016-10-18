@@ -226,22 +226,6 @@ static void kbase_atom_release_sync(struct kbase_jd_atom *katom)
 
 void kbase_jd_free_external_resources(struct kbase_jd_atom *katom)
 {
-#if defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)
-	if (kbase_atom_has_sync_obj(katom)) {
-		struct kbase_jd_context * jctx = &katom->kctx->jctx;
-
-		/*
-		 * As the atom is no longer waiting, remove it from
-		 * the waiting list.
-		 */
-
-		mutex_lock(&jctx->lock);
-		kbase_jd_kds_waiters_remove(katom);
-		mutex_unlock(&jctx->lock);
-
-		kbase_atom_release_sync(katom);
-	}
-#endif				/* CONFIG_KDS or CONFIG_DRM_DMA_SYNC */
 }
 
 static void kbase_jd_post_external_resources(struct kbase_jd_atom *katom)
@@ -274,6 +258,13 @@ static void kbase_jd_post_external_resources(struct kbase_jd_atom *katom)
 		katom->extres = NULL;
 	}
 	kbase_gpu_vm_unlock(katom->kctx);
+
+#if defined(CONFIG_KDS) || defined(CONFIG_DRM_DMA_SYNC)
+	if (kbase_atom_has_sync_obj(katom)) {
+		kbase_jd_kds_waiters_remove(katom);
+		kbase_atom_release_sync(katom);
+	}
+#endif /* CONFIG_KDS || CONFIG_DRM_DMA_SYNC */
 }
 
 #ifdef CONFIG_DRM_DMA_SYNC
