@@ -147,6 +147,8 @@
 #define   PCIE_RC_CONFIG_LCS_LBMS		BIT(30)
 #define   PCIE_RC_CONFIG_LCS_LAMS		BIT(31)
 #define PCIE_RC_CONFIG_L1_SUBSTATE_CTRL2 (PCIE_RC_CONFIG_BASE + 0x90c)
+#define PCIE_RC_CONFIG_THP_CAP		(PCIE_RC_CONFIG_BASE + 0x274)
+#define   PCIE_RC_CONFIG_THP_CAP_NEXT_MASK	GENMASK(31, 20)
 
 #define PCIE_CORE_AXI_CONF_BASE		0xc00000
 #define PCIE_CORE_OB_REGION_ADDR0	(PCIE_CORE_AXI_CONF_BASE + 0x0)
@@ -589,6 +591,12 @@ static int rockchip_pcie_init_port(struct rockchip_pcie *rockchip)
 	rockchip_pcie_write(rockchip,
 			    PCI_CLASS_BRIDGE_PCI << PCIE_RC_CONFIG_SCC_SHIFT,
 			    PCIE_RC_CONFIG_RID_CCR);
+
+	/* Clear THP cap's next cap pointer to remove L1 substate cap */
+	status = rockchip_pcie_read(rockchip, PCIE_RC_CONFIG_THP_CAP);
+	status &= ~PCIE_RC_CONFIG_THP_CAP_NEXT_MASK;
+	rockchip_pcie_write(rockchip, status, PCIE_RC_CONFIG_THP_CAP);
+
 	rockchip_pcie_write(rockchip, 0x0, PCIE_RC_BAR_CONF);
 
 	rockchip_pcie_write(rockchip,
