@@ -16,6 +16,7 @@
 
 menuconfig MALI_MIDGARD
 	tristate "Mali Midgard series support"
+	depends on ARM || ARM64
 	select GPU_TRACEPOINTS if ANDROID
 	default n
 	help
@@ -27,6 +28,7 @@ menuconfig MALI_MIDGARD
 config MALI_GATOR_SUPPORT
 	bool "Streamline support via Gator"
 	depends on MALI_MIDGARD
+	depends on BROKEN
 	default n
 	help
 	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
@@ -156,6 +158,7 @@ config MALI_DEBUG
 config MALI_NO_MALI
 	bool "No Mali"
 	depends on MALI_MIDGARD && MALI_EXPERT
+	depends on BROKEN
 	default n
 	help
 	  This can be used to test the driver in a simulated environment
@@ -175,6 +178,7 @@ config MALI_ERROR_INJECT
 config MALI_TRACE_TIMELINE
 	bool "Timeline tracing"
 	depends on MALI_MIDGARD && MALI_EXPERT
+	depends on BROKEN
 	default n
 	help
 	  Enables timeline tracing through the kernel tracepoint system.
