@@ -648,6 +648,8 @@ ap_i2c_mic: &i2c1 {
 
 		interrupt-parent = <&gpio1>;
 		interrupts = <13 IRQ_TYPE_LEVEL_HIGH>;
+
+		realtek,dmic-init-delay = <20>;
 		wakeup-source;
 	};
 };
