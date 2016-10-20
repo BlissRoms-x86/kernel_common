@@ -227,9 +227,6 @@ enum {
 #define GEN8_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT	0x17
 #define GEN9_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT	0x26
 
-static int intel_lr_context_pin(struct intel_context *ctx,
-				struct intel_engine_cs *engine);
-
 /**
  * intel_sanitize_enable_execlists() - sanitize i915.enable_execlists
  * @dev: DRM device.
@@ -1124,7 +1121,7 @@ unpin_ctx_obj:
 	return ret;
 }
 
-static int intel_lr_context_pin(struct intel_context *ctx,
+int intel_lr_context_pin(struct intel_context *ctx,
 				struct intel_engine_cs *engine)
 {
 	int ret = 0;
@@ -2194,6 +2191,8 @@ static int logical_render_ring_init(struct drm_device *dev)
 	engine->mmio_base = RENDER_RING_BASE;
 
 	logical_ring_default_irqs(engine, GEN8_RCS_IRQ_SHIFT);
+	engine->irq_keep_mask |= GT_RENDER_PIPECTL_NOTIFY_INTERRUPT
+							<< GEN8_RCS_IRQ_SHIFT;
 	if (HAS_L3_DPF(dev))
 		engine->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 

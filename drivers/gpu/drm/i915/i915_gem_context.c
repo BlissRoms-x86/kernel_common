@@ -321,6 +321,17 @@ err_destroy:
 	return ERR_PTR(ret);
 }
 
+struct intel_context *i915_gem_context_create_ipts(struct drm_device *dev)
+{
+	struct intel_context *ctx;
+
+	BUG_ON(!mutex_is_locked(&dev->struct_mutex));
+
+	ctx = i915_gem_create_context(dev, NULL);
+
+	return ctx;
+}
+
 static void i915_gem_context_unpin(struct intel_context *ctx,
 				   struct intel_engine_cs *engine)
 {

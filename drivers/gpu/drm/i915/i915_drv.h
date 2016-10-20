@@ -3304,6 +3304,7 @@ void i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj);
 void i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj);
 
 /* i915_gem_context.c */
+struct intel_context *i915_gem_context_create_ipts(struct drm_device *dev);
 int __must_check i915_gem_context_init(struct drm_device *dev);
 void i915_gem_context_fini(struct drm_device *dev);
 void i915_gem_context_reset(struct drm_device *dev);
