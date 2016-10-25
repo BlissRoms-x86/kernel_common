@@ -5378,6 +5378,12 @@ int drm_mode_page_flip_ioctl(struct drm_device *dev,
 	}
 	*/
 
+	if (crtc->primary->fb->bits_per_pixel != fb->bits_per_pixel) {
+		DRM_DEBUG_KMS("Page flip is not allowed to change bpp.\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
 	if (page_flip->flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		e = kzalloc(sizeof *e, GFP_KERNEL);
 		if (!e) {
