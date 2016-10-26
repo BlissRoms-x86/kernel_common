@@ -21,6 +21,7 @@
 #define	_MWIFIEX_SDIO_H
 
 
+#include <linux/completion.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_ids.h>
 #include <linux/mmc/sdio_func.h>
@@ -245,6 +246,7 @@ struct sdio_mmc_card {
 	struct mwifiex_adapter *adapter;
 	struct device_node *plt_of_node;
 	struct mwifiex_plt_wake_cfg *plt_wake_cfg;
+	struct completion fw_done;
 
 	const char *firmware;
 	const struct mwifiex_sdio_card_reg *reg;
