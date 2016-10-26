@@ -301,9 +301,11 @@ static void rockchip_drm_preclose(struct drm_device *dev,
 
 void rockchip_drm_lastclose(struct drm_device *dev)
 {
+#ifdef CONFIG_DRM_FBDEV_EMULATION
 	struct rockchip_drm_private *priv = dev->dev_private;
 
 	drm_fb_helper_restore_fbdev_mode_unlocked(&priv->fbdev_helper);
+#endif
 }
 
 static const struct drm_ioctl_desc rockchip_ioctls[] = {
@@ -369,20 +371,24 @@ static struct drm_driver rockchip_drm_driver = {
 #ifdef CONFIG_PM_SLEEP
 void rockchip_drm_fb_suspend(struct drm_device *drm)
 {
+#ifdef CONFIG_DRM_FBDEV_EMULATION
 	struct rockchip_drm_private *priv = drm->dev_private;
 
 	console_lock();
 	drm_fb_helper_set_suspend(&priv->fbdev_helper, 1);
 	console_unlock();
+#endif
 }
 
 void rockchip_drm_fb_resume(struct drm_device *drm)
 {
+#ifdef CONFIG_DRM_FBDEV_EMULATION
 	struct rockchip_drm_private *priv = drm->dev_private;
 
 	console_lock();
 	drm_fb_helper_set_suspend(&priv->fbdev_helper, 0);
 	console_unlock();
+#endif
 }
 
 static int rockchip_drm_sys_suspend(struct device *dev)
