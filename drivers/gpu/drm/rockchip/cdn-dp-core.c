@@ -964,12 +964,27 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 
 	/* Enabled and connected with a sink, re-train if requested */
 	} else if (!cdn_dp_check_link_status(dp)) {
+		unsigned int rate = dp->link.rate;
+		unsigned int num_lanes = dp->link.num_lanes;
+
 		DRM_DEV_INFO(dp->dev, "Connected with sink. Re-train link\n");
 		ret = cdn_dp_train_link(dp);
 		if (ret) {
 			DRM_DEV_ERROR(dp->dev, "Train link failed %d\n", ret);
 			goto out;
 		}
+
+		/* If training result is changed, update the video config */
+		if (rate != dp->link.rate || num_lanes != dp->link.num_lanes) {
+			ret = cdn_dp_config_video(dp);
+			if (ret) {
+				DRM_DEV_ERROR(dp->dev,
+					      "Failed to config video %d\n",
+					      ret);
+				goto out;
+			}
+		}
+
 		dp->connected = true;
 	}
 out:
