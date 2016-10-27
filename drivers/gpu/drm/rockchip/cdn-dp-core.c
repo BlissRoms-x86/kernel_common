@@ -914,7 +914,6 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 						event_work);
 	struct cdn_dp_port *port;
 	int ret, i, lanes;
-	bool hpd_event = false;
 	u8 sink_count;
 
 	mutex_lock(&dp->lock);
@@ -925,9 +924,6 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 	ret = cdn_dp_request_firmware(dp);
 	if (ret)
 		goto out;
-
-	/* We might need to notify userspace for everything below here */
-	hpd_event = true;
 
 	/* Disable any ports that have just become inactive */
 	for (i = 0; i < dp->ports; i++) {
@@ -975,20 +971,10 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 			goto out;
 		}
 		dp->connected = true;
-
-	/*
-	 * Enabled, connected, and trained. We can end up here if another USB
-	 * device has been connected/removed. Ignore the event.
-	 */
-	} else {
-		hpd_event = false;
 	}
-
 out:
 	mutex_unlock(&dp->lock);
-
-	if (hpd_event)
-		drm_kms_helper_hotplug_event(dp->drm_dev);
+	drm_helper_hpd_irq_event(dp->drm_dev);
 }
 
 static int cdn_dp_pd_event(struct notifier_block *nb,
