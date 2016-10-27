@@ -3652,6 +3652,7 @@ static void mxt_power_off(void *_data)
 static int mxt_check_device_present(struct i2c_client *client)
 {
 	union i2c_smbus_data dummy;
+	unsigned short orig_addr = client->addr;
 
 	do {
 		if (i2c_smbus_xfer(client->adapter, client->addr,
@@ -3666,15 +3667,23 @@ static int mxt_check_device_present(struct i2c_client *client)
 		 * we did earlier and define 2-nd device at alternate address
 		 * as they will both try to grab reset gpio and clash, so we
 		 * hack around it here.
+		 * Note that we do not know family ID yet, so we need to try
+		 * both bootloader addresses.
 		 */
 		switch (client->addr) {
 		case 0x4a:
-			client->addr = 0x26;
+		case 0x4b:
+			client->addr -= 0x24;
 			break;
 
-		case 0x4b:
-			client->addr = 0x25;
-			break;
+		case 0x27:
+		case 0x26:
+			if (orig_addr == 0x4a || orig_addr == 0x4b) {
+				/* Try 0x24 or 0x25 */
+				client->addr -= 2;
+				break;
+			}
+			/* Fall through */
 
 		default:
 			return -ENXIO;
