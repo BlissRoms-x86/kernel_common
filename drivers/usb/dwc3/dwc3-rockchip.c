@@ -32,6 +32,7 @@
 #include <linux/usb/hcd.h>
 
 #include "core.h"
+#include "../host/xhci.h"
 
 struct dwc3_rockchip {
 	int			num_clocks;
@@ -96,6 +97,7 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 	struct dwc3		*dwc = rockchip->dwc;
 	struct extcon_dev	*edev = rockchip->edev;
 	struct usb_hcd		*hcd = dev_get_drvdata(&dwc->xhci->dev);
+	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
 	unsigned long		flags;
 
 	mutex_lock(&rockchip->lock);
@@ -170,6 +172,7 @@ static void dwc3_rockchip_otg_extcon_evt_work(struct work_struct *work)
 		 * if the system is running on battery).
 		 */
 		if (hcd->state != HC_STATE_HALT) {
+			xhci->xhc_state |= XHCI_STATE_REMOVING;
 			usb_remove_hcd(hcd->shared_hcd);
 			usb_remove_hcd(hcd);
 		}
