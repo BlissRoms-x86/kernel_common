@@ -109,6 +109,28 @@ static void raw_data_work_func(struct work_struct *work)
 	ipts_handle_processed_data(ipts);
 }
 
+static void gfx_status_work_func(struct work_struct *work)
+{
+	ipts_info_t *ipts = container_of(work, ipts_info_t, gfx_status_work);
+	ipts_state_t state;
+	int status = ipts->gfx_status;
+
+	ipts_dbg(ipts, "notify gfx status : %d\n", status);
+
+	state = ipts_get_state(ipts);
+
+	if (state == IPTS_STA_RAW_DATA_STARTED || state == IPTS_STA_HID_STARTED) {
+		if (status == IPTS_NOTIFY_STA_BACKLIGHT_ON &&
+					ipts->display_status == false) {
+			ipts_send_sensor_clear_mem_window_cmd(ipts);
+			ipts->display_status = true;
+		} else if (status == IPTS_NOTIFY_STA_BACKLIGHT_OFF &&
+					ipts->display_status == true) {
+			ipts_send_sensor_quiesce_io_cmd(ipts);
+			ipts->display_status = false;
+		}
+	}
+}
 static void ipts_mei_cl_event_cb(struct mei_cl_device *cldev,
 					u32 events,
 					void *context)
@@ -189,6 +211,7 @@ static int ipts_mei_cl_probe(struct mei_cl_device *cldev,
 
 	INIT_WORK(&ipts->init_work, init_work_func);
 	INIT_WORK(&ipts->raw_data_work, raw_data_work_func);
+	INIT_WORK(&ipts->gfx_status_work, gfx_status_work_func);
 
 	ret = sysfs_create_group(&cldev->dev.kobj, &ipts_grp);
 	if (ret != 0) {
@@ -219,6 +242,8 @@ static int ipts_mei_cl_remove(struct mei_cl_device *cldev)
 	ipts_hid_release(ipts);
 	ipts_dbgfs_deregister(ipts);
 	mei_cldev_disable(cldev);
+	
+	pr_info("IPTS removed\n");
 
 	return 0;
 }
