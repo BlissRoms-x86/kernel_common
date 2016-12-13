@@ -90,6 +90,10 @@
 
 #include <linux/io.h>
 
+struct xhci_hcd;
+
+int xhci_intel_cap_init(struct xhci_hcd *xhci);
+
 /**
  * Find the offset of the extended capabilities with capability ID id.
  *
