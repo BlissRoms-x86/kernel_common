@@ -125,14 +125,33 @@
  * @type:       integer (intval)
  * @value:      0 (USB/USB2) or 1 (USB3)
  * @default:    0 (USB/USB2)
- *
+ * - EXTCON_PROP_USB_PLUG
+ * @type:	integer (intval)
+ * @value:	enum extcon_prop_usb_plug
+ * @default:	0 (USB_PLUG_UNKNOWN)
  */
 #define EXTCON_PROP_USB_VBUS		0
 #define EXTCON_PROP_USB_TYPEC_POLARITY	1
 #define EXTCON_PROP_USB_SS		2
+#define EXTCON_PROP_USB_PLUG		3
+
+enum extcon_prop_usb_plug {
+	USB_PLUG_UNKNOWN = 0,
+	USB_TYPE_A,
+	USB_TYPE_A_SS,
+	USB_TYPE_B,
+	USB_TYPE_B_SS,
+	USB_MINI_A,
+	USB_MINI_AB,
+	USB_MINI_B,
+	USB_MICRO_AB,
+	USB_MICRO_B,
+	USB_MICRO_B_SS,
+	USB_TYPE_C,
+};
 
 #define EXTCON_PROP_USB_MIN		0
-#define EXTCON_PROP_USB_MAX		2
+#define EXTCON_PROP_USB_MAX		3
 #define EXTCON_PROP_USB_CNT	(EXTCON_PROP_USB_MAX - EXTCON_PROP_USB_MIN + 1)
 
 /* Properties of EXTCON_TYPE_CHG. */
