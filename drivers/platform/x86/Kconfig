@@ -1099,6 +1099,14 @@ config INTEL_TURBO_MAX_3
 	  This driver is only required when the system is not using Hardware
 	  P-States (HWP). In HWP mode, priority can be read from ACPI tables.
 
+config INTEL_CHT_USB_MUX
+	tristate "Intel Cherrytrail USB mux driver"
+	depends on ACPI && X86 && EXTCON
+	help
+	  This driver adds support for the internal USB mux for muxing the OTG
+	  USB data lines between the xHCI host controller and the dwc3 gadget
+	  controller found on Intel Cherrytrail SoCs.
+
 config SILEAD_DMI
 	bool "Tablets with Silead touchscreens"
 	depends on ACPI && DMI && I2C=y && TOUCHSCREEN_SILEAD
