@@ -34,6 +34,17 @@ config MUX_GPIO
 	  To compile the driver as a module, choose M here: the module will
 	  be called mux-gpio.
 
+config MUX_CHT_USB_MUX
+	tristate "Intel Cherrytrail USB Multiplexer"
+	depends on ACPI && X86 && EXTCON
+	help
+	  This driver adds support for the internal USB mux for muxing the OTG
+	  USB data lines between the xHCI host controller and the dwc3 gadget
+	  controller found on Intel Cherrytrail SoCs.
+
+	  To compile the driver as a module, choose M here: the module will
+	  be called mux-intel_cht_usb_mux.
+
 config MUX_MMIO
 	tristate "MMIO register bitfield-controlled Multiplexer"
 	depends on (OF && MFD_SYSCON) || COMPILE_TEST
