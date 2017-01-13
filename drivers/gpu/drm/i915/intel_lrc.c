@@ -214,8 +214,6 @@
 
 #define WA_TAIL_DWORDS 2
 
-static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
-					    struct intel_engine_cs *engine);
 static void execlists_init_reg_state(u32 *reg_state,
 				     struct i915_gem_context *ctx,
 				     struct intel_engine_cs *engine,
@@ -756,6 +754,72 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 
 static int execlists_context_pin(struct intel_engine_cs *engine,
 				 struct i915_gem_context *ctx)
+{
+	struct intel_engine_cs *engine = request->engine;
+	struct intel_context *ce = &request->ctx->engine[engine->id];
+	int ret;
+
+	/* Flush enough space to reduce the likelihood of waiting after
+	 * we start building the request - in which case we will just
+	 * have to repeat work.
+	 */
+	request->reserved_space += EXECLISTS_REQUEST_SIZE;
+
+	if (!ce->state) {
+		ret = execlists_context_deferred_alloc(request->ctx, engine);
+		if (ret)
+			return ret;
+	}
+
+	request->ring = ce->ring;
+
+	ret = intel_lr_context_pin(request->ctx, engine);
+	if (ret)
+		return ret;
+
+	if (i915.enable_guc_submission) {
+		/*
+		 * Check that the GuC has space for the request before
+		 * going any further, as the i915_add_request() call
+		 * later on mustn't fail ...
+		 */
+		ret = i915_guc_wq_reserve(request);
+		if (ret)
+			goto err_unpin;
+	}
+
+	ret = intel_ring_begin(request, 0);
+	if (ret)
+		goto err_unreserve;
+
+	if (!ce->initialised) {
+		ret = engine->init_context(request);
+		if (ret)
+			goto err_unreserve;
+
+		ce->initialised = true;
+	}
+
+	/* Note that after this point, we have committed to using
+	 * this request as it is being used to both track the
+	 * state of engine initialisation and liveness of the
+	 * golden renderstate above. Think twice before you try
+	 * to cancel/unwind this request now.
+	 */
+
+	request->reserved_space -= EXECLISTS_REQUEST_SIZE;
+	return 0;
+
+err_unreserve:
+	if (i915.enable_guc_submission)
+		i915_guc_wq_unreserve(request);
+err_unpin:
+	intel_lr_context_unpin(request->ctx, engine);
+	return ret;
+}
+
+int intel_lr_context_pin(struct i915_gem_context *ctx,
+				struct intel_engine_cs *engine)
 {
 	struct intel_context *ce = &ctx->engine[engine->id];
 	unsigned int flags;
@@ -1709,7 +1773,8 @@ int logical_render_ring_init(struct intel_engine_cs *engine)
 	int ret;
 
 	logical_ring_setup(engine);
-
+	engine->irq_keep_mask |= GT_RENDER_PIPECTL_NOTIFY_INTERRUPT
+							<< GEN8_RCS_IRQ_SHIFT;
 	if (HAS_L3_DPF(dev_priv))
 		engine->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 
@@ -1985,7 +2050,7 @@ uint32_t intel_lr_context_size(struct intel_engine_cs *engine)
 	return ret;
 }
 
-static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
+int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 					    struct intel_engine_cs *engine)
 {
 	struct drm_i915_gem_object *ctx_obj;

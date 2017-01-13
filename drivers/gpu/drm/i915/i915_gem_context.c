@@ -439,7 +439,20 @@ out:
 	return ctx;
 }
 
-int i915_gem_context_init(struct drm_i915_private *dev_priv)
+struct i915_gem_context *i915_gem_context_create_ipts(struct drm_device *dev)
+{
+	struct i915_gem_context *ctx;
+
+	BUG_ON(!mutex_is_locked(&dev->struct_mutex));
+
+	ctx = i915_gem_create_context(dev, NULL);
+
+	return ctx;
+}
+
+
+static void i915_gem_context_unpin(struct i915_gem_context *ctx,
+				   struct intel_engine_cs *engine)
 {
 	struct i915_gem_context *ctx;
 

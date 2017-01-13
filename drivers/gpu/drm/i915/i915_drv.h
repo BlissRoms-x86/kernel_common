@@ -3452,6 +3452,25 @@ void i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj,
 void i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj,
 					 struct sg_table *pages);
 
+/* i915_gem_context.c */
+int __must_check i915_gem_context_init(struct drm_device *dev);
+void i915_gem_context_lost(struct drm_i915_private *dev_priv);
+void i915_gem_context_fini(struct drm_device *dev);
+int i915_gem_context_open(struct drm_device *dev, struct drm_file *file);
+void i915_gem_context_close(struct drm_device *dev, struct drm_file *file);
+int i915_switch_context(struct drm_i915_gem_request *req);
+int i915_gem_switch_to_kernel_context(struct drm_i915_private *dev_priv);
+struct i915_vma *
+i915_gem_context_pin_legacy(struct i915_gem_context *ctx,
+			    unsigned int flags);
+void i915_gem_context_free(struct kref *ctx_ref);
+struct drm_i915_gem_object *
+i915_gem_alloc_context_obj(struct drm_device *dev, size_t size);
+struct i915_gem_context *
+i915_gem_context_create_gvt(struct drm_device *dev);
+struct i915_gem_context *
+i915_gem_context_create_ipts(struct drm_device *dev);
+
 static inline struct i915_gem_context *
 i915_gem_context_lookup(struct drm_i915_file_private *file_priv, u32 id)
 {

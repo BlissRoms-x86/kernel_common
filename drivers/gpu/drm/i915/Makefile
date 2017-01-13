@@ -121,6 +121,9 @@ i915-$(CONFIG_DRM_I915_SELFTEST) += \
 	selftests/i915_random.o \
 	selftests/i915_selftest.o
 
+# intel precise touch & stylus
+i915-y  += intel_ipts.o
+
 # virtual gpu code
 i915-y += i915_vgpu.o
 
