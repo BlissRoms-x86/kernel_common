@@ -1,4 +1,4 @@
-linux (4.10.0-999.201701082316) unstable; urgency=low
+linux (4.10.0-999.201701082316-ipts) unstable; urgency=low
 
   Mainline build at commit: v4.10-rc3
 
