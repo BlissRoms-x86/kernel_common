@@ -1,0 +1,837 @@
+Source: linux
+Section: devel
+Priority: optional
+Maintainer: Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>
+Standards-Version: 3.9.4.0
+Build-Depends:
+ debhelper (>= 5),
+ dh-systemd,
+ cpio,
+ kernel-wedge,
+ kmod <!stage1>,
+ makedumpfile [amd64 i386] <!stage1>,
+ libelf-dev <!stage1>,
+ libnewt-dev <!stage1>,
+ libiberty-dev <!stage1>,
+ rsync <!stage1>,
+ libdw-dev <!stage1>,
+ libpci-dev <!stage1>,
+ pkg-config <!stage1>,
+ flex <!stage1>,
+ bison <!stage1>,
+ libunwind8-dev [amd64 arm64 armhf i386 powerpc ppc64el] <!stage1>,
+ liblzma-dev <!stage1>,
+ openssl <!stage1>,
+ libssl-dev <!stage1>,
+ libaudit-dev <!stage1>,
+ bc <!stage1>,
+ python-dev <!stage1>,
+ gawk <!stage1>,
+ device-tree-compiler [powerpc] <!stage1>,
+ u-boot-tools [powerpc] <!stage1>,
+ libc6-dev-ppc64 [powerpc] <!stage1>,
+ libudev-dev <!stage1>,
+ autoconf <!stage1>,
+ automake <!stage1>,
+ libtool <!stage1>,
+ uuid-dev <!stage1>,
+Build-Depends-Indep:
+ xmlto <!stage1>,
+ docbook-utils <!stage1>,
+ ghostscript <!stage1>,
+ transfig <!stage1>,
+ bzip2 <!stage1>,
+ sharutils <!stage1>,
+ asciidoc <!stage1>,
+Vcs-Git: git://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/zesty
+XS-Testsuite: autopkgtest
+#XS-Testsuite-Depends: gcc-4.7 binutils
+
+Package: linux-source-4.10.0
+Build-Profiles: <!stage1>
+Architecture: all
+Section: devel
+Priority: optional
+Provides: linux-source, linux-source-3
+Depends: ${misc:Depends}, binutils, bzip2, coreutils
+Recommends: libc-dev, gcc, make
+Suggests: libncurses-dev | ncurses-dev, kernel-package, libqt3-dev
+Description: Linux kernel source for version 4.10.0 with Ubuntu patches
+ This package provides the source code for the Linux kernel version
+ 4.10.0.
+ .
+ This package is mainly meant for other packages to use, in order to build
+ custom flavours.
+ .
+ If you wish to use this package to create a custom Linux kernel, then it
+ is suggested that you investigate the package kernel-package, which has
+ been designed to ease the task of creating kernel image packages.
+ .
+ If you are simply trying to build third-party modules for your kernel,
+ you do not want this package. Install the appropriate linux-headers
+ package instead.
+
+Package: linux-doc
+Build-Profiles: <!stage1>
+Architecture: all
+Section: doc
+Priority: optional
+Depends: ${misc:Depends}
+Description: Linux kernel specific documentation for version 4.10.0
+ This package provides the various documents in the 4.10.0 kernel
+ Documentation/ subdirectory.  These document kernel subsystems, APIs, device
+ drivers, and so on.  See
+ /usr/share/doc/linux-doc/00-INDEX for a list of what is
+ contained in each file.
+
+Package: linux-headers-4.10.0-999
+Build-Profiles: <!stage1>
+Architecture: all
+Multi-Arch: foreign
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, coreutils
+Description: Header files related to Linux kernel version 4.10.0
+ This package provides kernel header files for version 4.10.0, for sites
+ that want the latest kernel headers. Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details
+
+Package: linux-libc-dev
+Architecture: i386 amd64 armhf arm64 x32 powerpc ppc64el s390x
+Depends: ${misc:Depends}
+Conflicts: linux-kernel-headers
+Replaces: linux-kernel-headers
+Provides: linux-kernel-headers
+Multi-Arch: same
+Description: Linux Kernel Headers for development
+ This package provides headers from the Linux kernel.  These headers
+ are used by the installed headers for GNU glibc and other system
+ libraries. They are NOT meant to be used to build third-party modules for
+ your kernel. Use linux-headers-* packages for that.
+
+Package: linux-tools-common
+Build-Profiles: <!stage1>
+Architecture: all
+Multi-Arch: foreign
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}
+Description: Linux kernel version specific tools for version 4.10.0
+ This package provides the architecture independent parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version PGKVER.
+
+Package: linux-tools-4.10.0-999
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-tools-common
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+ You probably want to install linux-tools-4.10.0-999-<flavour>.
+
+Package: linux-cloud-tools-common
+Build-Profiles: <!stage1>
+Architecture: all
+Multi-Arch: foreign
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}
+Description: Linux kernel version specific cloud tools for version 4.10.0
+ This package provides the architecture independent parts for kernel
+ version locked tools for cloud tools for version PGKVER.
+
+Package: linux-cloud-tools-4.10.0-999
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-cloud-tools-common
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud tools for version 4.10.0-999 on
+ 64 bit x86.
+ You probably want to install linux-cloud-tools-4.10.0-999-<flavour>.
+
+
+Package: linux-image-4.10.0-999-generic
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, kvm-api-4, redhat-cluster-modules, ivtv-modules, virtualbox-guest-modules [i386 amd64 x32]${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: grub-pc [i386 amd64 x32] | grub-efi-amd64 [amd64 x32] | grub-efi-ia32 [i386 amd64 x32] | grub [i386 amd64 x32] | lilo [i386 amd64 x32] | flash-kernel [armhf arm64] | grub-ieee1275 [ppc64el] | yaboot [powerpc]
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-generic
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Generic processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-generic meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-generic
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-generic, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Generic processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-generic meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-generic
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 64 bit x86 SMP
+ This package provides kernel header files for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-generic-dbgsym
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 64 bit x86 SMP
+ This package provides a kernel debug image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-generic
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-generic
+Build-Profiles: <!stage1>
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-generic
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: i386 amd64 armhf arm64 powerpc ppc64el s390x
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
+
+Package: linux-image-4.10.0-999-generic-lpae
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, kvm-api-4, redhat-cluster-modules, ivtv-modules${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: flash-kernel [armhf]
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-generic-lpae
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Generic LPAE processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-generic-lpae meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-generic-lpae
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-generic-lpae, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Generic LPAE processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-generic-lpae meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-generic-lpae
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 64 bit x86 SMP
+ This package provides kernel header files for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-generic-lpae-dbgsym
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 64 bit x86 SMP
+ This package provides a kernel debug image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-generic-lpae
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-generic-lpae
+Build-Profiles: <!stage1>
+Architecture: armhf
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-generic-lpae
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: armhf
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
+
+Package: linux-image-4.10.0-999-lowlatency
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, kvm-api-4, redhat-cluster-modules, ivtv-modules, virtualbox-guest-modules [i386 amd64 x32]${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: grub-pc [i386 amd64 x32] | grub-efi-amd64 [amd64 x32] | grub-efi-ia32 [i386 amd64 x32] | grub [i386 amd64 x32] | lilo [i386 amd64 x32] | flash-kernel [armhf arm64]
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-lowlatency
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Lowlatency processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-lowlatency meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-lowlatency
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-lowlatency, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 64 bit x86 SMP
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports Lowlatency processors.
+ .
+ Geared toward desktop and server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-lowlatency meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-lowlatency
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 64 bit x86 SMP
+ This package provides kernel header files for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-lowlatency-dbgsym
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 64 bit x86 SMP
+ This package provides a kernel debug image for version 4.10.0 on
+ 64 bit x86 SMP.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-lowlatency
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-lowlatency
+Build-Profiles: <!stage1>
+Architecture: i386 amd64
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-lowlatency
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: i386 amd64
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
+
+Package: linux-image-4.10.0-999-powerpc-e500mc
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, redhat-cluster-modules, ivtv-modules${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: grub-ieee1275
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-powerpc-e500mc
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 32-bit Freescale Power e500mc
+ This package contains the Linux kernel image for version 4.10.0 on
+ 32-bit Freescale Power e500mc.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 32-bit Freescale Power e500mc processors.
+ .
+ Geared toward server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc-e500mc meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-powerpc-e500mc
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-powerpc-e500mc, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 32-bit Freescale Power e500mc
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 32-bit Freescale Power e500mc.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 32-bit Freescale Power e500mc processors.
+ .
+ Geared toward server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc-e500mc meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-powerpc-e500mc
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 32-bit Freescale Power e500mc
+ This package provides kernel header files for version 4.10.0 on
+ 32-bit Freescale Power e500mc.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-powerpc-e500mc-dbgsym
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 32-bit Freescale Power e500mc
+ This package provides a kernel debug image for version 4.10.0 on
+ 32-bit Freescale Power e500mc.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-powerpc-e500mc
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-powerpc-e500mc
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-powerpc-e500mc
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: powerpc
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
+
+Package: linux-image-4.10.0-999-powerpc-smp
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, redhat-cluster-modules, ivtv-modules${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: yaboot
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-powerpc-smp
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 32-bit PowerPC SMP
+ This package contains the Linux kernel image for version 4.10.0 on
+ 32-bit PowerPC SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 32-bit PowerPC SMP processors.
+ .
+ Geared toward desktop or server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc-smp meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-powerpc-smp
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-powerpc-smp, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 32-bit PowerPC SMP
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 32-bit PowerPC SMP.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 32-bit PowerPC SMP processors.
+ .
+ Geared toward desktop or server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc-smp meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-powerpc-smp
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 32-bit PowerPC SMP
+ This package provides kernel header files for version 4.10.0 on
+ 32-bit PowerPC SMP.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-powerpc-smp-dbgsym
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 32-bit PowerPC SMP
+ This package provides a kernel debug image for version 4.10.0 on
+ 32-bit PowerPC SMP.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-powerpc-smp
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-powerpc-smp
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-powerpc-smp
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: powerpc
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
+
+Package: linux-image-4.10.0-999-powerpc64-emb
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Provides: linux-image, fuse-module, redhat-cluster-modules, ivtv-modules${linux:rprovides}
+Depends: ${misc:Depends}, ${shlibs:Depends}, initramfs-tools | linux-initramfs-tool, kmod
+Recommends: grub-ieee1275
+Suggests: fdutils, linux-doc-4.10.0 | linux-source-4.10.0, linux-tools, linux-headers-4.10.0-999-powerpc64-emb
+Conflicts: flash-kernel (<< 3.0~rc.4ubuntu64) [arm64]
+Description: Linux kernel image for version 4.10.0 on 64-bit PowerPC SMP Book3E
+ This package contains the Linux kernel image for version 4.10.0 on
+ 64-bit PowerPC SMP Book3E.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 64-bit PowerPC SMP Book3E processors.
+ .
+ Geared toward desktop or server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc64-emb meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-image-extra-4.10.0-999-powerpc64-emb
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: kernel
+Priority: optional
+Depends: ${misc:Depends}, ${shlibs:Depends}, linux-image-4.10.0-999-powerpc64-emb, crda | wireless-crda
+Description: Linux kernel extra modules for version 4.10.0 on 64-bit PowerPC SMP Book3E
+ This package contains the Linux kernel extra modules for version 4.10.0 on
+ 64-bit PowerPC SMP Book3E.
+ .
+ Also includes the corresponding System.map file, the modules built by the
+ packager, and scripts that try to ensure that the system is not left in an
+ unbootable state after an update.
+ .
+ Supports 64-bit PowerPC SMP Book3E processors.
+ .
+ Geared toward desktop or server systems.
+ .
+ You likely do not want to install this package directly. Instead, install
+ the linux-powerpc64-emb meta-package, which will ensure that upgrades work
+ correctly, and that supporting packages are also installed.
+
+Package: linux-headers-4.10.0-999-powerpc64-emb
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-headers-4.10.0-999, ${shlibs:Depends}
+Provides: linux-headers, linux-headers-3.0
+Description: Linux kernel headers for version 4.10.0 on 64-bit PowerPC SMP Book3E
+ This package provides kernel header files for version 4.10.0 on
+ 64-bit PowerPC SMP Book3E.
+ .
+ This is for sites that want the latest kernel headers.  Please read
+ /usr/share/doc/linux-headers-4.10.0-999/debian.README.gz for details.
+
+Package: linux-image-4.10.0-999-powerpc64-emb-dbgsym
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}
+Provides: linux-debug
+Description: Linux kernel debug image for version 4.10.0 on 64-bit PowerPC SMP Book3E
+ This package provides a kernel debug image for version 4.10.0 on
+ 64-bit PowerPC SMP Book3E.
+ .
+ This is for sites that wish to debug the kernel.
+ .
+ The kernel image contained in this package is NOT meant to boot from. It
+ is uncompressed, and unstripped. This package also includes the
+ unstripped modules.
+
+Package: linux-tools-4.10.0-999-powerpc64-emb
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-tools-4.10.0-999
+Description: Linux kernel version specific tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools (such as perf and x86_energy_perf_policy) for
+ version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-cloud-tools-4.10.0-999-powerpc64-emb
+Build-Profiles: <!stage1>
+Architecture: powerpc
+Section: devel
+Priority: optional
+Depends: ${misc:Depends}, linux-cloud-tools-4.10.0-999
+Description: Linux kernel version specific cloud tools for version 4.10.0-999
+ This package provides the architecture dependant parts for kernel
+ version locked tools for cloud for version 4.10.0-999 on
+ 64 bit x86.
+
+Package: linux-udebs-powerpc64-emb
+Build-Profiles: <!stage1>
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: powerpc
+Depends: ${udeb:Depends}
+Description: Metapackage depending on kernel udebs
+ This package depends on the all udebs that the kernel build generated,
+ for easier version and migration tracking.
+
