@@ -168,5 +168,10 @@ int i915_guc_ipts_submission_enable(struct drm_i915_private *dev_priv,
 				    struct i915_gem_context *ctx);
 void i915_guc_ipts_submission_disable(struct drm_i915_private *dev_priv);
 void i915_guc_ipts_reacquire_doorbell(struct drm_i915_private *dev_priv);
+void i915_guc_capture_logs(struct drm_i915_private *dev_priv);
+void i915_guc_flush_logs(struct drm_i915_private *dev_priv);
+void i915_guc_register(struct drm_i915_private *dev_priv);
+void i915_guc_unregister(struct drm_i915_private *dev_priv);
+int i915_guc_log_control(struct drm_i915_private *dev_priv, u64 control_val);
 
 #endif

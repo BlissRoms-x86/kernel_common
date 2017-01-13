@@ -189,13 +189,13 @@ static int create_ipts_context(void)
 		goto err_unlock;
 	}
 
-	ret = execlists_context_deferred_alloc(ipts_ctx, &dev_priv->engine[RCS]);
+	ret = execlists_context_deferred_alloc(ipts_ctx, dev_priv->engine[RCS]);
 	if (ret) {
 		DRM_DEBUG("lr context allocation failed : %d\n", ret);
 		goto err_ctx;
 	}
 
-	ret = intel_lr_context_pin(ipts_ctx, &dev_priv->engine[RCS]);
+	ret = intel_lr_context_pin(ipts_ctx, dev_priv->engine[RCS]);
 	if (ret) {
 		DRM_DEBUG("lr context pinning failed : %d\n", ret);
 		goto err_ctx;
@@ -236,7 +236,7 @@ static void destroy_ipts_context(void)
 		return;
 	}
 
-	intel_lr_context_unpin(ipts_ctx, &dev_priv->engine[RCS]);
+	intel_lr_context_unpin(ipts_ctx, dev_priv->engine[RCS]);
 	i915_gem_context_put(ipts_ctx);
 
 	mutex_unlock(&intel_ipts.dev->struct_mutex);
@@ -323,7 +323,7 @@ static int set_wq_info(void)
 		return -EINVAL;
 	}
 
-	base = client->client_base;
+	base = client->vaddr;
 	desc = (struct guc_process_desc *)((u64)base + client->proc_desc_offset);
 
 	desc->wq_base_addr = (u64)base + client->wq_offset;
@@ -493,7 +493,7 @@ int intel_ipts_connect(intel_ipts_connect_t *ipts_connect)
 		ipts_connect->ipts_ops.get_wq_info = intel_ipts_get_wq_info;
 		ipts_connect->ipts_ops.map_buffer = intel_ipts_map_buffer;
 		ipts_connect->ipts_ops.unmap_buffer = intel_ipts_unmap_buffer;
-		ipts_connect->gfx_version = INTEL_INFO(intel_ipts.dev)->gen;
+		ipts_connect->gfx_version = INTEL_INFO(to_i915(intel_ipts.dev))->gen;
 		ipts_connect->gfx_handle = (uint64_t)&intel_ipts;
 
 		/* save callback and data */
