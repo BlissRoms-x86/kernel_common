@@ -730,7 +730,7 @@ static void hid_scan_collection(struct hid_parser *parser, unsigned type)
 	     hid->product == USB_DEVICE_ID_MS_TYPE_COVER_PRO_4_JP ||
 	     hid->product == USB_DEVICE_ID_MS_POWER_COVER) &&
 	    hid->group == HID_GROUP_MULTITOUCH)
-		hid->group = HID_GROUP_GENERIC;
+			hid->group = HID_GROUP_GENERIC;
 
 	if ((parser->global.usage_page << 16) == HID_UP_GENDESK)
 		for (i = 0; i < parser->local.usage_index; i++)
