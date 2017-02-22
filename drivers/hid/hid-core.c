@@ -907,7 +907,8 @@ static int hid_scan_report(struct hid_device *hid)
 				 * hid-rmi should take care of them,
 				 * not hid-generic
 				 */
-				hid->group = HID_GROUP_RMI;
+				if (IS_ENABLED(CONFIG_HID_RMI))
+					hid->group = HID_GROUP_RMI;
 		break;
 	case USB_VENDOR_ID_ETAB:
 		hid->group = HID_GROUP_GENERIC;
