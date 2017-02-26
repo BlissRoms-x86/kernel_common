@@ -35,7 +35,10 @@
 #include <linux/vga_switcheroo.h>
 #include <drm/drmP.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_encoder.h>
 #include <drm/drm_displayid.h>
+
+#include "drm_crtc_internal.h"
 
 #define version_greater(edid, maj, min) \
 	(((edid)->version > (maj)) || \
@@ -90,7 +93,7 @@ struct detailed_mode_closure {
 #define LEVEL_GTF2	2
 #define LEVEL_CVT	3
 
-static struct edid_quirk {
+static const struct edid_quirk {
 	char vendor[4];
 	int product_id;
 	u32 quirks;
@@ -1128,23 +1131,26 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 
 	csum = drm_edid_block_checksum(raw_edid);
 	if (csum) {
-		if (print_bad_edid) {
-			DRM_ERROR("EDID checksum is invalid, remainder is %d\n", csum);
-		}
-
 		if (edid_corrupt)
 			*edid_corrupt = true;
 
 		/* allow CEA to slide through, switches mangle this */
-		if (raw_edid[0] != 0x02)
+		if (raw_edid[0] == CEA_EXT) {
+			DRM_DEBUG("EDID checksum is invalid, remainder is %d\n", csum);
+			DRM_DEBUG("Assuming a KVM switch modified the CEA block but left the original checksum\n");
+		} else {
+			if (print_bad_edid)
+				DRM_NOTE("EDID checksum is invalid, remainder is %d\n", csum);
+
 			goto bad;
+		}
 	}
 
 	/* per-block-type checks */
 	switch (raw_edid[0]) {
 	case 0: /* base */
 		if (edid->version != 1) {
-			DRM_ERROR("EDID has major version %d, instead of 1\n", edid->version);
+			DRM_NOTE("EDID has major version %d, instead of 1\n", edid->version);
 			goto bad;
 		}
 
@@ -1161,11 +1167,12 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 bad:
 	if (print_bad_edid) {
 		if (drm_edid_is_zero(raw_edid, EDID_LENGTH)) {
-			printk(KERN_ERR "EDID block is all zeroes\n");
+			printk(KERN_NOTICE "EDID block is all zeroes\n");
 		} else {
-			printk(KERN_ERR "Raw EDID:\n");
-			print_hex_dump(KERN_ERR, " \t", DUMP_PREFIX_NONE, 16, 1,
-			       raw_edid, EDID_LENGTH, false);
+			printk(KERN_NOTICE "Raw EDID:\n");
+			print_hex_dump(KERN_NOTICE,
+				       " \t", DUMP_PREFIX_NONE, 16, 1,
+				       raw_edid, EDID_LENGTH, false);
 		}
 	}
 	return false;
@@ -1477,7 +1484,7 @@ EXPORT_SYMBOL(drm_edid_duplicate);
  *
  * Returns true if @vendor is in @edid, false otherwise
  */
-static bool edid_vendor(struct edid *edid, char *vendor)
+static bool edid_vendor(struct edid *edid, const char *vendor)
 {
 	char edid_vendor[3];
 
@@ -1497,7 +1504,7 @@ static bool edid_vendor(struct edid *edid, char *vendor)
  */
 static u32 edid_get_quirks(struct edid *edid)
 {
-	struct edid_quirk *quirk;
+	const struct edid_quirk *quirk;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(edid_quirk_list); i++) {
@@ -2152,7 +2159,7 @@ drm_dmt_modes_for_range(struct drm_connector *connector, struct edid *edid,
 /* fix up 1366x768 mode from 1368x768;
  * GFT/CVT can't express 1366 width which isn't dividable by 8
  */
-static void fixup_mode_1366x768(struct drm_display_mode *mode)
+void drm_mode_fixup_1366x768(struct drm_display_mode *mode)
 {
 	if (mode->hdisplay == 1368 && mode->vdisplay == 768) {
 		mode->hdisplay = 1366;
@@ -2176,7 +2183,7 @@ drm_gtf_modes_for_range(struct drm_connector *connector, struct edid *edid,
 		if (!newmode)
 			return modes;
 
-		fixup_mode_1366x768(newmode);
+		drm_mode_fixup_1366x768(newmode);
 		if (!mode_in_range(newmode, edid, timing) ||
 		    !valid_inferred_mode(connector, newmode)) {
 			drm_mode_destroy(dev, newmode);
@@ -2205,7 +2212,7 @@ drm_cvt_modes_for_range(struct drm_connector *connector, struct edid *edid,
 		if (!newmode)
 			return modes;
 
-		fixup_mode_1366x768(newmode);
+		drm_mode_fixup_1366x768(newmode);
 		if (!mode_in_range(newmode, edid, timing) ||
 		    !valid_inferred_mode(connector, newmode)) {
 			drm_mode_destroy(dev, newmode);
@@ -3767,6 +3774,25 @@ bool drm_rgb_quant_range_selectable(struct edid *edid)
 }
 EXPORT_SYMBOL(drm_rgb_quant_range_selectable);
 
+/**
+ * drm_default_rgb_quant_range - default RGB quantization range
+ * @mode: display mode
+ *
+ * Determine the default RGB quantization range for the mode,
+ * as specified in CEA-861.
+ *
+ * Return: The default RGB quantization range for the mode
+ */
+enum hdmi_quantization_range
+drm_default_rgb_quant_range(const struct drm_display_mode *mode)
+{
+	/* All CEA modes other than VIC 1 use limited quantization range. */
+	return drm_match_cea_mode(mode) > 1 ?
+		HDMI_QUANTIZATION_RANGE_LIMITED :
+		HDMI_QUANTIZATION_RANGE_FULL;
+}
+EXPORT_SYMBOL(drm_default_rgb_quant_range);
+
 static void drm_parse_hdmi_deep_color_info(struct drm_connector *connector,
 					   const u8 *hdmi)
 {
@@ -3977,7 +4003,7 @@ static int validate_displayid(u8 *displayid, int length, int idx)
 		csum += displayid[i];
 	}
 	if (csum) {
-		DRM_ERROR("DisplayID checksum invalid, remainder is %d\n", csum);
+		DRM_NOTE("DisplayID checksum invalid, remainder is %d\n", csum);
 		return -EINVAL;
 	}
 	return 0;
@@ -4271,6 +4297,52 @@ drm_hdmi_avi_infoframe_from_display_mode(struct hdmi_avi_infoframe *frame,
 	return 0;
 }
 EXPORT_SYMBOL(drm_hdmi_avi_infoframe_from_display_mode);
+
+/**
+ * drm_hdmi_avi_infoframe_quant_range() - fill the HDMI AVI infoframe
+ *                                        quantization range information
+ * @frame: HDMI AVI infoframe
+ * @mode: DRM display mode
+ * @rgb_quant_range: RGB quantization range (Q)
+ * @rgb_quant_range_selectable: Sink support selectable RGB quantization range (QS)
+ */
+void
+drm_hdmi_avi_infoframe_quant_range(struct hdmi_avi_infoframe *frame,
+				   const struct drm_display_mode *mode,
+				   enum hdmi_quantization_range rgb_quant_range,
+				   bool rgb_quant_range_selectable)
+{
+	/*
+	 * CEA-861:
+	 * "A Source shall not send a non-zero Q value that does not correspond
+	 *  to the default RGB Quantization Range for the transmitted Picture
+	 *  unless the Sink indicates support for the Q bit in a Video
+	 *  Capabilities Data Block."
+	 *
+	 * HDMI 2.0 recommends sending non-zero Q when it does match the
+	 * default RGB quantization range for the mode, even when QS=0.
+	 */
+	if (rgb_quant_range_selectable ||
+	    rgb_quant_range == drm_default_rgb_quant_range(mode))
+		frame->quantization_range = rgb_quant_range;
+	else
+		frame->quantization_range = HDMI_QUANTIZATION_RANGE_DEFAULT;
+
+	/*
+	 * CEA-861-F:
+	 * "When transmitting any RGB colorimetry, the Source should set the
+	 *  YQ-field to match the RGB Quantization Range being transmitted
+	 *  (e.g., when Limited Range RGB, set YQ=0 or when Full Range RGB,
+	 *  set YQ=1) and the Sink shall ignore the YQ-field."
+	 */
+	if (rgb_quant_range == HDMI_QUANTIZATION_RANGE_LIMITED)
+		frame->ycc_quantization_range =
+			HDMI_YCC_QUANTIZATION_RANGE_LIMITED;
+	else
+		frame->ycc_quantization_range =
+			HDMI_YCC_QUANTIZATION_RANGE_FULL;
+}
+EXPORT_SYMBOL(drm_hdmi_avi_infoframe_quant_range);
 
 static enum hdmi_3d_structure
 s3d_structure_from_display_mode(const struct drm_display_mode *mode)

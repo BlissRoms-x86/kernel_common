@@ -91,7 +91,7 @@ static void set_scanout(struct drm_crtc *crtc, struct drm_framebuffer *fb)
 
 	start = gem->paddr + fb->offsets[0] +
 		crtc->y * fb->pitches[0] +
-		crtc->x * drm_format_plane_cpp(fb->pixel_format, 0);
+		crtc->x * fb->format->cpp[0];
 
 	end = start + (crtc->mode.vdisplay * fb->pitches[0]);
 
@@ -399,7 +399,7 @@ static void tilcdc_crtc_set_mode(struct drm_crtc *crtc)
 	if (info->tft_alt_mode)
 		reg |= LCDC_TFT_ALT_ENABLE;
 	if (priv->rev == 2) {
-		switch (fb->pixel_format) {
+		switch (fb->format->format) {
 		case DRM_FORMAT_BGR565:
 		case DRM_FORMAT_RGB565:
 			break;
@@ -695,6 +695,15 @@ static int tilcdc_crtc_atomic_check(struct drm_crtc *crtc,
 	return 0;
 }
 
+static int tilcdc_crtc_enable_vblank(struct drm_crtc *crtc)
+{
+	return 0;
+}
+
+static void tilcdc_crtc_disable_vblank(struct drm_crtc *crtc)
+{
+}
+
 static const struct drm_crtc_funcs tilcdc_crtc_funcs = {
 	.destroy        = tilcdc_crtc_destroy,
 	.set_config     = drm_atomic_helper_set_config,
@@ -702,6 +711,8 @@ static const struct drm_crtc_funcs tilcdc_crtc_funcs = {
 	.reset		= drm_atomic_helper_crtc_reset,
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
+	.enable_vblank	= tilcdc_crtc_enable_vblank,
+	.disable_vblank	= tilcdc_crtc_disable_vblank,
 };
 
 static const struct drm_crtc_helper_funcs tilcdc_crtc_helper_funcs = {

@@ -79,22 +79,6 @@ static const struct drm_mode_config_funcs meson_mode_config_funcs = {
 	.fb_create           = drm_fb_cma_create,
 };
 
-static int meson_enable_vblank(struct drm_device *dev, unsigned int crtc)
-{
-	struct meson_drm *priv = dev->dev_private;
-
-	meson_venc_enable_vsync(priv);
-
-	return 0;
-}
-
-static void meson_disable_vblank(struct drm_device *dev, unsigned int crtc)
-{
-	struct meson_drm *priv = dev->dev_private;
-
-	meson_venc_disable_vsync(priv);
-}
-
 static irqreturn_t meson_irq(int irq, void *arg)
 {
 	struct drm_device *dev = arg;
@@ -125,11 +109,6 @@ static struct drm_driver meson_driver = {
 	.driver_features	= DRIVER_HAVE_IRQ | DRIVER_GEM |
 				  DRIVER_MODESET | DRIVER_PRIME |
 				  DRIVER_ATOMIC,
-
-	/* Vblank */
-	.enable_vblank		= meson_enable_vblank,
-	.disable_vblank		= meson_disable_vblank,
-	.get_vblank_counter	= drm_vblank_no_hw_counter,
 
 	/* IRQ */
 	.irq_handler		= meson_irq,
@@ -279,7 +258,6 @@ static int meson_drv_probe(struct platform_device *pdev)
 	drm->mode_config.funcs = &meson_mode_config_funcs;
 
 	priv->fbdev = drm_fbdev_cma_init(drm, 32,
-					 drm->mode_config.num_crtc,
 					 drm->mode_config.num_connector);
 	if (IS_ERR(priv->fbdev)) {
 		ret = PTR_ERR(priv->fbdev);
@@ -329,8 +307,7 @@ static struct platform_driver meson_drm_platform_driver = {
 	.probe      = meson_drv_probe,
 	.remove     = meson_drv_remove,
 	.driver     = {
-		.owner  = THIS_MODULE,
-		.name   = DRIVER_NAME,
+		.name	= "meson-drm",
 		.of_match_table = dt_match,
 	},
 };

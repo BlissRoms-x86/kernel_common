@@ -256,7 +256,6 @@ static struct drm_driver mtk_drm_driver = {
 	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
 			   DRIVER_ATOMIC,
 
-	.get_vblank_counter = drm_vblank_no_hw_counter,
 	.enable_vblank = mtk_drm_crtc_enable_vblank,
 	.disable_vblank = mtk_drm_crtc_disable_vblank,
 
@@ -321,7 +320,8 @@ static void mtk_drm_unbind(struct device *dev)
 {
 	struct mtk_drm_private *private = dev_get_drvdata(dev);
 
-	drm_put_dev(private->drm);
+	drm_dev_unregister(private->drm);
+	drm_dev_unref(private->drm);
 	private->drm = NULL;
 }
 

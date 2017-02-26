@@ -39,6 +39,14 @@ static void exynos_drm_crtc_disable(struct drm_crtc *crtc)
 
 	if (exynos_crtc->ops->disable)
 		exynos_crtc->ops->disable(exynos_crtc);
+
+	if (crtc->state->event && !crtc->state->active) {
+		spin_lock_irq(&crtc->dev->event_lock);
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		spin_unlock_irq(&crtc->dev->event_lock);
+
+		crtc->state->event = NULL;
+	}
 }
 
 static void
@@ -109,12 +117,27 @@ static const struct drm_crtc_helper_funcs exynos_crtc_helper_funcs = {
 static void exynos_drm_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct exynos_drm_private *private = crtc->dev->dev_private;
-
-	private->crtc[exynos_crtc->pipe] = NULL;
 
 	drm_crtc_cleanup(crtc);
 	kfree(exynos_crtc);
+}
+
+static int exynos_drm_crtc_enable_vblank(struct drm_crtc *crtc)
+{
+	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+
+	if (exynos_crtc->ops->enable_vblank)
+		return exynos_crtc->ops->enable_vblank(exynos_crtc);
+
+	return 0;
+}
+
+static void exynos_drm_crtc_disable_vblank(struct drm_crtc *crtc)
+{
+	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+
+	if (exynos_crtc->ops->disable_vblank)
+		exynos_crtc->ops->disable_vblank(exynos_crtc);
 }
 
 static const struct drm_crtc_funcs exynos_crtc_funcs = {
@@ -124,6 +147,8 @@ static const struct drm_crtc_funcs exynos_crtc_funcs = {
 	.reset = drm_atomic_helper_crtc_reset,
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
+	.enable_vblank = exynos_drm_crtc_enable_vblank,
+	.disable_vblank = exynos_drm_crtc_disable_vblank,
 };
 
 struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
@@ -134,7 +159,6 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 					void *ctx)
 {
 	struct exynos_drm_crtc *exynos_crtc;
-	struct exynos_drm_private *private = drm_dev->dev_private;
 	struct drm_crtc *crtc;
 	int ret;
 
@@ -149,8 +173,6 @@ struct exynos_drm_crtc *exynos_drm_crtc_create(struct drm_device *drm_dev,
 
 	crtc = &exynos_crtc->base;
 
-	private->crtc[pipe] = crtc;
-
 	ret = drm_crtc_init_with_planes(drm_dev, crtc, plane, NULL,
 					&exynos_crtc_funcs, NULL);
 	if (ret < 0)
@@ -164,26 +186,6 @@ err_crtc:
 	plane->funcs->destroy(plane);
 	kfree(exynos_crtc);
 	return ERR_PTR(ret);
-}
-
-int exynos_drm_crtc_enable_vblank(struct drm_device *dev, unsigned int pipe)
-{
-	struct exynos_drm_crtc *exynos_crtc = exynos_drm_crtc_from_pipe(dev,
-									pipe);
-
-	if (exynos_crtc->ops->enable_vblank)
-		return exynos_crtc->ops->enable_vblank(exynos_crtc);
-
-	return 0;
-}
-
-void exynos_drm_crtc_disable_vblank(struct drm_device *dev, unsigned int pipe)
-{
-	struct exynos_drm_crtc *exynos_crtc = exynos_drm_crtc_from_pipe(dev,
-									pipe);
-
-	if (exynos_crtc->ops->disable_vblank)
-		exynos_crtc->ops->disable_vblank(exynos_crtc);
 }
 
 int exynos_drm_crtc_get_pipe_from_type(struct drm_device *drm_dev,
@@ -208,24 +210,4 @@ void exynos_drm_crtc_te_handler(struct drm_crtc *crtc)
 
 	if (exynos_crtc->ops->te_handler)
 		exynos_crtc->ops->te_handler(exynos_crtc);
-}
-
-void exynos_drm_crtc_cancel_page_flip(struct drm_crtc *crtc,
-					struct drm_file *file)
-{
-	struct drm_pending_vblank_event *e;
-	unsigned long flags;
-
-	spin_lock_irqsave(&crtc->dev->event_lock, flags);
-
-	e = crtc->state->event;
-	if (e && e->base.file_priv == file)
-		crtc->state->event = NULL;
-	else
-		e = NULL;
-
-	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
-
-	if (e)
-		drm_event_cancel_free(crtc->dev, &e->base);
 }

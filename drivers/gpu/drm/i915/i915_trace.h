@@ -175,110 +175,6 @@ TRACE_EVENT(i915_vma_unbind,
 		      __entry->obj, __entry->offset, __entry->size, __entry->vm)
 );
 
-TRACE_EVENT(i915_va_alloc,
-	TP_PROTO(struct i915_vma *vma),
-	TP_ARGS(vma),
-
-	TP_STRUCT__entry(
-		__field(struct i915_address_space *, vm)
-		__field(u64, start)
-		__field(u64, end)
-	),
-
-	TP_fast_assign(
-		__entry->vm = vma->vm;
-		__entry->start = vma->node.start;
-		__entry->end = vma->node.start + vma->node.size - 1;
-	),
-
-	TP_printk("vm=%p (%c), 0x%llx-0x%llx",
-		  __entry->vm, i915_is_ggtt(__entry->vm) ? 'G' : 'P',  __entry->start, __entry->end)
-);
-
-DECLARE_EVENT_CLASS(i915_px_entry,
-	TP_PROTO(struct i915_address_space *vm, u32 px, u64 start, u64 px_shift),
-	TP_ARGS(vm, px, start, px_shift),
-
-	TP_STRUCT__entry(
-		__field(struct i915_address_space *, vm)
-		__field(u32, px)
-		__field(u64, start)
-		__field(u64, end)
-	),
-
-	TP_fast_assign(
-		__entry->vm = vm;
-		__entry->px = px;
-		__entry->start = start;
-		__entry->end = ((start + (1ULL << px_shift)) & ~((1ULL << px_shift)-1)) - 1;
-	),
-
-	TP_printk("vm=%p, pde=%d (0x%llx-0x%llx)",
-		  __entry->vm, __entry->px, __entry->start, __entry->end)
-);
-
-DEFINE_EVENT(i915_px_entry, i915_page_table_entry_alloc,
-	     TP_PROTO(struct i915_address_space *vm, u32 pde, u64 start, u64 pde_shift),
-	     TP_ARGS(vm, pde, start, pde_shift)
-);
-
-DEFINE_EVENT_PRINT(i915_px_entry, i915_page_directory_entry_alloc,
-		   TP_PROTO(struct i915_address_space *vm, u32 pdpe, u64 start, u64 pdpe_shift),
-		   TP_ARGS(vm, pdpe, start, pdpe_shift),
-
-		   TP_printk("vm=%p, pdpe=%d (0x%llx-0x%llx)",
-			     __entry->vm, __entry->px, __entry->start, __entry->end)
-);
-
-DEFINE_EVENT_PRINT(i915_px_entry, i915_page_directory_pointer_entry_alloc,
-		   TP_PROTO(struct i915_address_space *vm, u32 pml4e, u64 start, u64 pml4e_shift),
-		   TP_ARGS(vm, pml4e, start, pml4e_shift),
-
-		   TP_printk("vm=%p, pml4e=%d (0x%llx-0x%llx)",
-			     __entry->vm, __entry->px, __entry->start, __entry->end)
-);
-
-/* Avoid extra math because we only support two sizes. The format is defined by
- * bitmap_scnprintf. Each 32 bits is 8 HEX digits followed by comma */
-#define TRACE_PT_SIZE(bits) \
-	((((bits) == 1024) ? 288 : 144) + 1)
-
-DECLARE_EVENT_CLASS(i915_page_table_entry_update,
-	TP_PROTO(struct i915_address_space *vm, u32 pde,
-		 struct i915_page_table *pt, u32 first, u32 count, u32 bits),
-	TP_ARGS(vm, pde, pt, first, count, bits),
-
-	TP_STRUCT__entry(
-		__field(struct i915_address_space *, vm)
-		__field(u32, pde)
-		__field(u32, first)
-		__field(u32, last)
-		__dynamic_array(char, cur_ptes, TRACE_PT_SIZE(bits))
-	),
-
-	TP_fast_assign(
-		__entry->vm = vm;
-		__entry->pde = pde;
-		__entry->first = first;
-		__entry->last = first + count - 1;
-		scnprintf(__get_str(cur_ptes),
-			  TRACE_PT_SIZE(bits),
-			  "%*pb",
-			  bits,
-			  pt->used_ptes);
-	),
-
-	TP_printk("vm=%p, pde=%d, updating %u:%u\t%s",
-		  __entry->vm, __entry->pde, __entry->last, __entry->first,
-		  __get_str(cur_ptes))
-);
-
-DEFINE_EVENT(i915_page_table_entry_update, i915_page_table_entry_map,
-	TP_PROTO(struct i915_address_space *vm, u32 pde,
-		 struct i915_page_table *pt, u32 first, u32 count, u32 bits),
-	TP_ARGS(vm, pde, pt, first, count, bits)
-);
-
 TRACE_EVENT(i915_gem_object_change_domain,
 	    TP_PROTO(struct drm_i915_gem_object *obj, u32 old_read, u32 old_write),
 	    TP_ARGS(obj, old_read, old_write),
@@ -406,7 +302,7 @@ TRACE_EVENT(i915_gem_evict,
 			    ),
 
 	    TP_fast_assign(
-			   __entry->dev = vm->dev->primary->index;
+			   __entry->dev = vm->i915->drm.primary->index;
 			   __entry->vm = vm;
 			   __entry->size = size;
 			   __entry->align = align;
@@ -443,11 +339,39 @@ TRACE_EVENT(i915_gem_evict_vm,
 			    ),
 
 	    TP_fast_assign(
-			   __entry->dev = vm->dev->primary->index;
+			   __entry->dev = vm->i915->drm.primary->index;
 			   __entry->vm = vm;
 			  ),
 
 	    TP_printk("dev=%d, vm=%p", __entry->dev, __entry->vm)
+);
+
+TRACE_EVENT(i915_gem_evict_node,
+	    TP_PROTO(struct i915_address_space *vm, struct drm_mm_node *node, unsigned int flags),
+	    TP_ARGS(vm, node, flags),
+
+	    TP_STRUCT__entry(
+			     __field(u32, dev)
+			     __field(struct i915_address_space *, vm)
+			     __field(u64, start)
+			     __field(u64, size)
+			     __field(unsigned long, color)
+			     __field(unsigned int, flags)
+			    ),
+
+	    TP_fast_assign(
+			   __entry->dev = vm->i915->drm.primary->index;
+			   __entry->vm = vm;
+			   __entry->start = node->start;
+			   __entry->size = node->size;
+			   __entry->color = node->color;
+			   __entry->flags = flags;
+			  ),
+
+	    TP_printk("dev=%d, vm=%p, start=%llx size=%llx, color=%lx, flags=%x",
+		      __entry->dev, __entry->vm,
+		      __entry->start, __entry->size,
+		      __entry->color, __entry->flags)
 );
 
 TRACE_EVENT(i915_gem_ring_sync_to,
@@ -711,7 +635,7 @@ DECLARE_EVENT_CLASS(i915_ppgtt,
 
 	TP_fast_assign(
 			__entry->vm = vm;
-			__entry->dev = vm->dev->primary->index;
+			__entry->dev = vm->i915->drm.primary->index;
 	),
 
 	TP_printk("dev=%u, vm=%p", __entry->dev, __entry->vm)

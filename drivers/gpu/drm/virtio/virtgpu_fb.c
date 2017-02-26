@@ -43,7 +43,7 @@ static int virtio_gpu_dirty_update(struct virtio_gpu_framebuffer *fb,
 	struct drm_device *dev = fb->base.dev;
 	struct virtio_gpu_device *vgdev = dev->dev_private;
 	bool store_for_later = false;
-	int bpp = fb->base.bits_per_pixel / 8;
+	int bpp = fb->base.format->cpp[0];
 	int x2, y2;
 	unsigned long flags;
 	struct virtio_gpu_object *obj = gem_to_virtio_gpu_obj(fb->obj);
@@ -320,7 +320,7 @@ static int virtio_gpufb_create(struct drm_fb_helper *helper,
 	ret = virtio_gpu_framebuffer_init(dev, &vfbdev->vgfb,
 					  &mode_cmd, &obj->gem_base);
 	if (ret)
-		goto err_fb_init;
+		goto err_fb_alloc;
 
 	fb = &vfbdev->vgfb.base;
 
@@ -333,7 +333,7 @@ static int virtio_gpufb_create(struct drm_fb_helper *helper,
 
 	info->screen_buffer = obj->vmap;
 	info->screen_size = obj->gem_base.size;
-	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->format->depth);
 	drm_fb_helper_fill_var(info, &vfbdev->helper,
 			       sizes->fb_width, sizes->fb_height);
 
@@ -341,8 +341,6 @@ static int virtio_gpufb_create(struct drm_fb_helper *helper,
 	info->fix.mmio_len = 0;
 	return 0;
 
-err_fb_init:
-	drm_fb_helper_release_fbi(helper);
 err_fb_alloc:
 	virtio_gpu_cmd_resource_inval_backing(vgdev, resid);
 err_obj_attach:
@@ -357,7 +355,6 @@ static int virtio_gpu_fbdev_destroy(struct drm_device *dev,
 	struct virtio_gpu_framebuffer *vgfb = &vgfbdev->vgfb;
 
 	drm_fb_helper_unregister_fbi(&vgfbdev->helper);
-	drm_fb_helper_release_fbi(&vgfbdev->helper);
 
 	if (vgfb->obj)
 		vgfb->obj = NULL;
@@ -387,7 +384,6 @@ int virtio_gpu_fbdev_init(struct virtio_gpu_device *vgdev)
 	drm_fb_helper_prepare(vgdev->ddev, &vgfbdev->helper,
 			      &virtio_gpu_fb_helper_funcs);
 	ret = drm_fb_helper_init(vgdev->ddev, &vgfbdev->helper,
-				 vgdev->num_scanouts,
 				 VIRTIO_GPUFB_CONN_LIMIT);
 	if (ret) {
 		kfree(vgfbdev);
