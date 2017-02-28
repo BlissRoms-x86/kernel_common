@@ -3599,6 +3599,50 @@ static struct dmi_system_id dmi_platform_intel_broadwell[] = {
 	{ }
 };
 
+static struct rt5645_platform_data gpd_win_platform_data = {
+	.jd_mode = 3,
+	.inv_jd1_1 = true,
+};
+
+static const struct dmi_system_id dmi_platform_gpd_win[] = {
+	{
+		/*
+		 * Match for the GPDwin which unfortunately uses somewhat
+		 * generic dmi strings, which is why the bios-date match is
+		 * included and we need multiple entries :| These strings have
+		 * been checked against 6 other byt/cht boards and board_vendor
+		 * and board_name are unique to the GPDwin (in the test set)
+		 * where as only one other board has the same board_version.
+		 */
+		.ident = "GPD Win",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_VERSION, "Default string"),
+			DMI_MATCH(DMI_BIOS_DATE, "10/25/2016"),
+		},
+	},
+	{
+		.ident = "GPD Win",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_VERSION, "Default string"),
+			DMI_MATCH(DMI_BIOS_DATE, "11/18/2016"),
+		},
+	},
+	{
+		.ident = "GPD Win",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_VERSION, "Default string"),
+			DMI_MATCH(DMI_BIOS_DATE, "02/21/2017"),
+		},
+	},
+	{}
+};
+
 static bool rt5645_check_dp(struct device *dev)
 {
 	if (device_property_present(dev, "realtek,in2-differential") ||
@@ -3645,6 +3689,8 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 		rt5645->pdata = *pdata;
 	else if (dmi_check_system(dmi_platform_intel_broadwell))
 		rt5645->pdata = buddy_platform_data;
+	else if (dmi_check_system(dmi_platform_gpd_win))
+		rt5645->pdata = gpd_win_platform_data;
 	else if (rt5645_check_dp(&i2c->dev))
 		rt5645_parse_dt(rt5645, &i2c->dev);
 	else if (dmi_check_system(dmi_platform_intel_braswell))
