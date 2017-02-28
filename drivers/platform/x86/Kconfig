@@ -1076,4 +1076,36 @@ config MLX_CPLD_PLATFORM
 	  This driver handles hot-plug events for the power suppliers, power
 	  cables and fans on the wide range Mellanox IB and Ethernet systems.
 
+config SILEAD_DMI
+	bool "Tablets with Silead touchscreens"
+	depends on ACPI && DMI && I2C && INPUT
+	---help---
+	  Certain ACPI based tablets with Silead touchscreens do not have
+	  enough data in ACPI tables for the touchscreen driver to handle
+	  the touchscreen properly, as OEMs expected the data to be baked
+	  into the tablet model specific version of the driver shipped
+	  with the OS-image for the device. This option supplies the missing
+	  information. Enable this for x86 tablets with Silead touchscreens.
+
+config SURFACE_BUTTON
+	tristate "Surface Pro Button Driver"
+	depends on ACPI
+	---help---
+	  This driver provides button support for the surface pro tablet, including
+	  Power Button, Home Button, Volume Button
+
+config SURFACE_BUTTON
+	tristate "Surface Pro Button Driver"
+	depends on ACPI
+	---help---
+	  This driver provides button support for the surface pro tablet, including
+	  Power Button, Home Button, Volume Button
+
+config SURFACE_BUTTON
+	tristate "Surface Pro Button Driver"
+	depends on ACPI
+	---help---
+	  This driver provides button support for the surface pro tablet, including
+	  Power Button, Home Button, Volume Button
+
 endif # X86_PLATFORM_DEVICES
