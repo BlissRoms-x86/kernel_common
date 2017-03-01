@@ -431,15 +431,8 @@ static void atmel_hlcdc_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct atmel_hlcdc_dc *dc = dev->dev_private;
 
-	if (dc->fbdev) {
+	if (dc->fbdev)
 		drm_fbdev_cma_hotplug_event(dc->fbdev);
-	} else {
-		dc->fbdev = drm_fbdev_cma_init(dev, 24,
-				dev->mode_config.num_crtc,
-				dev->mode_config.num_connector);
-		if (IS_ERR(dc->fbdev))
-			dc->fbdev = NULL;
-	}
 }
 
 struct atmel_hlcdc_dc_commit {
@@ -653,10 +646,12 @@ static int atmel_hlcdc_dc_load(struct drm_device *dev)
 
 	platform_set_drvdata(pdev, dev);
 
-	drm_kms_helper_poll_init(dev);
+	dc->fbdev = drm_fbdev_cma_init(dev, 24,
+			dev->mode_config.num_connector);
+	if (IS_ERR(dc->fbdev))
+		dc->fbdev = NULL;
 
-	/* force connectors detection */
-	drm_helper_hpd_irq_event(dev);
+	drm_kms_helper_poll_init(dev);
 
 	return 0;
 
@@ -725,25 +720,6 @@ static void atmel_hlcdc_dc_irq_uninstall(struct drm_device *dev)
 	regmap_read(dc->hlcdc->regmap, ATMEL_HLCDC_ISR, &isr);
 }
 
-static int atmel_hlcdc_dc_enable_vblank(struct drm_device *dev,
-					unsigned int pipe)
-{
-	struct atmel_hlcdc_dc *dc = dev->dev_private;
-
-	/* Enable SOF (Start Of Frame) interrupt for vblank counting */
-	regmap_write(dc->hlcdc->regmap, ATMEL_HLCDC_IER, ATMEL_HLCDC_SOF);
-
-	return 0;
-}
-
-static void atmel_hlcdc_dc_disable_vblank(struct drm_device *dev,
-					  unsigned int pipe)
-{
-	struct atmel_hlcdc_dc *dc = dev->dev_private;
-
-	regmap_write(dc->hlcdc->regmap, ATMEL_HLCDC_IDR, ATMEL_HLCDC_SOF);
-}
-
 static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
@@ -765,9 +741,6 @@ static struct drm_driver atmel_hlcdc_dc_driver = {
 	.irq_preinstall = atmel_hlcdc_dc_irq_uninstall,
 	.irq_postinstall = atmel_hlcdc_dc_irq_postinstall,
 	.irq_uninstall = atmel_hlcdc_dc_irq_uninstall,
-	.get_vblank_counter = drm_vblank_no_hw_counter,
-	.enable_vblank = atmel_hlcdc_dc_enable_vblank,
-	.disable_vblank = atmel_hlcdc_dc_disable_vblank,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,

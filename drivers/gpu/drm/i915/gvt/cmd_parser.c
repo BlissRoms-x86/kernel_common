@@ -1134,6 +1134,8 @@ static int skl_decode_mi_display_flip(struct parser_exec_state *s,
 	u32 dword2 = cmd_val(s, 2);
 	u32 plane = (dword0 & GENMASK(12, 8)) >> 8;
 
+	info->plane = PRIMARY_PLANE;
+
 	switch (plane) {
 	case MI_DISPLAY_FLIP_SKL_PLANE_1_A:
 		info->pipe = PIPE_A;
@@ -1147,12 +1149,28 @@ static int skl_decode_mi_display_flip(struct parser_exec_state *s,
 		info->pipe = PIPE_C;
 		info->event = PRIMARY_C_FLIP_DONE;
 		break;
+
+	case MI_DISPLAY_FLIP_SKL_PLANE_2_A:
+		info->pipe = PIPE_A;
+		info->event = SPRITE_A_FLIP_DONE;
+		info->plane = SPRITE_PLANE;
+		break;
+	case MI_DISPLAY_FLIP_SKL_PLANE_2_B:
+		info->pipe = PIPE_B;
+		info->event = SPRITE_B_FLIP_DONE;
+		info->plane = SPRITE_PLANE;
+		break;
+	case MI_DISPLAY_FLIP_SKL_PLANE_2_C:
+		info->pipe = PIPE_C;
+		info->event = SPRITE_C_FLIP_DONE;
+		info->plane = SPRITE_PLANE;
+		break;
+
 	default:
 		gvt_err("unknown plane code %d\n", plane);
 		return -EINVAL;
 	}
 
-	info->pipe = PRIMARY_PLANE;
 	info->stride_val = (dword1 & GENMASK(15, 6)) >> 6;
 	info->tile_val = (dword1 & GENMASK(2, 0));
 	info->surf_val = (dword2 & GENMASK(31, 12)) >> 12;
@@ -1512,7 +1530,7 @@ static int copy_gma_to_hva(struct intel_vgpu *vgpu, struct intel_vgpu_mm *mm,
 		len += copy_len;
 		gma += copy_len;
 	}
-	return 0;
+	return len;
 }
 
 
@@ -1598,7 +1616,7 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 		return -ENOMEM;
 
 	entry_obj->obj =
-		i915_gem_object_create(&(s->vgpu->gvt->dev_priv->drm),
+		i915_gem_object_create(s->vgpu->gvt->dev_priv,
 				       roundup(bb_size, PAGE_SIZE));
 	if (IS_ERR(entry_obj->obj)) {
 		ret = PTR_ERR(entry_obj->obj);
@@ -1626,7 +1644,7 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	ret = copy_gma_to_hva(s->vgpu, s->vgpu->gtt.ggtt_mm,
 			      gma, gma + bb_size,
 			      dst);
-	if (ret) {
+	if (ret < 0) {
 		gvt_err("fail to copy guest ring buffer\n");
 		goto unmap_src;
 	}
@@ -2590,11 +2608,8 @@ out:
 static int shadow_workload_ring_buffer(struct intel_vgpu_workload *workload)
 {
 	struct intel_vgpu *vgpu = workload->vgpu;
-	int ring_id = workload->ring_id;
-	struct i915_gem_context *shadow_ctx = vgpu->shadow_ctx;
-	struct intel_ring *ring = shadow_ctx->engine[ring_id].ring;
 	unsigned long gma_head, gma_tail, gma_top, guest_rb_size;
-	unsigned int copy_len = 0;
+	u32 *cs;
 	int ret;
 
 	guest_rb_size = _RING_CTL_BUF_SIZE(workload->rb_ctl);
@@ -2608,36 +2623,33 @@ static int shadow_workload_ring_buffer(struct intel_vgpu_workload *workload)
 	gma_top = workload->rb_start + guest_rb_size;
 
 	/* allocate shadow ring buffer */
-	ret = intel_ring_begin(workload->req, workload->rb_len / 4);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(workload->req, workload->rb_len / sizeof(u32));
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
 	/* get shadow ring buffer va */
-	workload->shadow_ring_buffer_va = ring->vaddr + ring->tail;
+	workload->shadow_ring_buffer_va = cs;
 
 	/* head > tail --> copy head <-> top */
 	if (gma_head > gma_tail) {
 		ret = copy_gma_to_hva(vgpu, vgpu->gtt.ggtt_mm,
-				gma_head, gma_top,
-				workload->shadow_ring_buffer_va);
-		if (ret) {
+				      gma_head, gma_top, cs);
+		if (ret < 0) {
 			gvt_err("fail to copy guest ring buffer\n");
 			return ret;
 		}
-		copy_len = gma_top - gma_head;
+		cs += ret / sizeof(u32);
 		gma_head = workload->rb_start;
 	}
 
 	/* copy head or start <-> tail */
-	ret = copy_gma_to_hva(vgpu, vgpu->gtt.ggtt_mm,
-			gma_head, gma_tail,
-			workload->shadow_ring_buffer_va + copy_len);
-	if (ret) {
+	ret = copy_gma_to_hva(vgpu, vgpu->gtt.ggtt_mm, gma_head, gma_tail, cs);
+	if (ret < 0) {
 		gvt_err("fail to copy guest ring buffer\n");
 		return ret;
 	}
-	ring->tail += workload->rb_len;
-	intel_ring_advance(ring);
+	cs += ret / sizeof(u32);
+	intel_ring_advance(workload->req, cs);
 	return 0;
 }
 
@@ -2661,14 +2673,13 @@ int intel_gvt_scan_and_shadow_workload(struct intel_vgpu_workload *workload)
 
 static int shadow_indirect_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 {
-	struct drm_device *dev = &wa_ctx->workload->vgpu->gvt->dev_priv->drm;
 	int ctx_size = wa_ctx->indirect_ctx.size;
 	unsigned long guest_gma = wa_ctx->indirect_ctx.guest_gma;
 	struct drm_i915_gem_object *obj;
 	int ret = 0;
 	void *map;
 
-	obj = i915_gem_object_create(dev,
+	obj = i915_gem_object_create(wa_ctx->workload->vgpu->gvt->dev_priv,
 				     roundup(ctx_size + CACHELINE_BYTES,
 					     PAGE_SIZE));
 	if (IS_ERR(obj))
@@ -2692,7 +2703,7 @@ static int shadow_indirect_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 				wa_ctx->workload->vgpu->gtt.ggtt_mm,
 				guest_gma, guest_gma + ctx_size,
 				map);
-	if (ret) {
+	if (ret < 0) {
 		gvt_err("fail to copy guest indirect ctx\n");
 		goto unmap_src;
 	}

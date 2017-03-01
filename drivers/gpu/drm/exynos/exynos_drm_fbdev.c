@@ -76,7 +76,7 @@ static int exynos_drm_fbdev_update(struct drm_fb_helper *helper,
 {
 	struct fb_info *fbi;
 	struct drm_framebuffer *fb = helper->fb;
-	unsigned int size = fb->width * fb->height * (fb->bits_per_pixel >> 3);
+	unsigned int size = fb->width * fb->height * fb->format->cpp[0];
 	unsigned int nr_pages;
 	unsigned long offset;
 
@@ -90,7 +90,7 @@ static int exynos_drm_fbdev_update(struct drm_fb_helper *helper,
 	fbi->flags = FBINFO_FLAG_DEFAULT;
 	fbi->fbops = &exynos_drm_fb_ops;
 
-	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->depth);
+	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
 	drm_fb_helper_fill_var(fbi, helper, sizes->fb_width, sizes->fb_height);
 
 	nr_pages = exynos_gem->size >> PAGE_SHIFT;
@@ -99,11 +99,10 @@ static int exynos_drm_fbdev_update(struct drm_fb_helper *helper,
 				VM_MAP, pgprot_writecombine(PAGE_KERNEL));
 	if (!exynos_gem->kvaddr) {
 		DRM_ERROR("failed to map pages to kernel space.\n");
-		drm_fb_helper_release_fbi(helper);
 		return -EIO;
 	}
 
-	offset = fbi->var.xoffset * (fb->bits_per_pixel >> 3);
+	offset = fbi->var.xoffset * fb->format->cpp[0];
 	offset += fbi->var.yoffset * fb->pitches[0];
 
 	fbi->screen_base = exynos_gem->kvaddr + offset;
@@ -208,7 +207,6 @@ int exynos_drm_fbdev_init(struct drm_device *dev)
 	struct exynos_drm_fbdev *fbdev;
 	struct exynos_drm_private *private = dev->dev_private;
 	struct drm_fb_helper *helper;
-	unsigned int num_crtc;
 	int ret;
 
 	if (!dev->mode_config.num_crtc || !dev->mode_config.num_connector)
@@ -225,9 +223,7 @@ int exynos_drm_fbdev_init(struct drm_device *dev)
 
 	drm_fb_helper_prepare(dev, helper, &exynos_drm_fb_helper_funcs);
 
-	num_crtc = dev->mode_config.num_crtc;
-
-	ret = drm_fb_helper_init(dev, helper, num_crtc, MAX_CONNECTOR);
+	ret = drm_fb_helper_init(dev, helper, MAX_CONNECTOR);
 	if (ret < 0) {
 		DRM_ERROR("failed to initialize drm fb helper.\n");
 		goto err_init;
@@ -270,14 +266,11 @@ static void exynos_drm_fbdev_destroy(struct drm_device *dev,
 	/* release drm framebuffer and real buffer */
 	if (fb_helper->fb && fb_helper->fb->funcs) {
 		fb = fb_helper->fb;
-		if (fb) {
-			drm_framebuffer_unregister_private(fb);
+		if (fb)
 			drm_framebuffer_remove(fb);
-		}
 	}
 
 	drm_fb_helper_unregister_fbi(fb_helper);
-	drm_fb_helper_release_fbi(fb_helper);
 
 	drm_fb_helper_fini(fb_helper);
 }

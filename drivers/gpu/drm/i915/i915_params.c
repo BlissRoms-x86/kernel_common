@@ -50,7 +50,7 @@ struct i915_params i915 __read_mostly = {
 	.error_capture = true,
 	.invert_brightness = 0,
 	.disable_display = 0,
-	.enable_cmd_parser = 1,
+	.enable_cmd_parser = true,
 	.use_mmio_flip = 0,
 	.mmio_debug = 0,
 	.verbose_state_checks = 1,
@@ -145,7 +145,7 @@ MODULE_PARM_DESC(enable_psr, "Enable PSR "
 		 "(0=disabled, 1=enabled - link mode chosen per-platform, 2=force link-standby mode, 3=force link-off mode) "
 		 "Default: -1 (use per-chip default)");
 
-module_param_named_unsafe(alpha_support, i915.alpha_support, int, 0400);
+module_param_named_unsafe(alpha_support, i915.alpha_support, bool, 0400);
 MODULE_PARM_DESC(alpha_support,
 	"Enable alpha quality driver support for latest hardware. "
 	"See also CONFIG_DRM_I915_ALPHA_SUPPORT.");
@@ -188,9 +188,9 @@ MODULE_PARM_DESC(invert_brightness,
 module_param_named(disable_display, i915.disable_display, bool, 0400);
 MODULE_PARM_DESC(disable_display, "Disable display (default: false)");
 
-module_param_named_unsafe(enable_cmd_parser, i915.enable_cmd_parser, int, 0600);
+module_param_named_unsafe(enable_cmd_parser, i915.enable_cmd_parser, bool, 0400);
 MODULE_PARM_DESC(enable_cmd_parser,
-		 "Enable command parsing (1=enabled [default], 0=disabled)");
+		 "Enable command parsing (true=enabled [default], false=disabled)");
 
 module_param_named_unsafe(use_mmio_flip, i915.use_mmio_flip, int, 0600);
 MODULE_PARM_DESC(use_mmio_flip,
@@ -205,9 +205,9 @@ module_param_named(verbose_state_checks, i915.verbose_state_checks, bool, 0600);
 MODULE_PARM_DESC(verbose_state_checks,
 	"Enable verbose logs (ie. WARN_ON()) in case of unexpected hw state conditions.");
 
-module_param_named_unsafe(nuclear_pageflip, i915.nuclear_pageflip, bool, 0600);
+module_param_named_unsafe(nuclear_pageflip, i915.nuclear_pageflip, bool, 0400);
 MODULE_PARM_DESC(nuclear_pageflip,
-		 "Force atomic modeset functionality; asynchronous mode is not yet supported. (default: false).");
+		 "Force enable atomic functionality on platforms that don't have full support yet.");
 
 /* WA to get away with the default setting in VBT for early platforms.Will be removed */
 module_param_named_unsafe(edp_vswing, i915.edp_vswing, int, 0400);

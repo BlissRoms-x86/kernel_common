@@ -28,6 +28,7 @@
 
 #include <linux/dma_remapping.h>
 #include <linux/reservation.h>
+#include <linux/sync_file.h>
 #include <linux/uaccess.h>
 
 #include <drm/drmP.h>
@@ -184,7 +185,7 @@ eb_lookup_vmas(struct eb_vmas *eb,
 		 * from the (obj, vm) we don't run the risk of creating
 		 * duplicated vmas for the same vm.
 		 */
-		vma = i915_gem_obj_lookup_or_create_vma(obj, vm, NULL);
+		vma = i915_vma_instance(obj, vm, NULL);
 		if (unlikely(IS_ERR(vma))) {
 			DRM_DEBUG("Failed to lookup VMA\n");
 			ret = PTR_ERR(vma);
@@ -274,6 +275,7 @@ static void eb_destroy(struct eb_vmas *eb)
 				       exec_list);
 		list_del_init(&vma->exec_list);
 		i915_gem_execbuffer_unreserve_vma(vma);
+		vma->exec_entry = NULL;
 		i915_vma_put(vma);
 	}
 	kfree(eb);
@@ -435,12 +437,11 @@ static void *reloc_iomap(struct drm_i915_gem_object *obj,
 					       PIN_MAPPABLE | PIN_NONBLOCK);
 		if (IS_ERR(vma)) {
 			memset(&cache->node, 0, sizeof(cache->node));
-			ret = drm_mm_insert_node_in_range_generic
+			ret = drm_mm_insert_node_in_range
 				(&ggtt->base.mm, &cache->node,
-				 4096, 0, 0,
+				 PAGE_SIZE, 0, I915_COLOR_UNEVICTABLE,
 				 0, ggtt->mappable_end,
-				 DRM_MM_SEARCH_DEFAULT,
-				 DRM_MM_CREATE_DEFAULT);
+				 DRM_MM_INSERT_LOW);
 			if (ret) /* no inactive aperture space, use cpu reloc */
 				return NULL;
 		} else {
@@ -850,8 +851,7 @@ eb_vma_misplaced(struct i915_vma *vma)
 	WARN_ON(entry->flags & __EXEC_OBJECT_NEEDS_MAP &&
 		!i915_vma_is_ggtt(vma));
 
-	if (entry->alignment &&
-	    vma->node.start & (entry->alignment - 1))
+	if (entry->alignment && !IS_ALIGNED(vma->node.start, entry->alignment))
 		return true;
 
 	if (vma->node.size < entry->pad_to_size)
@@ -1111,6 +1111,9 @@ i915_gem_execbuffer_move_to_gpu(struct drm_i915_gem_request *req,
 	list_for_each_entry(vma, vmas, exec_list) {
 		struct drm_i915_gem_object *obj = vma->obj;
 
+		if (vma->exec_entry->flags & EXEC_OBJECT_ASYNC)
+			continue;
+
 		ret = i915_gem_request_await_object
 			(req, obj, obj->base.pending_write_domain);
 		if (ret)
@@ -1232,14 +1235,12 @@ i915_gem_validate_context(struct drm_device *dev, struct drm_file *file,
 			  struct intel_engine_cs *engine, const u32 ctx_id)
 {
 	struct i915_gem_context *ctx;
-	struct i915_ctx_hang_stats *hs;
 
 	ctx = i915_gem_context_lookup(file->driver_priv, ctx_id);
 	if (IS_ERR(ctx))
 		return ctx;
 
-	hs = &ctx->hang_stats;
-	if (hs->banned) {
+	if (i915_gem_context_is_banned(ctx)) {
 		DRM_DEBUG("Context %u tried to submit while banned\n", ctx_id);
 		return ERR_PTR(-EIO);
 	}
@@ -1260,6 +1261,7 @@ void i915_vma_move_to_active(struct i915_vma *vma,
 	struct drm_i915_gem_object *obj = vma->obj;
 	const unsigned int idx = req->engine->id;
 
+	lockdep_assert_held(&req->i915->drm.struct_mutex);
 	GEM_BUG_ON(!drm_mm_node_allocated(&vma->node));
 
 	/* Add a reference if we're newly entering the active list.
@@ -1334,25 +1336,25 @@ i915_gem_execbuffer_move_to_active(struct list_head *vmas,
 static int
 i915_reset_gen7_sol_offsets(struct drm_i915_gem_request *req)
 {
-	struct intel_ring *ring = req->ring;
-	int ret, i;
+	u32 *cs;
+	int i;
 
 	if (!IS_GEN7(req->i915) || req->engine->id != RCS) {
 		DRM_DEBUG("sol reset is gen7/rcs only\n");
 		return -EINVAL;
 	}
 
-	ret = intel_ring_begin(req, 4 * 3);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(req, 4 * 3);
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
 	for (i = 0; i < 4; i++) {
-		intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
-		intel_ring_emit_reg(ring, GEN7_SO_WRITE_OFFSET(i));
-		intel_ring_emit(ring, 0);
+		*cs++ = MI_LOAD_REGISTER_IMM(1);
+		*cs++ = i915_mmio_reg_offset(GEN7_SO_WRITE_OFFSET(i));
+		*cs++ = 0;
 	}
 
-	intel_ring_advance(ring);
+	intel_ring_advance(req, cs);
 
 	return 0;
 }
@@ -1413,7 +1415,7 @@ execbuf_submit(struct i915_execbuffer_params *params,
 	struct drm_i915_private *dev_priv = params->request->i915;
 	u64 exec_start, exec_len;
 	int instp_mode;
-	u32 instp_mask;
+	u32 instp_mask, *cs;
 	int ret;
 
 	ret = i915_gem_execbuffer_move_to_gpu(params->request, vmas);
@@ -1459,17 +1461,15 @@ execbuf_submit(struct i915_execbuffer_params *params,
 
 	if (params->engine->id == RCS &&
 	    instp_mode != dev_priv->relative_constants_mode) {
-		struct intel_ring *ring = params->request->ring;
+		cs = intel_ring_begin(params->request, 4);
+		if (IS_ERR(cs))
+			return PTR_ERR(cs);
 
-		ret = intel_ring_begin(params->request, 4);
-		if (ret)
-			return ret;
-
-		intel_ring_emit(ring, MI_NOOP);
-		intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
-		intel_ring_emit_reg(ring, INSTPM);
-		intel_ring_emit(ring, instp_mask << 16 | instp_mode);
-		intel_ring_advance(ring);
+		*cs++ = MI_NOOP;
+		*cs++ = MI_LOAD_REGISTER_IMM(1);
+		*cs++ = i915_mmio_reg_offset(INSTPM);
+		*cs++ = instp_mask << 16 | instp_mode;
+		intel_ring_advance(params->request, cs);
 
 		dev_priv->relative_constants_mode = instp_mode;
 	}
@@ -1593,6 +1593,9 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	struct i915_execbuffer_params *params = &params_master;
 	const u32 ctx_id = i915_execbuffer2_get_context_id(*args);
 	u32 dispatch_flags;
+	struct dma_fence *in_fence = NULL;
+	struct sync_file *out_fence = NULL;
+	int out_fence_fd = -1;
 	int ret;
 	bool need_relocs;
 
@@ -1634,6 +1637,20 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		}
 
 		dispatch_flags |= I915_DISPATCH_RS;
+	}
+
+	if (args->flags & I915_EXEC_FENCE_IN) {
+		in_fence = sync_file_get_fence(lower_32_bits(args->rsvd2));
+		if (!in_fence)
+			return -EINVAL;
+	}
+
+	if (args->flags & I915_EXEC_FENCE_OUT) {
+		out_fence_fd = get_unused_fd_flags(O_CLOEXEC);
+		if (out_fence_fd < 0) {
+			ret = out_fence_fd;
+			goto err_in_fence;
+		}
 	}
 
 	/* Take a local wakeref for preparing to dispatch the execbuf as
@@ -1715,7 +1732,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	}
 
 	params->args_batch_start_offset = args->batch_start_offset;
-	if (intel_engine_needs_cmd_parser(engine) && args->batch_len) {
+	if (engine->needs_cmd_parser && args->batch_len) {
 		struct i915_vma *vma;
 
 		vma = i915_gem_execbuffer_parse(engine, &shadow_exec_entry,
@@ -1780,6 +1797,21 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		goto err_batch_unpin;
 	}
 
+	if (in_fence) {
+		ret = i915_gem_request_await_dma_fence(params->request,
+						       in_fence);
+		if (ret < 0)
+			goto err_request;
+	}
+
+	if (out_fence_fd != -1) {
+		out_fence = sync_file_create(&params->request->fence);
+		if (!out_fence) {
+			ret = -ENOMEM;
+			goto err_request;
+		}
+	}
+
 	/* Whilst this request exists, batch_obj will be on the
 	 * active_list, and so will hold the active reference. Only when this
 	 * request is retired will the the batch_obj be moved onto the
@@ -1807,6 +1839,16 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	ret = execbuf_submit(params, args, &eb->vmas);
 err_request:
 	__i915_add_request(params->request, ret == 0);
+	if (out_fence) {
+		if (ret == 0) {
+			fd_install(out_fence_fd, out_fence->file);
+			args->rsvd2 &= GENMASK_ULL(0, 31); /* keep in-fence */
+			args->rsvd2 |= (u64)out_fence_fd << 32;
+			out_fence_fd = -1;
+		} else {
+			fput(out_fence->file);
+		}
+	}
 
 err_batch_unpin:
 	/*
@@ -1828,6 +1870,10 @@ pre_mutex_err:
 	/* intel_gpu_busy should also get a ref, so it will free when the device
 	 * is really idle. */
 	intel_runtime_pm_put(dev_priv);
+	if (out_fence_fd != -1)
+		put_unused_fd(out_fence_fd);
+err_in_fence:
+	dma_fence_put(in_fence);
 	return ret;
 }
 
@@ -1932,11 +1978,6 @@ i915_gem_execbuffer2(struct drm_device *dev, void *data,
 	if (args->buffer_count < 1 ||
 	    args->buffer_count > UINT_MAX / sizeof(*exec2_list)) {
 		DRM_DEBUG("execbuf2 with %d buffers\n", args->buffer_count);
-		return -EINVAL;
-	}
-
-	if (args->rsvd2 != 0) {
-		DRM_DEBUG("dirty rvsd2 field\n");
 		return -EINVAL;
 	}
 

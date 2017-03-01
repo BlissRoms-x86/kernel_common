@@ -831,7 +831,8 @@ nv50_wndw_atomic_check_release(struct nv50_wndw *wndw,
 static int
 nv50_wndw_atomic_check_acquire(struct nv50_wndw *wndw,
 			       struct nv50_wndw_atom *asyw,
-			       struct nv50_head_atom *asyh)
+			       struct nv50_head_atom *asyh,
+			       u32 pflip_flags)
 {
 	struct nouveau_framebuffer *fb = nouveau_framebuffer(asyw->state.fb);
 	struct nouveau_drm *drm = nouveau_drm(wndw->plane.dev);
@@ -846,6 +847,9 @@ nv50_wndw_atomic_check_acquire(struct nv50_wndw *wndw,
 	asyw->image.w = fb->base.width;
 	asyw->image.h = fb->base.height;
 	asyw->image.kind = (fb->nvbo->tile_flags & 0x0000ff00) >> 8;
+
+	asyw->interval = pflip_flags & DRM_MODE_PAGE_FLIP_ASYNC ? 0 : 1;
+
 	if (asyw->image.kind) {
 		asyw->image.layout = 0;
 		if (drm->device.info.chipset >= 0xc0)
@@ -883,6 +887,7 @@ nv50_wndw_atomic_check(struct drm_plane *plane, struct drm_plane_state *state)
 	struct nv50_head_atom *harm = NULL, *asyh = NULL;
 	bool varm = false, asyv = false, asym = false;
 	int ret;
+	u32 pflip_flags = 0;
 
 	NV_ATOMIC(drm, "%s atomic_check\n", plane->name);
 	if (asyw->state.crtc) {
@@ -891,6 +896,7 @@ nv50_wndw_atomic_check(struct drm_plane *plane, struct drm_plane_state *state)
 			return PTR_ERR(asyh);
 		asym = drm_atomic_crtc_needs_modeset(&asyh->state);
 		asyv = asyh->state.active;
+		pflip_flags = asyh->state.pageflip_flags;
 	}
 
 	if (armw->state.crtc) {
@@ -907,7 +913,8 @@ nv50_wndw_atomic_check(struct drm_plane *plane, struct drm_plane_state *state)
 			asyw->set.point = true;
 
 		if (!varm || asym || armw->state.fb != asyw->state.fb) {
-			ret = nv50_wndw_atomic_check_acquire(wndw, asyw, asyh);
+			ret = nv50_wndw_atomic_check_acquire(
+					wndw, asyw, asyh, pflip_flags);
 			if (ret)
 				return ret;
 		}
@@ -1153,7 +1160,7 @@ nv50_curs_acquire(struct nv50_wndw *wndw, struct nv50_wndw_atom *asyw,
 	if (asyw->state.fb->width != asyw->state.fb->height)
 		return -EINVAL;
 
-	switch (asyw->state.fb->pixel_format) {
+	switch (asyw->state.fb->format->format) {
 	case DRM_FORMAT_ARGB8888: asyh->curs.format = 1; break;
 	default:
 		WARN_ON(1);
@@ -1418,12 +1425,10 @@ static int
 nv50_base_acquire(struct nv50_wndw *wndw, struct nv50_wndw_atom *asyw,
 		  struct nv50_head_atom *asyh)
 {
-	const u32 format = asyw->state.fb->pixel_format;
-	const struct drm_format_info *info;
+	const struct drm_framebuffer *fb = asyw->state.fb;
 	int ret;
 
-	info = drm_format_info(format);
-	if (!info || !info->depth)
+	if (!fb->format->depth)
 		return -EINVAL;
 
 	ret = drm_plane_helper_check_state(&asyw->state, &asyw->clip,
@@ -1433,14 +1438,14 @@ nv50_base_acquire(struct nv50_wndw *wndw, struct nv50_wndw_atom *asyw,
 	if (ret)
 		return ret;
 
-	asyh->base.depth = info->depth;
-	asyh->base.cpp = info->cpp[0];
+	asyh->base.depth = fb->format->depth;
+	asyh->base.cpp = fb->format->cpp[0];
 	asyh->base.x = asyw->state.src.x1 >> 16;
 	asyh->base.y = asyw->state.src.y1 >> 16;
 	asyh->base.w = asyw->state.fb->width;
 	asyh->base.h = asyw->state.fb->height;
 
-	switch (format) {
+	switch (fb->format->format) {
 	case DRM_FORMAT_C8         : asyw->image.format = 0x1e; break;
 	case DRM_FORMAT_RGB565     : asyw->image.format = 0xe8; break;
 	case DRM_FORMAT_XRGB1555   :
@@ -2221,77 +2226,6 @@ nv50_head_help = {
 	.atomic_check = nv50_head_atomic_check,
 };
 
-/* This is identical to the version in the atomic helpers, except that
- * it supports non-vblanked ("async") page flips.
- */
-static int
-nv50_head_page_flip(struct drm_crtc *crtc, struct drm_framebuffer *fb,
-		    struct drm_pending_vblank_event *event, u32 flags)
-{
-	struct drm_plane *plane = crtc->primary;
-	struct drm_atomic_state *state;
-	struct drm_plane_state *plane_state;
-	struct drm_crtc_state *crtc_state;
-	int ret = 0;
-
-	state = drm_atomic_state_alloc(plane->dev);
-	if (!state)
-		return -ENOMEM;
-
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
-retry:
-	crtc_state = drm_atomic_get_crtc_state(state, crtc);
-	if (IS_ERR(crtc_state)) {
-		ret = PTR_ERR(crtc_state);
-		goto fail;
-	}
-	crtc_state->event = event;
-
-	plane_state = drm_atomic_get_plane_state(state, plane);
-	if (IS_ERR(plane_state)) {
-		ret = PTR_ERR(plane_state);
-		goto fail;
-	}
-
-	ret = drm_atomic_set_crtc_for_plane(plane_state, crtc);
-	if (ret != 0)
-		goto fail;
-	drm_atomic_set_fb_for_plane(plane_state, fb);
-
-	/* Make sure we don't accidentally do a full modeset. */
-	state->allow_modeset = false;
-	if (!crtc_state->active) {
-		DRM_DEBUG_ATOMIC("[CRTC:%d] disabled, rejecting legacy flip\n",
-				 crtc->base.id);
-		ret = -EINVAL;
-		goto fail;
-	}
-
-	if (flags & DRM_MODE_PAGE_FLIP_ASYNC)
-		nv50_wndw_atom(plane_state)->interval = 0;
-
-	ret = drm_atomic_nonblocking_commit(state);
-fail:
-	if (ret == -EDEADLK)
-		goto backoff;
-
-	drm_atomic_state_put(state);
-	return ret;
-
-backoff:
-	drm_atomic_state_clear(state);
-	drm_atomic_legacy_backoff(state);
-
-	/*
-	 * Someone might have exchanged the framebuffer while we dropped locks
-	 * in the backoff code. We need to fix up the fb refcount tracking the
-	 * core does for us.
-	 */
-	plane->old_fb = plane->fb;
-
-	goto retry;
-}
-
 static int
 nv50_head_gamma_set(struct drm_crtc *crtc, u16 *r, u16 *g, u16 *b,
 		    uint32_t size)
@@ -2386,7 +2320,7 @@ nv50_head_func = {
 	.gamma_set = nv50_head_gamma_set,
 	.destroy = nv50_head_destroy,
 	.set_config = drm_atomic_helper_set_config,
-	.page_flip = nv50_head_page_flip,
+	.page_flip = drm_atomic_helper_page_flip,
 	.set_property = drm_atomic_helper_crtc_set_property,
 	.atomic_duplicate_state = nv50_head_atomic_duplicate_state,
 	.atomic_destroy_state = nv50_head_atomic_destroy_state,
@@ -3419,7 +3353,7 @@ nv50_mstm_new(struct nouveau_encoder *outp, struct drm_dp_aux *aux, int aux_max,
 	mstm->outp = outp;
 	mstm->mgr.cbs = &nv50_mstm;
 
-	ret = drm_dp_mst_topology_mgr_init(&mstm->mgr, dev->dev, aux, aux_max,
+	ret = drm_dp_mst_topology_mgr_init(&mstm->mgr, dev, aux, aux_max,
 					   max_payloads, conn_base_id);
 	if (ret)
 		return ret;

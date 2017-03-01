@@ -156,8 +156,10 @@ static void vlv_enable_dsi_pll(struct intel_encoder *encoder,
 	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL,
 		      config->dsi_pll.ctrl & ~DSI_PLL_VCO_EN);
 
-	/* wait at least 0.5 us after ungating before enabling VCO */
-	usleep_range(1, 10);
+	/* wait at least 0.5 us after ungating before enabling VCO,
+	 * allow hrtimer subsystem optimization by relaxing timing
+	 */
+	usleep_range(10, 50);
 
 	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, config->dsi_pll.ctrl);
 
@@ -351,7 +353,7 @@ static u32 bxt_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
 u32 intel_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
 		       struct intel_crtc_state *config)
 {
-	if (IS_BROXTON(to_i915(encoder->base.dev)))
+	if (IS_GEN9_LP(to_i915(encoder->base.dev)))
 		return bxt_dsi_get_pclk(encoder, pipe_bpp, config);
 	else
 		return vlv_dsi_get_pclk(encoder, pipe_bpp, config);
@@ -414,11 +416,7 @@ static void bxt_dsi_program_clocks(struct drm_device *dev, enum port port,
 	rx_div_lower = rx_div & RX_DIVIDER_BIT_1_2;
 	rx_div_upper = (rx_div & RX_DIVIDER_BIT_3_4) >> 2;
 
-	/* As per bpsec program the 8/3X clock divider to the below value */
-	if (dev_priv->vbt.dsi.config->is_cmd_mode)
-		mipi_8by3_divider = 0x2;
-	else
-		mipi_8by3_divider = 0x3;
+	mipi_8by3_divider = 0x2;
 
 	tmp |= BXT_MIPI_8X_BY3_DIVIDER(port, mipi_8by3_divider);
 	tmp |= BXT_MIPI_TX_ESCLK_DIVIDER(port, tx_div);
@@ -504,7 +502,7 @@ static void bxt_enable_dsi_pll(struct intel_encoder *encoder,
 
 bool intel_dsi_pll_is_enabled(struct drm_i915_private *dev_priv)
 {
-	if (IS_BROXTON(dev_priv))
+	if (IS_GEN9_LP(dev_priv))
 		return bxt_dsi_pll_is_enabled(dev_priv);
 
 	MISSING_CASE(INTEL_DEVID(dev_priv));
@@ -519,7 +517,7 @@ int intel_compute_dsi_pll(struct intel_encoder *encoder,
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		return vlv_compute_dsi_pll(encoder, config);
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		return bxt_compute_dsi_pll(encoder, config);
 
 	return -ENODEV;
@@ -532,7 +530,7 @@ void intel_enable_dsi_pll(struct intel_encoder *encoder,
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		vlv_enable_dsi_pll(encoder, config);
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		bxt_enable_dsi_pll(encoder, config);
 }
 
@@ -542,7 +540,7 @@ void intel_disable_dsi_pll(struct intel_encoder *encoder)
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		vlv_disable_dsi_pll(encoder);
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		bxt_disable_dsi_pll(encoder);
 }
 
@@ -566,7 +564,7 @@ void intel_dsi_reset_clocks(struct intel_encoder *encoder, enum port port)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 
-	if (IS_BROXTON(dev_priv))
+	if (IS_GEN9_LP(dev_priv))
 		bxt_dsi_reset_clocks(encoder, port);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		vlv_dsi_reset_clocks(encoder, port);

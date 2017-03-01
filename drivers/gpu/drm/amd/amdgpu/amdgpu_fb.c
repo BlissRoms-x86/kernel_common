@@ -224,7 +224,7 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 	info = drm_fb_helper_alloc_fbi(helper);
 	if (IS_ERR(info)) {
 		ret = PTR_ERR(info);
-		goto out_unref;
+		goto out;
 	}
 
 	info->par = rfbdev;
@@ -233,7 +233,7 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 	ret = amdgpu_framebuffer_init(adev->ddev, &rfbdev->rfb, &mode_cmd, gobj);
 	if (ret) {
 		DRM_ERROR("failed to initialize framebuffer %d\n", ret);
-		goto out_destroy_fbi;
+		goto out;
 	}
 
 	fb = &rfbdev->rfb.base;
@@ -245,7 +245,7 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 
 	strcpy(info->fix.id, "amdgpudrmfb");
 
-	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->format->depth);
 
 	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
 	info->fbops = &amdgpufb_ops;
@@ -266,21 +266,19 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 
 	if (info->screen_base == NULL) {
 		ret = -ENOSPC;
-		goto out_destroy_fbi;
+		goto out;
 	}
 
 	DRM_INFO("fb mappable at 0x%lX\n",  info->fix.smem_start);
 	DRM_INFO("vram apper at 0x%lX\n",  (unsigned long)adev->mc.aper_base);
 	DRM_INFO("size %lu\n", (unsigned long)amdgpu_bo_size(abo));
-	DRM_INFO("fb depth is %d\n", fb->depth);
+	DRM_INFO("fb depth is %d\n", fb->format->depth);
 	DRM_INFO("   pitch is %d\n", fb->pitches[0]);
 
 	vga_switcheroo_client_fb_set(adev->ddev->pdev, info);
 	return 0;
 
-out_destroy_fbi:
-	drm_fb_helper_release_fbi(helper);
-out_unref:
+out:
 	if (abo) {
 
 	}
@@ -304,7 +302,6 @@ static int amdgpu_fbdev_destroy(struct drm_device *dev, struct amdgpu_fbdev *rfb
 	struct amdgpu_framebuffer *rfb = &rfbdev->rfb;
 
 	drm_fb_helper_unregister_fbi(&rfbdev->helper);
-	drm_fb_helper_release_fbi(&rfbdev->helper);
 
 	if (rfb->obj) {
 		amdgpufb_destroy_pinned_object(rfb->obj);
@@ -374,7 +371,6 @@ int amdgpu_fbdev_init(struct amdgpu_device *adev)
 			&amdgpu_fb_helper_funcs);
 
 	ret = drm_fb_helper_init(adev->ddev, &rfbdev->helper,
-				 adev->mode_info.num_crtc,
 				 AMDGPUFB_CONN_LIMIT);
 	if (ret) {
 		kfree(rfbdev);

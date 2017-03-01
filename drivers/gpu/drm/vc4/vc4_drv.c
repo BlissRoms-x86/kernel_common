@@ -137,15 +137,11 @@ static struct drm_driver vc4_drm_driver = {
 	.irq_postinstall = vc4_irq_postinstall,
 	.irq_uninstall = vc4_irq_uninstall,
 
-	.enable_vblank = vc4_enable_vblank,
-	.disable_vblank = vc4_disable_vblank,
-	.get_vblank_counter = drm_vblank_no_hw_counter,
 	.get_scanout_position = vc4_crtc_get_scanoutpos,
 	.get_vblank_timestamp = vc4_crtc_get_vblank_timestamp,
 
 #if defined(CONFIG_DEBUG_FS)
 	.debugfs_init = vc4_debugfs_init,
-	.debugfs_cleanup = vc4_debugfs_cleanup,
 #endif
 
 	.gem_create_object = vc4_create_object,
@@ -296,6 +292,7 @@ static struct platform_driver *const component_drivers[] = {
 	&vc4_hdmi_driver,
 	&vc4_vec_driver,
 	&vc4_dpi_driver,
+	&vc4_dsi_driver,
 	&vc4_hvs_driver,
 	&vc4_crtc_driver,
 	&vc4_v3d_driver,
