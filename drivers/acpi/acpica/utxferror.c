@@ -108,15 +108,15 @@ acpi_exception(const char *module_name,
 
 	ACPI_MSG_REDIRECT_BEGIN;
 
-	/* For AE_OK, just print the message */
-
-	if (ACPI_SUCCESS(status)) {
+	/* Many ACPI tables reference missing symbols, log this as warnings */
+	if (status == AE_NOT_FOUND)
+		acpi_os_printf(ACPI_MSG_WARNING);
+	else
 		acpi_os_printf(ACPI_MSG_ERROR);
 
-	} else {
-		acpi_os_printf(ACPI_MSG_ERROR "%s, ",
-			       acpi_format_exception(status));
-	}
+	/* For failures append the formatted exception */
+	if (ACPI_FAILURE(status))
+		acpi_os_printf("%s, ", acpi_format_exception(status));
 
 	va_start(arg_list, format);
 	acpi_os_vprintf(format, arg_list);
