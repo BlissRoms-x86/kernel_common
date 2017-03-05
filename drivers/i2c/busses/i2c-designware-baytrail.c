@@ -18,12 +18,20 @@
 #include <linux/interrupt.h>
 #include <linux/pm_qos.h>
 
+#include <asm/intel-mid.h>
 #include <asm/iosf_mbi.h>
 
 #include "i2c-designware-core.h"
 
+#define INTEL_ATOM_BYT 0x37
+#define INTEL_ATOM_CHT 0x4C
+
+static inline int platform_is(u8 model) {
+	return (boot_cpu_data.x86_model == model);
+}
+
 #define SEMAPHORE_TIMEOUT	500
-#define PUNIT_SEMAPHORE		0x7
+#define PUNIT_SEMAPHORE		(platform_is(INTEL_ATOM_BYT) ? 0x7 : 0x10E)
 #define PUNIT_SEMAPHORE_CHT	0x10e
 #define PUNIT_SEMAPHORE_BIT	BIT(0)
 #define PUNIT_SEMAPHORE_ACQUIRE	BIT(1)
