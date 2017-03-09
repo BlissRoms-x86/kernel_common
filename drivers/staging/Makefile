@@ -2,6 +2,7 @@
 
 obj-y				+= media/
 obj-$(CONFIG_SLICOSS)		+= slicoss/
+obj-$(CONFIG_RTL8723BS)		+= rtl8723bs/
 obj-$(CONFIG_PRISM2_USB)	+= wlan-ng/
 obj-$(CONFIG_COMEDI)		+= comedi/
 obj-$(CONFIG_FB_OLPC_DCON)	+= olpc_dcon/
