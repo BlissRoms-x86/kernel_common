@@ -52,11 +52,12 @@
 #ifdef CONFIG_X86
 #include <asm/cpu_device_id.h>
 static bool sdhci_acpi_on_byt(void) {
-	static const struct x86_cpu_id byt[] = {
-		{X86_VENDOR_INTEL, 6, 0x37}, 
+	static const struct x86_cpu_id byt_cht[] = {
+		{X86_VENDOR_INTEL, 6, 0x37}, // Baytrail
+		{X86_VENDOR_INTEL, 6, 0x4C}, // Cherry Trail
 		{}
 	};
-	return x86_match_cpu(byt);
+	return x86_match_cpu(byt_cht);
 }
 #else
 static bool sdhci_acpi_on_byt(void) {
@@ -232,6 +233,7 @@ static void sdhci_acpi_int_dma_latency(struct sdhci_host* host) {
 	if(sdhci_acpi_on_byt()) {
 		host->dma_latency=20;
 		host->lat_cancel_delay=275;
+		printk(KERN_WARNING "sdhci-acpi: setting dma latency for byt/cht\n");
 	}
 }
 
