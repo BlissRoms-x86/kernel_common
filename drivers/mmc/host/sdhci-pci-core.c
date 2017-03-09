@@ -358,6 +358,11 @@ out:
 	return ret;
 }
 
+static void byt_set_dma_latency(struct sdhci_host *host) {
+	host->dma_latency = 20;
+	host->lat_cancel_delay = 275;
+}
+
 static int byt_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE |
@@ -366,6 +371,9 @@ static int byt_emmc_probe_slot(struct sdhci_pci_slot *slot)
 				 MMC_CAP_WAIT_WHILE_BUSY;
 	slot->host->mmc->caps2 |= MMC_CAP2_HC_ERASE_SZ;
 	slot->hw_reset = sdhci_pci_int_hw_reset;
+	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BYT_EMMC || 
+	    slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BYT_EMMC2)
+		byt_set_dma_latency(slot->host);
 	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BSW_EMMC)
 		slot->host->timeout_clk = 1000; /* 1000 kHz i.e. 1 MHz */
 	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_SPT_EMMC) {
@@ -379,6 +387,8 @@ static int byt_sdio_probe_slot(struct sdhci_pci_slot *slot)
 {
 	slot->host->mmc->caps |= MMC_CAP_POWER_OFF_CARD | MMC_CAP_NONREMOVABLE |
 				 MMC_CAP_WAIT_WHILE_BUSY;
+	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BYT_SDIO)
+		byt_set_dma_latency(slot->host);
 	return 0;
 }
 
@@ -388,6 +398,8 @@ static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
 	slot->cd_con_id = NULL;
 	slot->cd_idx = 0;
 	slot->cd_override_level = true;
+	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BYT_SD)
+		byt_set_dma_latency(slot->host);
 	if (slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BXT_SD ||
 	    slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_BXTM_SD ||
 	    slot->chip->pdev->device == PCI_DEVICE_ID_INTEL_APL_SD) {
