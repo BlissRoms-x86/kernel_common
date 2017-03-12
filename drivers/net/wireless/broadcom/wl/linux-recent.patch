@@ -14,7 +14,19 @@
  #endif
 --- a/src/wl/sys/wl_cfg80211_hybrid.c
 +++ b/src/wl/sys/wl_cfg80211_hybrid.c
-@@ -235,6 +235,13 @@
+@@ -38,7 +38,11 @@
+ #include <wlioctl.h>
+ #include <proto/802.11.h>
+ #include <wl_cfg80211_hybrid.h>
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
++#include <linux/sched/signal.h>
++#endif
++
+ #define EVENT_TYPE(e) dtoh32((e)->event_type)
+ #define EVENT_FLAGS(e) dtoh16((e)->flags)
+ #define EVENT_STATUS(e) dtoh32((e)->status)
+@@ -235,6 +239,13 @@
  };
  #endif				
  
@@ -28,3 +40,15 @@
  #define CHAN2G(_channel, _freq, _flags) {			\
  	.band			= IEEE80211_BAND_2GHZ,		\
  	.center_freq		= (_freq),			\
+--- a/src/wl/sys/wl_linux.c
++++ b/src/wl/sys/wl_linux.c
+@@ -2917,7 +2928,9 @@
+ 	skb->dev = wl->monitor_dev;
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 10, 0))
+ 	skb->dev->last_rx = jiffies;
++#endif
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)
+ 	skb_reset_mac_header(skb);
+ #else
+ 	skb->mac.raw = skb->data;
+ #endif
