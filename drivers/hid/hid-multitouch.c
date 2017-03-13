@@ -1131,7 +1131,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	/*
 	 * Handle special quirks for Windows 8 certified devices.
 	 */
-	if (id->group == HID_GROUP_MULTITOUCH_WIN_8)
+	/* if (id->group == HID_GROUP_MULTITOUCH_WIN_8) */
 		/*
 		 * Some multitouch screens do not like to be polled for input
 		 * reports. Fortunately, the Win8 spec says that all touches
@@ -1143,7 +1143,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		 * initial report fetching and then selectively fetch each
 		 * report we are interested in.
 		 */
-		hdev->quirks |= HID_QUIRK_NO_INIT_REPORTS;
+	/*	hdev->quirks |= HID_QUIRK_NO_INIT_REPORTS; */
 
 	td = devm_kzalloc(&hdev->dev, sizeof(struct mt_device), GFP_KERNEL);
 	if (!td) {
