@@ -197,7 +197,7 @@ acpi_ex_load_table_op(struct acpi_walk_state *walk_state,
 
 	ACPI_INFO(("Dynamic OEM Table Load:"));
 	acpi_ex_exit_interpreter();
-	status = acpi_tb_load_table(table_index, parent_node);
+	status = acpi_tb_load_table(&table_index, parent_node);
 	acpi_ex_enter_interpreter();
 	if (ACPI_FAILURE(status)) {
 		return_ACPI_STATUS(status);

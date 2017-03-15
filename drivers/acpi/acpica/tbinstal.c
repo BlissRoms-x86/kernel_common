@@ -48,54 +48,6 @@
 #define _COMPONENT          ACPI_TABLES
 ACPI_MODULE_NAME("tbinstal")
 
-/* Local prototypes */
-static u8
-acpi_tb_compare_tables(struct acpi_table_desc *table_desc, u32 table_index);
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_compare_tables
- *
- * PARAMETERS:  table_desc          - Table 1 descriptor to be compared
- *              table_index         - Index of table 2 to be compared
- *
- * RETURN:      TRUE if both tables are identical.
- *
- * DESCRIPTION: This function compares a table with another table that has
- *              already been installed in the root table list.
- *
- ******************************************************************************/
-
-static u8
-acpi_tb_compare_tables(struct acpi_table_desc *table_desc, u32 table_index)
-{
-	acpi_status status = AE_OK;
-	u8 is_identical;
-	struct acpi_table_header *table;
-	u32 table_length;
-	u8 table_flags;
-
-	status =
-	    acpi_tb_acquire_table(&acpi_gbl_root_table_list.tables[table_index],
-				  &table, &table_length, &table_flags);
-	if (ACPI_FAILURE(status)) {
-		return (FALSE);
-	}
-
-	/*
-	 * Check for a table match on the entire table length,
-	 * not just the header.
-	 */
-	is_identical = (u8)((table_desc->length != table_length ||
-			     memcmp(table_desc->pointer, table, table_length)) ?
-			    FALSE : TRUE);
-
-	/* Release the acquired table */
-
-	acpi_tb_release_table(table, table_length, table_flags);
-	return (is_identical);
-}
-
 /*******************************************************************************
  *
  * FUNCTION:    acpi_tb_install_table_with_override
@@ -112,18 +64,12 @@ acpi_tb_compare_tables(struct acpi_table_desc *table_desc, u32 table_index)
  *              table array.
  *
  ******************************************************************************/
-
 void
 acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 				    u8 override, u32 *table_index)
 {
 	u32 i;
 	acpi_status status;
-
-	status = acpi_tb_get_next_table_descriptor(&i, NULL);
-	if (ACPI_FAILURE(status)) {
-		return;
-	}
 
 	/*
 	 * ACPI Table Override:
@@ -134,6 +80,15 @@ acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 	 */
 	if (override) {
 		acpi_tb_override_table(new_table_desc);
+	}
+
+	/* Acquire the table lock */
+
+	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
+
+	status = acpi_tb_get_next_table_descriptor(&i, NULL);
+	if (ACPI_FAILURE(status)) {
+		return;
 	}
 
 	acpi_tb_init_table_descriptor(&acpi_gbl_root_table_list.tables[i],
@@ -153,6 +108,10 @@ acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 	if (i == acpi_gbl_dsdt_index) {
 		acpi_ut_set_integer_width(new_table_desc->pointer->revision);
 	}
+
+	/* Release the table lock */
+
+	(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
 }
 
 /*******************************************************************************
@@ -181,7 +140,6 @@ acpi_tb_install_standard_table(acpi_physical_address address,
 			       u8 flags,
 			       u8 reload, u8 override, u32 *table_index)
 {
-	u32 i;
 	acpi_status status = AE_OK;
 	struct acpi_table_desc new_table_desc;
 
@@ -217,90 +175,6 @@ acpi_tb_install_standard_table(acpi_physical_address address,
 		goto release_and_exit;
 	}
 
-	/* Acquire the table lock */
-
-	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
-
-	if (reload) {
-		/*
-		 * Validate the incoming table signature.
-		 *
-		 * 1) Originally, we checked the table signature for "SSDT" or "PSDT".
-		 * 2) We added support for OEMx tables, signature "OEM".
-		 * 3) Valid tables were encountered with a null signature, so we just
-		 *    gave up on validating the signature, (05/2008).
-		 * 4) We encountered non-AML tables such as the MADT, which caused
-		 *    interpreter errors and kernel faults. So now, we once again allow
-		 *    only "SSDT", "OEMx", and now, also a null signature. (05/2011).
-		 */
-		if ((new_table_desc.signature.ascii[0] != 0x00) &&
-		    (!ACPI_COMPARE_NAME
-		     (&new_table_desc.signature, ACPI_SIG_SSDT))
-		    && (strncmp(new_table_desc.signature.ascii, "OEM", 3))) {
-			ACPI_BIOS_ERROR((AE_INFO,
-					 "Table has invalid signature [%4.4s] (0x%8.8X), "
-					 "must be SSDT or OEMx",
-					 acpi_ut_valid_nameseg(new_table_desc.
-							       signature.
-							       ascii) ?
-					 new_table_desc.signature.
-					 ascii : "????",
-					 new_table_desc.signature.integer));
-
-			status = AE_BAD_SIGNATURE;
-			goto unlock_and_exit;
-		}
-
-		/* Check if table is already registered */
-
-		for (i = 0; i < acpi_gbl_root_table_list.current_table_count;
-		     ++i) {
-			/*
-			 * Check for a table match on the entire table length,
-			 * not just the header.
-			 */
-			if (!acpi_tb_compare_tables(&new_table_desc, i)) {
-				continue;
-			}
-
-			/*
-			 * Note: the current mechanism does not unregister a table if it is
-			 * dynamically unloaded. The related namespace entries are deleted,
-			 * but the table remains in the root table list.
-			 *
-			 * The assumption here is that the number of different tables that
-			 * will be loaded is actually small, and there is minimal overhead
-			 * in just keeping the table in case it is needed again.
-			 *
-			 * If this assumption changes in the future (perhaps on large
-			 * machines with many table load/unload operations), tables will
-			 * need to be unregistered when they are unloaded, and slots in the
-			 * root table list should be reused when empty.
-			 */
-			if (acpi_gbl_root_table_list.tables[i].flags &
-			    ACPI_TABLE_IS_LOADED) {
-
-				/* Table is still loaded, this is an error */
-
-				status = AE_ALREADY_EXISTS;
-				goto unlock_and_exit;
-			} else {
-				/*
-				 * Table was unloaded, allow it to be reloaded.
-				 * As we are going to return AE_OK to the caller, we should
-				 * take the responsibility of freeing the input descriptor.
-				 * Refill the input descriptor to ensure
-				 * acpi_tb_install_table_with_override() can be called again to
-				 * indicate the re-installation.
-				 */
-				acpi_tb_uninstall_table(&new_table_desc);
-				(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
-				*table_index = i;
-				return_ACPI_STATUS(AE_OK);
-			}
-		}
-	}
-
 	/* Add the table to the global root table list */
 
 	acpi_tb_install_table_with_override(&new_table_desc, override,
@@ -308,15 +182,7 @@ acpi_tb_install_standard_table(acpi_physical_address address,
 
 	/* Invoke table handler */
 
-	(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
 	acpi_tb_notify_table(ACPI_TABLE_EVENT_INSTALL, new_table_desc.pointer);
-	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
-
-unlock_and_exit:
-
-	/* Release the table lock */
-
-	(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
 
 release_and_exit:
 
