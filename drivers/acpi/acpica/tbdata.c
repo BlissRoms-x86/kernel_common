@@ -952,6 +952,13 @@ acpi_tb_load_table(u32 *table_index, struct acpi_namespace_node *parent_node)
 
 	status = acpi_tb_validate_table_for_load(table_index, &table);
 	if (ACPI_FAILURE(status)) {
+		if (status == AE_ALREADY_EXISTS) {
+			/*
+			 * Skip the table loading process but return the table index to
+			 * the caller with the exception muted.
+			 */
+			status = AE_OK;
+		}
 		return_ACPI_STATUS(status);
 	}
 
