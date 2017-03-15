@@ -56,7 +56,7 @@ ACPI_MODULE_NAME("tbinstal")
  *              override                - Whether override should be performed
  *              table_index             - Where the table index is returned
  *
- * RETURN:      None
+ * RETURN:      Status
  *
  * DESCRIPTION: Install an ACPI table into the global data structure. The
  *              table override mechanism is called to allow the host
@@ -64,12 +64,13 @@ ACPI_MODULE_NAME("tbinstal")
  *              table array.
  *
  ******************************************************************************/
-void
+acpi_status
 acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 				    u8 override, u32 *table_index)
 {
 	u32 i;
-	acpi_status status;
+	acpi_status status = AE_OK;
+	struct acpi_table_desc *table_desc;
 
 	/*
 	 * ACPI Table Override:
@@ -86,9 +87,22 @@ acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 
 	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
 
+	/* Check if the table has already been installed */
+
+	for (i = 0; i < acpi_gbl_root_table_list.current_table_count; ++i) {
+		table_desc = &acpi_gbl_root_table_list.tables[i];
+		if (table_desc->address &&
+		    new_table_desc->address == table_desc->address &&
+		    ACPI_TABLE_ORIGIN(new_table_desc) ==
+		    ACPI_TABLE_ORIGIN(table_desc)) {
+			*table_index = i;
+			goto unlock_and_exit;
+		}
+	}
+
 	status = acpi_tb_get_next_table_descriptor(&i, NULL);
 	if (ACPI_FAILURE(status)) {
-		return;
+		goto unlock_and_exit;
 	}
 
 	acpi_tb_init_table_descriptor(&acpi_gbl_root_table_list.tables[i],
@@ -109,9 +123,12 @@ acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 		acpi_ut_set_integer_width(new_table_desc->pointer->revision);
 	}
 
+unlock_and_exit:
+
 	/* Release the table lock */
 
 	(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
+	return (status);
 }
 
 /*******************************************************************************
@@ -177,8 +194,12 @@ acpi_tb_install_standard_table(acpi_physical_address address,
 
 	/* Add the table to the global root table list */
 
-	acpi_tb_install_table_with_override(&new_table_desc, override,
-					    table_index);
+	status =
+	    acpi_tb_install_table_with_override(&new_table_desc, override,
+						table_index);
+	if (ACPI_FAILURE(status)) {
+		goto release_and_exit;
+	}
 
 	/* Invoke table handler */
 
