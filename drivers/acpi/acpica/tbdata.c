@@ -843,6 +843,7 @@ acpi_tb_validate_table_for_load(u32 *table_index,
 	u32 i;
 	struct acpi_table_desc *table_desc;
 	acpi_status status = AE_OK;
+	struct acpi_table_header *new_dsdt;
 
 	/* Acquire the table lock */
 
@@ -857,6 +858,37 @@ acpi_tb_validate_table_for_load(u32 *table_index,
 	status = acpi_tb_get_table(table_desc, out_table);
 	if (ACPI_FAILURE(status)) {
 		goto unlock_and_exit;
+	}
+
+	if (*table_index == acpi_gbl_dsdt_index) {
+		/*
+		 * Save the DSDT pointer for simple access. This is the mapped memory
+		 * address. We must take care here because the address of the .Tables
+		 * array can change dynamically as tables are loaded at run-time.
+		 * Note: .Pointer field is not validated until after call to
+		 * acpi_get_table_by_index().
+		 */
+		acpi_gbl_DSDT = table_desc->pointer;
+
+		/*
+		 * Optionally copy the entire DSDT to local memory (instead of simply
+		 * mapping it.) There are some BIOSs that corrupt or replace the
+		 * original DSDT, creating the need for this option. Default is FALSE,
+		 * do not copy the DSDT.
+		 */
+		if (acpi_gbl_copy_dsdt_locally) {
+			new_dsdt = acpi_tb_copy_dsdt(acpi_gbl_dsdt_index);
+			if (new_dsdt) {
+				acpi_gbl_DSDT = new_dsdt;
+			}
+		}
+
+		/*
+		 * Save the original DSDT header for detection of table corruption
+		 * and/or replacement of the DSDT from outside the OS.
+		 */
+		memcpy(&acpi_gbl_original_dsdt_header, acpi_gbl_DSDT,
+		       sizeof(struct acpi_table_header));
 	}
 
 	/* Check if table is already loaded */
@@ -905,6 +937,7 @@ unlock_and_exit:
  * FUNCTION:    acpi_tb_load_table
  *
  * PARAMETERS:  table_index             - Table index
+ *              reload                  - Whether reload should be performed
  *              parent_node             - Where table index is returned
  *
  * RETURN:      Status
@@ -914,7 +947,8 @@ unlock_and_exit:
  ******************************************************************************/
 
 acpi_status
-acpi_tb_load_table(u32 *table_index, struct acpi_namespace_node *parent_node)
+acpi_tb_load_table(u32 *table_index,
+		   u8 reload, struct acpi_namespace_node *parent_node)
 {
 	struct acpi_table_header *table;
 	acpi_status status;
@@ -938,21 +972,28 @@ acpi_tb_load_table(u32 *table_index, struct acpi_namespace_node *parent_node)
 
 	status = acpi_ns_load_table(*table_index, parent_node);
 
-	/* Execute any module-level code that was found in the table */
-
-	if (!acpi_gbl_parse_table_as_term_list
-	    && acpi_gbl_group_module_level_code) {
+	/*
+	 * Execute any module-level code that was found in the table. This only
+	 * applies when new grammar support is not set (as MLC are executed in
+	 * place) and dynamic table loading. For static table loading, executes
+	 * MLC here if group module level code is not set, otherwise, it is
+	 * executed in acpi_initialize_objects().
+	 */
+	if (!acpi_gbl_parse_table_as_term_list &&
+	    (reload || !acpi_gbl_group_module_level_code)) {
 		acpi_ns_exec_module_code_list();
 	}
 
-	/*
-	 * Update GPEs for any new _Lxx/_Exx methods. Ignore errors. The host is
-	 * responsible for discovering any new wake GPEs by running _PRW methods
-	 * that may have been loaded by this table.
-	 */
-	status = acpi_tb_get_owner_id(*table_index, &owner_id);
-	if (ACPI_SUCCESS(status)) {
-		acpi_ev_update_gpes(owner_id);
+	if (reload) {
+		/*
+		 * Update GPEs for any new _Lxx/_Exx methods. Ignore errors. The host
+		 * is responsible for discovering any new wake GPEs by running _PRW
+		 * methods that may have been loaded by this table.
+		 */
+		status = acpi_tb_get_owner_id(*table_index, &owner_id);
+		if (ACPI_SUCCESS(status)) {
+			acpi_ev_update_gpes(owner_id);
+		}
 	}
 
 	/* Invoke table handler */
@@ -993,7 +1034,7 @@ acpi_tb_install_and_load_table(acpi_physical_address address,
 		goto exit;
 	}
 
-	status = acpi_tb_load_table(&i, acpi_gbl_root_node);
+	status = acpi_tb_load_table(&i, TRUE, acpi_gbl_root_node);
 
 exit:
 	*table_index = i;
