@@ -3244,13 +3244,10 @@ static void rt5645_jack_detect_work(struct work_struct *work)
 
 	}
 
-	if (!val) {
-		/* jack in */
-		if (rt5645->jack_type == 0) {
-			report = rt5645_jack_detect(rt5645->codec, 1);
-			/* for push button and jack out */
-			break;
-		}
+	if (!val && (rt5645->jack_type == 0)) { /* jack in */
+		report = rt5645_jack_detect(rt5645->codec, 1);
+		/* for push button and jack out */
+	} else if (!val && rt5645->jack_type != 0) {
 		btn_type = 0;
 		if (snd_soc_read(rt5645->codec, RT5645_INT_IRQ_ST) & 0x4) {
 			/* button pressed */
@@ -3835,6 +3832,10 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 			break;
 		default:
 			break;
+		}
+		if (rt5645->pdata.inv_jd1_1) {
+			regmap_update_bits(rt5645->regmap, RT5645_IRQ_CTRL2,
+				RT5645_JD_1_1_MASK, RT5645_JD_1_1_INV);
 		}
 	}
 
