@@ -861,7 +861,7 @@ static int mt_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	    field->application != HID_DG_TOUCHPAD &&
 	    field->application != HID_GD_MOUSE &&
 	    field->application != HID_GD_KEYBOARD &&
-	    field->application != HID_CP_CONSUMER_CONTROL)
+	    field->application != HID_CP_CONSUMER_CONTROL &&
 	    field->logical != HID_DG_TOUCHSCREEN)
 		return -1;
 
