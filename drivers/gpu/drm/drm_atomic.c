@@ -420,18 +420,21 @@ drm_atomic_replace_property_blob_from_id(struct drm_crtc *crtc,
 					 ssize_t expected_size,
 					 bool *replaced)
 {
-	struct drm_device *dev = crtc->dev;
 	struct drm_property_blob *new_blob = NULL;
 
 	if (blob_id != 0) {
-		new_blob = drm_property_lookup_blob(dev, blob_id);
+		new_blob = drm_property_lookup_blob(crtc->dev, blob_id);
 		if (new_blob == NULL)
 			return -EINVAL;
-		if (expected_size > 0 && expected_size != new_blob->length)
+
+		if (expected_size > 0 && expected_size != new_blob->length) {
+			drm_property_unreference_blob(new_blob);
 			return -EINVAL;
+		}
 	}
 
 	drm_atomic_replace_property_blob(blob, new_blob, replaced);
+	drm_property_unreference_blob(new_blob);
 
 	return 0;
 }
@@ -1756,16 +1759,16 @@ out:
 
 	if (ret && arg->flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		/*
-		 * TEST_ONLY and PAGE_FLIP_EVENT are mutually exclusive,
-		 * if they weren't, this code should be called on success
-		 * for TEST_ONLY too.
+		 * Free the allocated event. drm_atomic_helper_setup_commit
+		 * can allocate an event too, so only free it if it's ours
+		 * to prevent a double free in drm_atomic_state_clear.
 		 */
-
 		for_each_crtc_in_state(state, crtc, crtc_state, i) {
-			if (!crtc_state->event)
-				continue;
-
-			drm_event_cancel_free(dev, &crtc_state->event->base);
+			struct drm_pending_vblank_event *event = crtc_state->event;
+			if (event && (event->base.fence || event->base.file_priv)) {
+				drm_event_cancel_free(dev, &event->base);
+				crtc_state->event = NULL;
+			}
 		}
 	}
 

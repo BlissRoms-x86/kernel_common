@@ -18,6 +18,7 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/platform_data/clk-lpss.h>
+#include <linux/platform_data/x86/pmc_atom.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
@@ -31,7 +32,6 @@ ACPI_MODULE_NAME("acpi_lpss");
 #include <asm/cpu_device_id.h>
 #include <asm/intel-family.h>
 #include <asm/iosf_mbi.h>
-#include <asm/pmc_atom.h>
 
 #define LPSS_ADDR(desc) ((unsigned long)&desc)
 
@@ -395,7 +395,7 @@ static int acpi_lpss_create_device(struct acpi_device *adev,
 
 	dev_desc = (const struct lpss_device_desc *)id->driver_data;
 	if (!dev_desc) {
-		pdev = acpi_create_platform_device(adev);
+		pdev = acpi_create_platform_device(adev, NULL);
 		return IS_ERR_OR_NULL(pdev) ? PTR_ERR(pdev) : 1;
 	}
 	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
@@ -451,14 +451,8 @@ static int acpi_lpss_create_device(struct acpi_device *adev,
 		goto err_out;
 	}
 
-	if (dev_desc->properties) {
-		ret = device_add_properties(&adev->dev, dev_desc->properties);
-		if (ret)
-			goto err_out;
-	}
-
 	adev->driver_data = pdata;
-	pdev = acpi_create_platform_device(adev);
+	pdev = acpi_create_platform_device(adev, dev_desc->properties);
 	if (!IS_ERR_OR_NULL(pdev)) {
 		return 1;
 	}

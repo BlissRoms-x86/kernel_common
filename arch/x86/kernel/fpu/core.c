@@ -236,7 +236,8 @@ void fpstate_init(union fpregs_state *state)
 	 * it will #GP. Make sure it is replaced after the memset().
 	 */
 	if (static_cpu_has(X86_FEATURE_XSAVES))
-		state->xsave.header.xcomp_bv = XCOMP_BV_COMPACTED_FORMAT;
+		state->xsave.header.xcomp_bv = XCOMP_BV_COMPACTED_FORMAT |
+					       xfeatures_mask;
 
 	if (static_cpu_has(X86_FEATURE_FXSR))
 		fpstate_init_fxstate(&state->fxsave);
@@ -521,14 +522,14 @@ void fpu__clear(struct fpu *fpu)
 {
 	WARN_ON_FPU(fpu != &current->thread.fpu); /* Almost certainly an anomaly */
 
-	if (!use_eager_fpu() || !static_cpu_has(X86_FEATURE_FPU)) {
-		/* FPU state will be reallocated lazily at the first use. */
-		fpu__drop(fpu);
-	} else {
-		if (!fpu->fpstate_active) {
-			fpu__activate_curr(fpu);
-			user_fpu_begin();
-		}
+	fpu__drop(fpu);
+
+	/*
+	 * Make sure fpstate is cleared and initialized.
+	 */
+	if (static_cpu_has(X86_FEATURE_FPU)) {
+		fpu__activate_curr(fpu);
+		user_fpu_begin();
 		copy_init_fpstate_to_fpregs();
 	}
 }

@@ -144,7 +144,7 @@ static int page_cache_tree_insert(struct address_space *mapping,
 				workingset_node_pages_dec(node);
 			/* Wakeup waiters for exceptional entry lock */
 			dax_wake_mapping_entry_waiter(mapping, page->index,
-						      false);
+						      true);
 		}
 	}
 	radix_tree_replace_slot(slot, page);
@@ -1686,7 +1686,7 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 	int error = 0;
 
 	if (unlikely(*ppos >= inode->i_sb->s_maxbytes))
-		return -EINVAL;
+		return 0;
 	iov_iter_truncate(iter, inode->i_sb->s_maxbytes);
 
 	index = *ppos >> PAGE_SHIFT;
@@ -1703,6 +1703,11 @@ static ssize_t do_generic_file_read(struct file *filp, loff_t *ppos,
 
 		cond_resched();
 find_page:
+		if (fatal_signal_pending(current)) {
+			error = -EINTR;
+			goto out;
+		}
+
 		page = find_get_page(mapping, index);
 		if (!page) {
 			page_cache_sync_readahead(mapping,
@@ -1731,6 +1736,9 @@ find_page:
 
 			if (inode->i_blkbits == PAGE_SHIFT ||
 					!mapping->a_ops->is_partially_uptodate)
+				goto page_not_up_to_date;
+			/* pipes can't handle partially uptodate pages */
+			if (unlikely(iter->type & ITER_PIPE))
 				goto page_not_up_to_date;
 			if (!trylock_page(page))
 				goto page_not_up_to_date;

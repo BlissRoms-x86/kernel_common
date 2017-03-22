@@ -319,9 +319,9 @@ static struct intel_uncore_box *uncore_alloc_box(struct intel_uncore_type *type,
  */
 static int uncore_pmu_event_init(struct perf_event *event);
 
-static bool is_uncore_event(struct perf_event *event)
+static bool is_box_event(struct intel_uncore_box *box, struct perf_event *event)
 {
-	return event->pmu->event_init == uncore_pmu_event_init;
+	return &box->pmu->pmu == event->pmu;
 }
 
 static int
@@ -340,7 +340,7 @@ uncore_collect_events(struct intel_uncore_box *box, struct perf_event *leader,
 
 	n = box->n_events;
 
-	if (is_uncore_event(leader)) {
+	if (is_box_event(box, leader)) {
 		box->event_list[n] = leader;
 		n++;
 	}
@@ -349,7 +349,7 @@ uncore_collect_events(struct intel_uncore_box *box, struct perf_event *leader,
 		return n;
 
 	list_for_each_entry(event, &leader->sibling_list, group_entry) {
-		if (!is_uncore_event(event) ||
+		if (!is_box_event(box, event) ||
 		    event->state <= PERF_EVENT_STATE_OFF)
 			continue;
 
@@ -763,30 +763,6 @@ static void uncore_pmu_unregister(struct intel_uncore_pmu *pmu)
 	pmu->registered = false;
 }
 
-static void __uncore_exit_boxes(struct intel_uncore_type *type, int cpu)
-{
-	struct intel_uncore_pmu *pmu = type->pmus;
-	struct intel_uncore_box *box;
-	int i, pkg;
-
-	if (pmu) {
-		pkg = topology_physical_package_id(cpu);
-		for (i = 0; i < type->num_boxes; i++, pmu++) {
-			box = pmu->boxes[pkg];
-			if (box)
-				uncore_box_exit(box);
-		}
-	}
-}
-
-static void uncore_exit_boxes(void *dummy)
-{
-	struct intel_uncore_type **types;
-
-	for (types = uncore_msr_uncores; *types; types++)
-		__uncore_exit_boxes(*types++, smp_processor_id());
-}
-
 static void uncore_free_boxes(struct intel_uncore_pmu *pmu)
 {
 	int pkg;
@@ -1077,22 +1053,12 @@ static int uncore_cpu_dying(unsigned int cpu)
 	return 0;
 }
 
-static int first_init;
-
 static int uncore_cpu_starting(unsigned int cpu)
 {
 	struct intel_uncore_type *type, **types = uncore_msr_uncores;
 	struct intel_uncore_pmu *pmu;
 	struct intel_uncore_box *box;
-	int i, pkg, ncpus = 1;
-
-	if (first_init) {
-		/*
-		 * On init we get the number of online cpus in the package
-		 * and set refcount for all of them.
-		 */
-		ncpus = cpumask_weight(topology_core_cpumask(cpu));
-	}
+	int i, pkg;
 
 	pkg = topology_logical_package_id(cpu);
 	for (; *types; types++) {
@@ -1103,7 +1069,7 @@ static int uncore_cpu_starting(unsigned int cpu)
 			if (!box)
 				continue;
 			/* The first cpu on a package activates the box */
-			if (atomic_add_return(ncpus, &box->refcnt) == ncpus)
+			if (atomic_inc_return(&box->refcnt) == 1)
 				uncore_box_init(box);
 		}
 	}
@@ -1407,19 +1373,17 @@ static int __init intel_uncore_init(void)
 					  "PERF_X86_UNCORE_PREP",
 					  uncore_cpu_prepare, NULL);
 	}
-	first_init = 1;
+
 	cpuhp_setup_state(CPUHP_AP_PERF_X86_UNCORE_STARTING,
 			  "AP_PERF_X86_UNCORE_STARTING",
 			  uncore_cpu_starting, uncore_cpu_dying);
-	first_init = 0;
+
 	cpuhp_setup_state(CPUHP_AP_PERF_X86_UNCORE_ONLINE,
 			  "AP_PERF_X86_UNCORE_ONLINE",
 			  uncore_event_cpu_online, uncore_event_cpu_offline);
 	return 0;
 
 err:
-	/* Undo box->init_box() */
-	on_each_cpu_mask(&uncore_cpu_mask, uncore_exit_boxes, NULL, 1);
 	uncore_types_exit(uncore_msr_uncores);
 	uncore_pci_exit();
 	return ret;

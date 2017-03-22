@@ -254,10 +254,12 @@ static int drm_getcap(struct drm_device *dev, void *data, struct drm_file *file_
 		req->value = dev->mode_config.async_page_flip;
 		break;
 	case DRM_CAP_PAGE_FLIP_TARGET:
-		req->value = 1;
-		drm_for_each_crtc(crtc, dev) {
-			if (!crtc->funcs->page_flip_target)
-				req->value = 0;
+		if (drm_core_check_feature(dev, DRIVER_MODESET)) {
+			req->value = 1;
+			drm_for_each_crtc(crtc, dev) {
+				if (!crtc->funcs->page_flip_target)
+					req->value = 0;
+			}
 		}
 		break;
 	case DRM_CAP_CURSOR_WIDTH:
@@ -478,6 +480,7 @@ static int drm_version(struct drm_device *dev, void *data,
  */
 int drm_ioctl_permit(u32 flags, struct drm_file *file_priv)
 {
+#ifndef CONFIG_NO_GPU_AUTHENTICATION
 	/* ROOT_ONLY is only for CAP_SYS_ADMIN */
 	if (unlikely((flags & DRM_ROOT_ONLY) && !capable(CAP_SYS_ADMIN)))
 		return -EACCES;
@@ -502,6 +505,7 @@ int drm_ioctl_permit(u32 flags, struct drm_file *file_priv)
 	if (unlikely(!(flags & DRM_RENDER_ALLOW) &&
 		     drm_is_render_client(file_priv)))
 		return -EACCES;
+#endif
 
 	return 0;
 }

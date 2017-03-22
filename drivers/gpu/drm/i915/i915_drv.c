@@ -1139,7 +1139,8 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 	if (IS_GEN5(dev_priv))
 		intel_gpu_ips_init(dev_priv);
 
-	i915_audio_component_init(dev_priv);
+	if (intel_lpe_audio_init(dev_priv) < 0)
+		i915_audio_component_init(dev_priv);
 
 	/*
 	 * Some ports require correctly set-up hpd registers for detection to
@@ -1157,7 +1158,10 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
  */
 static void i915_driver_unregister(struct drm_i915_private *dev_priv)
 {
-	i915_audio_component_cleanup(dev_priv);
+	if (HAS_LPE_AUDIO(dev_priv))
+		intel_lpe_audio_teardown(dev_priv);
+	else
+		i915_audio_component_cleanup(dev_priv);
 
 	intel_gpu_ips_teardown();
 	acpi_video_unregister();
@@ -1455,8 +1459,6 @@ static int i915_drm_suspend(struct drm_device *dev)
 
 	dev_priv->suspend_count++;
 
-	intel_display_set_init_power(dev_priv, false);
-
 	intel_csr_ucode_suspend(dev_priv);
 
 out:
@@ -1473,6 +1475,8 @@ static int i915_drm_suspend_late(struct drm_device *dev, bool hibernation)
 	int ret;
 
 	disable_rpm_wakeref_asserts(dev_priv);
+
+	intel_display_set_init_power(dev_priv, false);
 
 	fw_csr = !IS_BROXTON(dev_priv) &&
 		suspend_to_idle(dev_priv) && dev_priv->csr.dmc_payload;
@@ -2380,7 +2384,7 @@ static int intel_runtime_suspend(struct device *kdev)
 
 	assert_forcewakes_inactive(dev_priv);
 
-	if (!IS_VALLEYVIEW(dev_priv) || !IS_CHERRYVIEW(dev_priv))
+	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv))
 		intel_hpd_poll_init(dev_priv);
 
 	DRM_DEBUG_KMS("Device suspended\n");

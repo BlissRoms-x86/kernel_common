@@ -389,6 +389,7 @@ void vmbus_free_channels(void)
 {
 	struct vmbus_channel *channel, *tmp;
 
+	mutex_lock(&vmbus_connection.channel_mutex);
 	list_for_each_entry_safe(channel, tmp, &vmbus_connection.chn_list,
 		listentry) {
 		/* hv_process_channel_removal() needs this */
@@ -396,6 +397,7 @@ void vmbus_free_channels(void)
 
 		vmbus_device_unregister(channel->device_obj);
 	}
+	mutex_unlock(&vmbus_connection.channel_mutex);
 }
 
 /*
@@ -447,8 +449,6 @@ static void vmbus_process_offer(struct vmbus_channel *newchannel)
 	}
 
 	dev_type = hv_get_dev_type(newchannel);
-	if (dev_type == HV_NIC)
-		set_channel_signal_state(newchannel, HV_SIGNAL_POLICY_EXPLICIT);
 
 	init_vp_index(newchannel, dev_type);
 

@@ -363,6 +363,18 @@ config IDEAPAD_LAPTOP
 	  This is a driver for Lenovo IdeaPad netbooks contains drivers for
 	  rfkill switch, hotkey, fan control and backlight control.
 
+config SURFACE3_WMI
+	tristate "Surface 3 WMI Driver"
+	depends on ACPI_WMI
+	depends on DMI
+	depends on INPUT
+	depends on SPI
+	---help---
+	  Say Y here if you have a Surface 3.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called surface3-wmi.
+
 config THINKPAD_ACPI
 	tristate "ThinkPad ACPI Laptop Extras"
 	depends on ACPI
@@ -649,6 +661,16 @@ config MSI_WMI
 
 	 To compile this driver as a module, choose M here: the module will
 	 be called msi-wmi.
+
+config S103T_WMI
+	tristate "Lenovo S10-3T Rotate Button Support"
+	depends on ACPI_WMI
+	depends on INPUT
+	---help---
+	  This is a driver for the Lenovo ideapad S10-3T rotate button.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called lsrot.
 
 config TOPSTAR_LAPTOP
 	tristate "Topstar Laptop Extras"
@@ -1011,6 +1033,18 @@ config SURFACE_PRO3_BUTTON
 	---help---
 	  This driver handles the power/home/volume buttons on the Microsoft Surface Pro 3/4 tablet.
 
+config SURFACE_3_BUTTON
+	tristate "Power/home/volume buttons driver for Microsoft Surface 3 tablet"
+	depends on ACPI && KEYBOARD_GPIO
+	---help---
+	  This driver handles the power/home/volume buttons on the Microsoft Surface 3 tablet.
+
+config DV11P_TABLET
+	tristate "Dell Venue 11 Pro Tablet support"
+	depends on ACPI
+	---help---
+	  This driver provides power button support and docking events for the Dell Venue 11 Pro tablet.
+
 config INTEL_PUNIT_IPC
 	tristate "Intel P-Unit IPC Driver"
 	---help---
@@ -1027,4 +1061,17 @@ config INTEL_TELEMETRY
 	  used to get various SoC events and parameters
 	  directly via debugfs files. Various tools may use
 	  this interface for SoC state monitoring.
+
+config SURFACE_BUTTON
+	tristate "Surface Pro Button Driver"
+	depends on ACPI
+	---help---
+	  This driver provides button support for the surface pro tablet, including
+	  Power Button, Home Button, Volume Button
+
 endif # X86_PLATFORM_DEVICES
+
+config PMC_ATOM
+	def_bool y
+        depends on PCI
+	select COMMON_CLK

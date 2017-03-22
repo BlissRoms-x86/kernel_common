@@ -23,7 +23,7 @@
 
 static int l2_line_sz;
 static int ioc_exists;
-int slc_enable = 1, ioc_enable = 1;
+int slc_enable = 1, ioc_enable = 0;
 unsigned long perip_base = ARC_UNCACHED_ADDR_SPACE; /* legacy value for boot */
 unsigned long perip_end = 0xFFFFFFFF; /* legacy value */
 
@@ -979,11 +979,16 @@ void arc_cache_init(void)
 		/* check for D-Cache aliasing on ARCompact: ARCv2 has PIPT */
 		if (is_isa_arcompact()) {
 			int handled = IS_ENABLED(CONFIG_ARC_CACHE_VIPT_ALIASING);
+			int num_colors = dc->sz_k/dc->assoc/TO_KB(PAGE_SIZE);
 
-			if (dc->alias && !handled)
-				panic("Enable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
-			else if (!dc->alias && handled)
+			if (dc->alias) {
+				if (!handled)
+					panic("Enable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
+				if (CACHE_COLORS_NUM != num_colors)
+					panic("CACHE_COLORS_NUM not optimized for config\n");
+			} else if (!dc->alias && handled) {
 				panic("Disable CONFIG_ARC_CACHE_VIPT_ALIASING\n");
+			}
 		}
 	}
 

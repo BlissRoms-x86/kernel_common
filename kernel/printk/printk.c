@@ -56,6 +56,10 @@
 #include "braille.h"
 #include "internal.h"
 
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+extern void printascii(char *);
+#endif
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -252,17 +256,6 @@ static int selected_console = -1;
 static int preferred_console = -1;
 int console_set_on_cmdline;
 EXPORT_SYMBOL(console_set_on_cmdline);
-
-#ifdef CONFIG_OF
-static bool of_specified_console;
-
-void console_set_by_of(void)
-{
-	of_specified_console = true;
-}
-#else
-# define of_specified_console false
-#endif
 
 /* Flag: console code may call schedule() */
 static int console_may_schedule;
@@ -794,8 +787,6 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 	return ret;
 }
 
-static void cont_flush(void);
-
 static ssize_t devkmsg_read(struct file *file, char __user *buf,
 			    size_t count, loff_t *ppos)
 {
@@ -811,7 +802,6 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 	if (ret)
 		return ret;
 	raw_spin_lock_irq(&logbuf_lock);
-	cont_flush();
 	while (user->seq == log_next_seq) {
 		if (file->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
@@ -874,7 +864,6 @@ static loff_t devkmsg_llseek(struct file *file, loff_t offset, int whence)
 		return -ESPIPE;
 
 	raw_spin_lock_irq(&logbuf_lock);
-	cont_flush();
 	switch (whence) {
 	case SEEK_SET:
 		/* the first record */
@@ -913,7 +902,6 @@ static unsigned int devkmsg_poll(struct file *file, poll_table *wait)
 	poll_wait(file, &log_wait, wait);
 
 	raw_spin_lock_irq(&logbuf_lock);
-	cont_flush();
 	if (user->seq < log_next_seq) {
 		/* return error when data has vanished underneath us */
 		if (user->seq < log_first_seq)
@@ -1300,7 +1288,6 @@ static int syslog_print(char __user *buf, int size)
 		size_t skip;
 
 		raw_spin_lock_irq(&logbuf_lock);
-		cont_flush();
 		if (syslog_seq < log_first_seq) {
 			/* messages are gone, move to first one */
 			syslog_seq = log_first_seq;
@@ -1360,7 +1347,6 @@ static int syslog_print_all(char __user *buf, int size, bool clear)
 		return -ENOMEM;
 
 	raw_spin_lock_irq(&logbuf_lock);
-	cont_flush();
 	if (buf) {
 		u64 next_seq;
 		u64 seq;
@@ -1522,7 +1508,6 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	/* Number of chars in the log buffer */
 	case SYSLOG_ACTION_SIZE_UNREAD:
 		raw_spin_lock_irq(&logbuf_lock);
-		cont_flush();
 		if (syslog_seq < log_first_seq) {
 			/* messages are gone, move to first one */
 			syslog_seq = log_first_seq;
@@ -1583,7 +1568,7 @@ static void call_console_drivers(int level,
 {
 	struct console *con;
 
-	trace_console(text, len);
+	trace_console_rcuidle(text, len);
 
 	if (!console_drivers)
 		return;
@@ -1888,6 +1873,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 			text += 2;
 		}
 	}
+
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+	printascii(text);
+#endif
 
 	if (level == LOGLEVEL_DEFAULT)
 		level = default_message_loglevel;
@@ -2657,7 +2646,7 @@ void register_console(struct console *newcon)
 	 *	didn't select a console we take the first one
 	 *	that registers here.
 	 */
-	if (preferred_console < 0 && !of_specified_console) {
+	if (preferred_console < 0) {
 		if (newcon->index < 0)
 			newcon->index = 0;
 		if (newcon->setup == NULL ||
@@ -3039,7 +3028,6 @@ void kmsg_dump(enum kmsg_dump_reason reason)
 		dumper->active = true;
 
 		raw_spin_lock_irqsave(&logbuf_lock, flags);
-		cont_flush();
 		dumper->cur_seq = clear_seq;
 		dumper->cur_idx = clear_idx;
 		dumper->next_seq = log_next_seq;
@@ -3130,7 +3118,6 @@ bool kmsg_dump_get_line(struct kmsg_dumper *dumper, bool syslog,
 	bool ret;
 
 	raw_spin_lock_irqsave(&logbuf_lock, flags);
-	cont_flush();
 	ret = kmsg_dump_get_line_nolock(dumper, syslog, line, size, len);
 	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
 
@@ -3173,7 +3160,6 @@ bool kmsg_dump_get_buffer(struct kmsg_dumper *dumper, bool syslog,
 		goto out;
 
 	raw_spin_lock_irqsave(&logbuf_lock, flags);
-	cont_flush();
 	if (dumper->cur_seq < log_first_seq) {
 		/* messages are gone, move to first available one */
 		dumper->cur_seq = log_first_seq;

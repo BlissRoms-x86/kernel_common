@@ -40,6 +40,7 @@ struct ipv6_devconf {
 	__s32		accept_ra_rt_info_max_plen;
 #endif
 #endif
+	__s32		accept_ra_rt_table;
 	__s32		proxy_ndp;
 	__s32		accept_source_route;
 	__s32		accept_ra_from_local;
@@ -149,7 +150,7 @@ static inline bool inet6_exact_dif_match(struct net *net, struct sk_buff *skb)
 {
 #if defined(CONFIG_NET_L3_MASTER_DEV)
 	if (!net->ipv4.sysctl_tcp_l3mdev_accept &&
-	    ipv6_l3mdev_skb(IP6CB(skb)->flags))
+	    skb && ipv6_l3mdev_skb(IP6CB(skb)->flags))
 		return true;
 #endif
 	return false;

@@ -193,6 +193,9 @@ static inline bool mlx5e_rx_cache_put(struct mlx5e_rq *rq,
 		return false;
 	}
 
+	if (unlikely(page_is_pfmemalloc(dma_info->page)))
+		return false;
+
 	cache->page_cache[cache->tail] = *dma_info;
 	cache->tail = tail_next;
 	return true;
@@ -340,7 +343,7 @@ static inline void mlx5e_post_umr_wqe(struct mlx5e_rq *rq, u16 ix)
 	while ((pi = (sq->pc & wq->sz_m1)) > sq->edge) {
 		sq->db.ico_wqe[pi].opcode = MLX5_OPCODE_NOP;
 		sq->db.ico_wqe[pi].num_wqebbs = 1;
-		mlx5e_send_nop(sq, true);
+		mlx5e_send_nop(sq, false);
 	}
 
 	wqe = mlx5_wq_cyc_get_wqe(wq, pi);
@@ -412,7 +415,7 @@ void mlx5e_post_rx_mpwqe(struct mlx5e_rq *rq)
 
 	clear_bit(MLX5E_RQ_STATE_UMR_WQE_IN_PROGRESS, &rq->state);
 
-	if (unlikely(test_bit(MLX5E_RQ_STATE_FLUSH, &rq->state))) {
+	if (unlikely(!test_bit(MLX5E_RQ_STATE_ENABLED, &rq->state))) {
 		mlx5e_free_rx_mpwqe(rq, &rq->mpwqe.info[wq->head]);
 		return;
 	}
@@ -445,7 +448,7 @@ void mlx5e_dealloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 }
 
 #define RQ_CANNOT_POST(rq) \
-	(test_bit(MLX5E_RQ_STATE_FLUSH, &rq->state) || \
+	(!test_bit(MLX5E_RQ_STATE_ENABLED, &rq->state) || \
 	 test_bit(MLX5E_RQ_STATE_UMR_WQE_IN_PROGRESS, &rq->state))
 
 bool mlx5e_post_rx_wqes(struct mlx5e_rq *rq)
@@ -924,7 +927,7 @@ int mlx5e_poll_rx_cq(struct mlx5e_cq *cq, int budget)
 	struct mlx5e_sq *xdp_sq = &rq->channel->xdp_sq;
 	int work_done = 0;
 
-	if (unlikely(test_bit(MLX5E_RQ_STATE_FLUSH, &rq->state)))
+	if (unlikely(!test_bit(MLX5E_RQ_STATE_ENABLED, &rq->state)))
 		return 0;
 
 	if (cq->decmprs_left)

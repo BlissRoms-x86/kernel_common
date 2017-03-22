@@ -321,7 +321,8 @@ static int create_qp(struct c4iw_rdev *rdev, struct t4_wq *wq,
 		FW_RI_RES_WR_DCAEN_V(0) |
 		FW_RI_RES_WR_DCACPU_V(0) |
 		FW_RI_RES_WR_FBMIN_V(2) |
-		FW_RI_RES_WR_FBMAX_V(2) |
+		(t4_sq_onchip(&wq->sq) ? FW_RI_RES_WR_FBMAX_V(2) :
+					 FW_RI_RES_WR_FBMAX_V(3)) |
 		FW_RI_RES_WR_CIDXFTHRESHO_V(0) |
 		FW_RI_RES_WR_CIDXFTHRESH_V(0) |
 		FW_RI_RES_WR_EQSIZE_V(eqsize));
@@ -345,7 +346,7 @@ static int create_qp(struct c4iw_rdev *rdev, struct t4_wq *wq,
 		FW_RI_RES_WR_DCAEN_V(0) |
 		FW_RI_RES_WR_DCACPU_V(0) |
 		FW_RI_RES_WR_FBMIN_V(2) |
-		FW_RI_RES_WR_FBMAX_V(2) |
+		FW_RI_RES_WR_FBMAX_V(3) |
 		FW_RI_RES_WR_CIDXFTHRESHO_V(0) |
 		FW_RI_RES_WR_CIDXFTHRESH_V(0) |
 		FW_RI_RES_WR_EQSIZE_V(eqsize));
@@ -706,25 +707,40 @@ static int build_memreg(struct t4_sq *sq, union t4_wr *wqe,
 	return 0;
 }
 
-static int build_inv_stag(struct c4iw_dev *dev, union t4_wr *wqe,
-			  struct ib_send_wr *wr, u8 *len16)
+static int build_inv_stag(union t4_wr *wqe, struct ib_send_wr *wr, u8 *len16)
 {
-	struct c4iw_mr *mhp = get_mhp(dev, wr->ex.invalidate_rkey >> 8);
-
-	mhp->attr.state = 0;
 	wqe->inv.stag_inv = cpu_to_be32(wr->ex.invalidate_rkey);
 	wqe->inv.r2 = 0;
 	*len16 = DIV_ROUND_UP(sizeof wqe->inv, 16);
 	return 0;
 }
 
-static void _free_qp(struct kref *kref)
+static void free_qp_work(struct work_struct *work)
+{
+	struct c4iw_ucontext *ucontext;
+	struct c4iw_qp *qhp;
+	struct c4iw_dev *rhp;
+
+	qhp = container_of(work, struct c4iw_qp, free_work);
+	ucontext = qhp->ucontext;
+	rhp = qhp->rhp;
+
+	PDBG("%s qhp %p ucontext %p\n", __func__, qhp, ucontext);
+	destroy_qp(&rhp->rdev, &qhp->wq,
+		   ucontext ? &ucontext->uctx : &rhp->rdev.uctx);
+
+	if (ucontext)
+		c4iw_put_ucontext(ucontext);
+	kfree(qhp);
+}
+
+static void queue_qp_free(struct kref *kref)
 {
 	struct c4iw_qp *qhp;
 
 	qhp = container_of(kref, struct c4iw_qp, kref);
 	PDBG("%s qhp %p\n", __func__, qhp);
-	kfree(qhp);
+	queue_work(qhp->rhp->rdev.free_workq, &qhp->free_work);
 }
 
 void c4iw_qp_add_ref(struct ib_qp *qp)
@@ -736,7 +752,7 @@ void c4iw_qp_add_ref(struct ib_qp *qp)
 void c4iw_qp_rem_ref(struct ib_qp *qp)
 {
 	PDBG("%s ib_qp %p\n", __func__, qp);
-	kref_put(&to_c4iw_qp(qp)->kref, _free_qp);
+	kref_put(&to_c4iw_qp(qp)->kref, queue_qp_free);
 }
 
 static void add_to_fc_list(struct list_head *head, struct list_head *entry)
@@ -797,11 +813,13 @@ int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	spin_lock_irqsave(&qhp->lock, flag);
 	if (t4_wq_in_error(&qhp->wq)) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
+		*bad_wr = wr;
 		return -EINVAL;
 	}
 	num_wrs = t4_sq_avail(&qhp->wq);
 	if (num_wrs == 0) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
+		*bad_wr = wr;
 		return -ENOMEM;
 	}
 	while (wr) {
@@ -840,10 +858,13 @@ int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		case IB_WR_RDMA_READ_WITH_INV:
 			fw_opcode = FW_RI_RDMA_READ_WR;
 			swsqe->opcode = FW_RI_READ_REQ;
-			if (wr->opcode == IB_WR_RDMA_READ_WITH_INV)
+			if (wr->opcode == IB_WR_RDMA_READ_WITH_INV) {
+				c4iw_invalidate_mr(qhp->rhp,
+						   wr->sg_list[0].lkey);
 				fw_flags = FW_RI_RDMA_READ_INVALIDATE;
-			else
+			} else {
 				fw_flags = 0;
+			}
 			err = build_rdma_read(wqe, wr, &len16);
 			if (err)
 				break;
@@ -876,7 +897,8 @@ int c4iw_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 				fw_flags |= FW_RI_LOCAL_FENCE_FLAG;
 			fw_opcode = FW_RI_INV_LSTAG_WR;
 			swsqe->opcode = FW_RI_LOCAL_INV;
-			err = build_inv_stag(qhp->rhp, wqe, wr, &len16);
+			err = build_inv_stag(wqe, wr, &len16);
+			c4iw_invalidate_mr(qhp->rhp, wr->ex.invalidate_rkey);
 			break;
 		default:
 			PDBG("%s post of type=%d TBD!\n", __func__,
@@ -934,11 +956,13 @@ int c4iw_post_receive(struct ib_qp *ibqp, struct ib_recv_wr *wr,
 	spin_lock_irqsave(&qhp->lock, flag);
 	if (t4_wq_in_error(&qhp->wq)) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
+		*bad_wr = wr;
 		return -EINVAL;
 	}
 	num_wrs = t4_rq_avail(&qhp->wq);
 	if (num_wrs == 0) {
 		spin_unlock_irqrestore(&qhp->lock, flag);
+		*bad_wr = wr;
 		return -ENOMEM;
 	}
 	while (wr) {
@@ -1638,7 +1662,6 @@ int c4iw_destroy_qp(struct ib_qp *ib_qp)
 	struct c4iw_dev *rhp;
 	struct c4iw_qp *qhp;
 	struct c4iw_qp_attributes attrs;
-	struct c4iw_ucontext *ucontext;
 
 	qhp = to_c4iw_qp(ib_qp);
 	rhp = qhp->rhp;
@@ -1657,11 +1680,6 @@ int c4iw_destroy_qp(struct ib_qp *ib_qp)
 		list_del_init(&qhp->db_fc_entry);
 	spin_unlock_irq(&rhp->lock);
 	free_ird(rhp, qhp->attr.max_ird);
-
-	ucontext = ib_qp->uobject ?
-		   to_c4iw_ucontext(ib_qp->uobject->context) : NULL;
-	destroy_qp(&rhp->rdev, &qhp->wq,
-		   ucontext ? &ucontext->uctx : &rhp->rdev.uctx);
 
 	c4iw_qp_rem_ref(ib_qp);
 
@@ -1763,6 +1781,7 @@ struct ib_qp *c4iw_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 	mutex_init(&qhp->mutex);
 	init_waitqueue_head(&qhp->wait);
 	kref_init(&qhp->kref);
+	INIT_WORK(&qhp->free_work, free_qp_work);
 
 	ret = insert_handle(rhp, &rhp->qpidr, qhp, qhp->wq.sq.qid);
 	if (ret)
@@ -1849,6 +1868,9 @@ struct ib_qp *c4iw_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 			ma_sync_key_mm->len = PAGE_SIZE;
 			insert_mmap(ucontext, ma_sync_key_mm);
 		}
+
+		c4iw_get_ucontext(ucontext);
+		qhp->ucontext = ucontext;
 	}
 	qhp->ibqp.qp_num = qhp->wq.sq.qid;
 	init_timer(&(qhp->timer));

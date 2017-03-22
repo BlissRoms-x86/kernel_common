@@ -241,7 +241,7 @@ struct mlx5e_tstamp {
 };
 
 enum {
-	MLX5E_RQ_STATE_FLUSH,
+	MLX5E_RQ_STATE_ENABLED,
 	MLX5E_RQ_STATE_UMR_WQE_IN_PROGRESS,
 	MLX5E_RQ_STATE_AM,
 };
@@ -394,7 +394,7 @@ struct mlx5e_sq_dma {
 };
 
 enum {
-	MLX5E_SQ_STATE_FLUSH,
+	MLX5E_SQ_STATE_ENABLED,
 	MLX5E_SQ_STATE_BF_ENABLE,
 };
 
@@ -765,7 +765,8 @@ void mlx5e_disable_vlan_filter(struct mlx5e_priv *priv);
 int mlx5e_modify_rqs_vsd(struct mlx5e_priv *priv, bool vsd);
 
 int mlx5e_redirect_rqt(struct mlx5e_priv *priv, u32 rqtn, int sz, int ix);
-void mlx5e_build_tir_ctx_hash(void *tirc, struct mlx5e_priv *priv);
+void mlx5e_build_indir_tir_ctx_hash(struct mlx5e_priv *priv, void *tirc,
+				    enum mlx5e_traffic_types tt);
 
 int mlx5e_open_locked(struct net_device *netdev);
 int mlx5e_close_locked(struct net_device *netdev);

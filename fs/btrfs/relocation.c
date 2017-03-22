@@ -1395,14 +1395,23 @@ static struct btrfs_root *create_reloc_root(struct btrfs_trans_handle *trans,
 	root_key.offset = objectid;
 
 	if (root->root_key.objectid == objectid) {
+		u64 commit_root_gen;
+
 		/* called by btrfs_init_reloc_root */
 		ret = btrfs_copy_root(trans, root, root->commit_root, &eb,
 				      BTRFS_TREE_RELOC_OBJECTID);
 		BUG_ON(ret);
-
 		last_snap = btrfs_root_last_snapshot(&root->root_item);
-		btrfs_set_root_last_snapshot(&root->root_item,
-					     trans->transid - 1);
+		/*
+		 * Set the last_snapshot field to the generation of the commit
+		 * root - like this ctree.c:btrfs_block_can_be_shared() behaves
+		 * correctly (returns true) when the relocation root is created
+		 * either inside the critical section of a transaction commit
+		 * (through transaction.c:qgroup_account_snapshot()) and when
+		 * it's created before the transaction commit is started.
+		 */
+		commit_root_gen = btrfs_header_generation(root->commit_root);
+		btrfs_set_root_last_snapshot(&root->root_item, commit_root_gen);
 	} else {
 		/*
 		 * called by btrfs_reloc_post_snapshot_hook.
@@ -2728,7 +2737,14 @@ static int do_relocation(struct btrfs_trans_handle *trans,
 
 		bytenr = btrfs_node_blockptr(upper->eb, slot);
 		if (lowest) {
-			BUG_ON(bytenr != node->bytenr);
+			if (bytenr != node->bytenr) {
+				btrfs_err(root->fs_info,
+		"lowest leaf/node mismatch: bytenr %llu node->bytenr %llu slot %d upper %llu",
+					  bytenr, node->bytenr, slot,
+					  upper->eb->start);
+				err = -EIO;
+				goto next;
+			}
 		} else {
 			if (node->eb->start == bytenr)
 				goto next;

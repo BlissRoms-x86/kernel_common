@@ -44,18 +44,20 @@
  * being done.
  *
  * When the underlying transport disconnects, MRs are left in one of
- * three states:
+ * four states:
  *
  * INVALID:	The MR was not in use before the QP entered ERROR state.
- *		(Or, the LOCAL_INV WR has not completed or flushed yet).
- *
- * STALE:	The MR was being registered or unregistered when the QP
- *		entered ERROR state, and the pending WR was flushed.
  *
  * VALID:	The MR was registered before the QP entered ERROR state.
  *
- * When frwr_op_map encounters STALE and VALID MRs, they are recovered
- * with ib_dereg_mr and then are re-initialized. Beause MR recovery
+ * FLUSHED_FR:	The MR was being registered when the QP entered ERROR
+ *		state, and the pending WR was flushed.
+ *
+ * FLUSHED_LI:	The MR was being invalidated when the QP entered ERROR
+ *		state, and the pending WR was flushed.
+ *
+ * When frwr_op_map encounters FLUSHED and VALID MRs, they are recovered
+ * with ib_dereg_mr and then are re-initialized. Because MR recovery
  * allocates fresh resources, it is deferred to a workqueue, and the
  * recovered MRs are placed back on the rb_mws list when recovery is
  * complete. frwr_op_map allocates another MR for the current RPC while
@@ -177,12 +179,15 @@ __frwr_reset_mr(struct rpcrdma_ia *ia, struct rpcrdma_mw *r)
 static void
 frwr_op_recover_mr(struct rpcrdma_mw *mw)
 {
+	enum rpcrdma_frmr_state state = mw->frmr.fr_state;
 	struct rpcrdma_xprt *r_xprt = mw->mw_xprt;
 	struct rpcrdma_ia *ia = &r_xprt->rx_ia;
 	int rc;
 
 	rc = __frwr_reset_mr(ia, mw);
-	ib_dma_unmap_sg(ia->ri_device, mw->mw_sg, mw->mw_nents, mw->mw_dir);
+	if (state != FRMR_FLUSHED_LI)
+		ib_dma_unmap_sg(ia->ri_device,
+				mw->mw_sg, mw->mw_nents, mw->mw_dir);
 	if (rc)
 		goto out_release;
 
@@ -262,10 +267,8 @@ frwr_op_maxpages(struct rpcrdma_xprt *r_xprt)
 }
 
 static void
-__frwr_sendcompletion_flush(struct ib_wc *wc, struct rpcrdma_frmr *frmr,
-			    const char *wr)
+__frwr_sendcompletion_flush(struct ib_wc *wc, const char *wr)
 {
-	frmr->fr_state = FRMR_IS_STALE;
 	if (wc->status != IB_WC_WR_FLUSH_ERR)
 		pr_err("rpcrdma: %s: %s (%u/0x%x)\n",
 		       wr, ib_wc_status_msg(wc->status),
@@ -288,7 +291,8 @@ frwr_wc_fastreg(struct ib_cq *cq, struct ib_wc *wc)
 	if (wc->status != IB_WC_SUCCESS) {
 		cqe = wc->wr_cqe;
 		frmr = container_of(cqe, struct rpcrdma_frmr, fr_cqe);
-		__frwr_sendcompletion_flush(wc, frmr, "fastreg");
+		frmr->fr_state = FRMR_FLUSHED_FR;
+		__frwr_sendcompletion_flush(wc, "fastreg");
 	}
 }
 
@@ -308,7 +312,8 @@ frwr_wc_localinv(struct ib_cq *cq, struct ib_wc *wc)
 	if (wc->status != IB_WC_SUCCESS) {
 		cqe = wc->wr_cqe;
 		frmr = container_of(cqe, struct rpcrdma_frmr, fr_cqe);
-		__frwr_sendcompletion_flush(wc, frmr, "localinv");
+		frmr->fr_state = FRMR_FLUSHED_LI;
+		__frwr_sendcompletion_flush(wc, "localinv");
 	}
 }
 
@@ -328,8 +333,10 @@ frwr_wc_localinv_wake(struct ib_cq *cq, struct ib_wc *wc)
 	/* WARNING: Only wr_cqe and status are reliable at this point */
 	cqe = wc->wr_cqe;
 	frmr = container_of(cqe, struct rpcrdma_frmr, fr_cqe);
-	if (wc->status != IB_WC_SUCCESS)
-		__frwr_sendcompletion_flush(wc, frmr, "localinv");
+	if (wc->status != IB_WC_SUCCESS) {
+		frmr->fr_state = FRMR_FLUSHED_LI;
+		__frwr_sendcompletion_flush(wc, "localinv");
+	}
 	complete(&frmr->fr_linv_done);
 }
 
@@ -414,7 +421,7 @@ frwr_op_map(struct rpcrdma_xprt *r_xprt, struct rpcrdma_mr_seg *seg,
 			 IB_ACCESS_REMOTE_WRITE | IB_ACCESS_LOCAL_WRITE :
 			 IB_ACCESS_REMOTE_READ;
 
-	DECR_CQCOUNT(&r_xprt->rx_ep);
+	rpcrdma_set_signaled(&r_xprt->rx_ep, &reg_wr->wr);
 	rc = ib_post_send(ia->ri_id->qp, &reg_wr->wr, &bad_wr);
 	if (rc)
 		goto out_senderr;
@@ -479,7 +486,7 @@ frwr_op_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	struct rpcrdma_ia *ia = &r_xprt->rx_ia;
 	struct rpcrdma_mw *mw, *tmp;
 	struct rpcrdma_frmr *f;
-	int rc;
+	int count, rc;
 
 	dprintk("RPC:       %s: req %p\n", __func__, req);
 
@@ -489,6 +496,7 @@ frwr_op_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	 * a single ib_post_send() call.
 	 */
 	f = NULL;
+	count = 0;
 	invalidate_wrs = pos = prev = NULL;
 	list_for_each_entry(mw, &req->rl_registered, mw_list) {
 		if ((rep->rr_wc_flags & IB_WC_WITH_INVALIDATE) &&
@@ -498,6 +506,7 @@ frwr_op_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 		}
 
 		pos = __frwr_prepare_linv_wr(mw);
+		count++;
 
 		if (!invalidate_wrs)
 			invalidate_wrs = pos;
@@ -516,7 +525,12 @@ frwr_op_unmap_sync(struct rpcrdma_xprt *r_xprt, struct rpcrdma_req *req)
 	f->fr_invwr.send_flags = IB_SEND_SIGNALED;
 	f->fr_cqe.done = frwr_wc_localinv_wake;
 	reinit_completion(&f->fr_linv_done);
-	INIT_CQCOUNT(&r_xprt->rx_ep);
+
+	/* Initialize CQ count, since there is always a signaled
+	 * WR being posted here.  The new cqcount depends on how
+	 * many SQEs are about to be consumed.
+	 */
+	rpcrdma_init_cqcount(&r_xprt->rx_ep, count);
 
 	/* Transport disconnect drains the receive CQ before it
 	 * replaces the QP. The RPC reply handler won't call us

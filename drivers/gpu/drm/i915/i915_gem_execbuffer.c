@@ -1215,13 +1215,13 @@ validate_exec_list(struct drm_device *dev,
 			if (exec[i].offset !=
 			    gen8_canonical_addr(exec[i].offset & PAGE_MASK))
 				return -EINVAL;
-
-			/* From drm_mm perspective address space is continuous,
-			 * so from this point we're always using non-canonical
-			 * form internally.
-			 */
-			exec[i].offset = gen8_noncanonical_addr(exec[i].offset);
 		}
+
+		/* From drm_mm perspective address space is continuous,
+		 * so from this point we're always using non-canonical
+		 * form internally.
+		 */
+		exec[i].offset = gen8_noncanonical_addr(exec[i].offset);
 
 		if (exec[i].alignment && !is_power_of_2(exec[i].alignment))
 			return -EINVAL;
@@ -1281,6 +1281,12 @@ i915_gem_validate_context(struct drm_device *dev, struct drm_file *file,
 	return ctx;
 }
 
+static bool gpu_write_needs_clflush(struct drm_i915_gem_object *obj)
+{
+	return !(obj->cache_level == I915_CACHE_NONE ||
+		 obj->cache_level == I915_CACHE_WT);
+}
+
 void i915_vma_move_to_active(struct i915_vma *vma,
 			     struct drm_i915_gem_request *req,
 			     unsigned int flags)
@@ -1311,6 +1317,8 @@ void i915_vma_move_to_active(struct i915_vma *vma,
 
 		/* update for the implicit flush after a batch */
 		obj->base.write_domain &= ~I915_GEM_GPU_DOMAINS;
+		if (!obj->cache_dirty && gpu_write_needs_clflush(obj))
+			obj->cache_dirty = true;
 	}
 
 	if (flags & EXEC_OBJECT_NEEDS_FENCE)

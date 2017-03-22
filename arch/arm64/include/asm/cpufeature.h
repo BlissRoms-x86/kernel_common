@@ -11,6 +11,7 @@
 
 #include <linux/jump_label.h>
 
+#include <asm/cpucaps.h>
 #include <asm/hwcap.h>
 #include <asm/sysreg.h>
 
@@ -23,25 +24,6 @@
 
 #define MAX_CPU_FEATURES	(8 * sizeof(elf_hwcap))
 #define cpu_feature(x)		ilog2(HWCAP_ ## x)
-
-#define ARM64_WORKAROUND_CLEAN_CACHE		0
-#define ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE	1
-#define ARM64_WORKAROUND_845719			2
-#define ARM64_HAS_SYSREG_GIC_CPUIF		3
-#define ARM64_HAS_PAN				4
-#define ARM64_HAS_LSE_ATOMICS			5
-#define ARM64_WORKAROUND_CAVIUM_23154		6
-#define ARM64_WORKAROUND_834220			7
-#define ARM64_HAS_NO_HW_PREFETCH		8
-#define ARM64_HAS_UAO				9
-#define ARM64_ALT_PAN_NOT_UAO			10
-#define ARM64_HAS_VIRT_HOST_EXTN		11
-#define ARM64_WORKAROUND_CAVIUM_27456		12
-#define ARM64_HAS_32BIT_EL0			13
-#define ARM64_HYP_OFFSET_LOW			14
-#define ARM64_MISMATCHED_CACHE_LINE_SIZE	15
-
-#define ARM64_NCAPS				16
 
 #ifndef __ASSEMBLY__
 
@@ -224,6 +206,12 @@ static inline bool system_supports_32bit_el0(void)
 static inline bool system_supports_mixed_endian_el0(void)
 {
 	return id_aa64mmfr0_mixed_endian_el0(read_system_reg(SYS_ID_AA64MMFR0_EL1));
+}
+
+static inline bool system_uses_ttbr0_pan(void)
+{
+	return IS_ENABLED(CONFIG_ARM64_SW_TTBR0_PAN) &&
+		!cpus_have_cap(ARM64_HAS_PAN);
 }
 
 #endif /* __ASSEMBLY__ */

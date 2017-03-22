@@ -2081,6 +2081,12 @@ struct drm_i915_private {
 
 	struct intel_encoder *dig_port_map[I915_MAX_PORTS];
 
+	/* necessary resource sharing with HDMI LPE audio driver. */
+	struct {
+		struct platform_device *platdev;
+		int	irq;
+	} lpe_audio;
+
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
 	 * will be rejected. Instead look for a better place.
@@ -2819,6 +2825,8 @@ struct drm_i915_cmd_table {
 
 #define HAS_POOLED_EU(dev)	(INTEL_INFO(dev)->has_pooled_eu)
 
+#define HAS_LPE_AUDIO(dev_priv) ((dev_priv)->lpe_audio.platdev != NULL)
+
 #define INTEL_PCH_DEVICE_ID_MASK		0xff00
 #define INTEL_PCH_IBX_DEVICE_ID_TYPE		0x3b00
 #define INTEL_PCH_CPT_DEVICE_ID_TYPE		0x1c00
@@ -2883,6 +2891,11 @@ __i915_printk(struct drm_i915_private *dev_priv, const char *level,
 extern long i915_compat_ioctl(struct file *filp, unsigned int cmd,
 			      unsigned long arg);
 #endif
+extern const struct dev_pm_ops i915_pm_ops;
+
+extern int i915_driver_load(struct pci_dev *pdev,
+			    const struct pci_device_id *ent);
+extern void i915_driver_unload(struct drm_device *dev);
 extern int intel_gpu_reset(struct drm_i915_private *dev_priv, u32 engine_mask);
 extern bool intel_has_gpu_reset(struct drm_i915_private *dev_priv);
 extern void i915_reset(struct drm_i915_private *dev_priv);
@@ -3566,6 +3579,16 @@ extern int i915_restore_state(struct drm_device *dev);
 void i915_setup_sysfs(struct drm_i915_private *dev_priv);
 void i915_teardown_sysfs(struct drm_i915_private *dev_priv);
 
+/* i915_lpe_audio.c */
+int  intel_lpe_audio_init(struct drm_i915_private *dev_priv);
+int  intel_lpe_audio_setup(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_teardown(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_irq_handler(struct drm_i915_private *dev_priv);
+bool intel_lpe_audio_detect(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_notify(struct drm_i915_private *dev_priv,
+			void *eld, int port, int tmds_clk_speed,
+			bool connected);
+
 /* intel_i2c.c */
 extern int intel_setup_gmbus(struct drm_device *dev);
 extern void intel_teardown_gmbus(struct drm_device *dev);
@@ -3681,6 +3704,8 @@ extern void intel_display_print_error_state(struct drm_i915_error_state_buf *e,
 
 int sandybridge_pcode_read(struct drm_i915_private *dev_priv, u32 mbox, u32 *val);
 int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u32 mbox, u32 val);
+int skl_pcode_request(struct drm_i915_private *dev_priv, u32 mbox, u32 request,
+		      u32 reply_mask, u32 reply, int timeout_base_ms);
 
 /* intel_sideband.c */
 u32 vlv_punit_read(struct drm_i915_private *dev_priv, u32 addr);
