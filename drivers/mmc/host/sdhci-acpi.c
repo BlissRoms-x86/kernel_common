@@ -36,6 +36,7 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/pm.h>
@@ -382,6 +383,28 @@ static const struct acpi_device_id sdhci_acpi_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, sdhci_acpi_ids);
 
+static const struct dmi_system_id fix_up_power_dmi_blacklist[] = {
+	{
+		/*
+		 * Match for the GPDwin which unfortunately uses somewhat
+		 * generic dmi strings, which is why we test for 4 strings.
+		 * Comparing against 23 other byt/cht boards, board_vendor
+		 * and board_name are unique to the GPDwin, where as only one
+		 * other board has the same board_serial and 3 others have
+		 * the same default product_name. Also the GPDwin is the
+		 * only device to have both board_ and product_name not set.
+		 */
+		.driver_data = "80860F14:2",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_SERIAL, "Default string"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Default string"),
+		},
+	},
+	{ }
+};
+
 static const struct sdhci_acpi_slot *sdhci_acpi_get_slot(const char *hid,
 							 const char *uid)
 {
@@ -404,6 +427,7 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 	acpi_handle handle = ACPI_HANDLE(dev);
 	const char *bl = blacklist;
 	struct acpi_device *device, *child;
+	const struct dmi_system_id *dmi_id;
 	struct sdhci_acpi_host *c;
 	struct sdhci_host *host;
 	struct resource *iomem;
@@ -417,6 +441,12 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 
 	hid = acpi_device_hid(device);
 	uid = device->pnp.unique_id;
+
+	if (!bl) {
+		dmi_id = dmi_first_match(fix_up_power_dmi_blacklist);
+		if (dmi_id)
+			bl = dmi_id->driver_data;
+	}
 
 	if (sdhci_acpi_compare_hid_uid(bl, hid, uid))
 		return -ENODEV;
