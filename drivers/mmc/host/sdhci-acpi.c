@@ -83,6 +83,39 @@ struct sdhci_acpi_host {
 	bool				use_runtime_pm;
 };
 
+static char *blacklist;
+
+static bool sdhci_acpi_compare_hid_uid(const char *match, const char *hid,
+				       const char *uid)
+{
+	const char *hid_end, *uid_end, *end;
+
+	if (!match || !hid || !uid)
+		return false;
+
+	end = match + strlen(match);
+
+	do {
+		hid_end = strchr(match, ':');
+		if (!hid_end)
+			return false;
+
+		uid_end = strchr(hid_end, ',');
+		if (!uid_end)
+			uid_end = end;
+
+		if (strlen(hid) == (hid_end - match) &&
+		    strncmp(match, hid, hid_end - match) == 0 &&
+		    strlen(uid) == (uid_end - hid_end - 1) &&
+		    strncmp(hid_end + 1, uid, uid_end - hid_end - 1) == 0)
+			return true;
+
+		match = uid_end + 1;
+	} while (uid_end != end);
+
+	return false;
+}
+
 static inline bool sdhci_acpi_flag(struct sdhci_acpi_host *c, unsigned int flag)
 {
 	return c->slot && (c->slot->flags & flag);
@@ -378,6 +411,7 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	acpi_handle handle = ACPI_HANDLE(dev);
+	const char *bl = blacklist;
 	struct acpi_device *device, *child;
 	struct sdhci_acpi_host *c;
 	struct sdhci_host *host;
@@ -390,6 +424,12 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 	if (acpi_bus_get_device(handle, &device))
 		return -ENODEV;
 
+	hid = acpi_device_hid(device);
+	uid = device->pnp.unique_id;
+
+	if (sdhci_acpi_compare_hid_uid(bl, hid, uid))
+		return -ENODEV;
+
 	/* Power on the SDHCI controller and its children */
 	acpi_device_fix_up_power(device);
 	list_for_each_entry(child, &device->children, node)
@@ -398,9 +438,6 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 
 	if (sdhci_acpi_byt_defer(dev))
 		return -EPROBE_DEFER;
-
-	hid = acpi_device_hid(device);
-	uid = device->pnp.unique_id;
 
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!iomem)
@@ -579,6 +616,9 @@ static struct platform_driver sdhci_acpi_driver = {
 };
 
 module_platform_driver(sdhci_acpi_driver);
+
+module_param(blacklist, charp, 0444);
+MODULE_PARM_DESC(blacklist, "ACPI <HID:UID>[,HID:UID] which should be ignored");
 
 MODULE_DESCRIPTION("Secure Digital Host Controller Interface ACPI driver");
 MODULE_AUTHOR("Adrian Hunter");
