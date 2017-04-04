@@ -36,6 +36,7 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/pm.h>
@@ -83,6 +84,11 @@ struct sdhci_acpi_host {
 	bool				use_runtime_pm;
 };
 
+struct dmi_probe_blacklist_data {
+	const char *hid_uid;
+	const char * const *bios_dates;
+};
+
 static char *blacklist;
 
 static bool sdhci_acpi_compare_hid_uid(const char *match, const char *hid,
@@ -114,6 +120,34 @@ static bool sdhci_acpi_compare_hid_uid(const char *match, const char *hid,
 	} while (uid_end != end);
 
 	return false;
+}
+
+static const char *sdhci_acpi_get_dmi_blacklist(const struct dmi_system_id *bl)
+{
+	const struct dmi_system_id *dmi_id;
+	const struct dmi_probe_blacklist_data *bl_data;
+	const char *bios_date;
+	int i;
+
+	dmi_id = dmi_first_match(bl);
+	if (!dmi_id)
+		return NULL;
+
+	bl_data = dmi_id->driver_data;
+
+	if (!bl_data->bios_dates)
+		return bl_data->hid_uid;
+
+	bios_date = dmi_get_system_info(DMI_BIOS_DATE);
+	if (!bios_date)
+		return NULL;
+
+	for (i = 0; bl_data->bios_dates[i]; i++) {
+		if (strcmp(bl_data->bios_dates[i], bios_date) == 0)
+			return bl_data->hid_uid;
+	}
+
+	return NULL;
 }
 
 static inline bool sdhci_acpi_flag(struct sdhci_acpi_host *c, unsigned int flag)
@@ -391,6 +425,33 @@ static const struct acpi_device_id sdhci_acpi_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, sdhci_acpi_ids);
 
+const struct dmi_probe_blacklist_data gpd_win_bl_data = {
+	.hid_uid = "80860F14:2",
+	.bios_dates = (const char * const []){
+		"10/25/2016", "11/18/2016", "02/21/2017", NULL },
+};
+
+static const struct dmi_system_id dmi_probe_blacklist[] = {
+	{
+		/*
+		 * Match for the GPDwin which unfortunately uses somewhat
+		 * generic dmi strings, which is why we test for 4 strings
+		 * and a known BIOS date.
+		 * Comparing against 29 other byt/cht boards, board_name is
+		 * unique to the GPDwin, where as only 2 other boards have the
+		 * same board_serial and 3 others have the same board_vendor
+		 */
+		.driver_data = (void *)&gpd_win_bl_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_SERIAL, "Default string"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Default string"),
+		},
+	},
+	{ }
+};
+
 static const struct sdhci_acpi_slot *sdhci_acpi_get_slot(const char *hid,
 							 const char *uid)
 {
@@ -426,6 +487,9 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 
 	hid = acpi_device_hid(device);
 	uid = device->pnp.unique_id;
+
+	if (!bl)
+		bl = sdhci_acpi_get_dmi_blacklist(dmi_probe_blacklist);
 
 	if (sdhci_acpi_compare_hid_uid(bl, hid, uid))
 		return -ENODEV;
