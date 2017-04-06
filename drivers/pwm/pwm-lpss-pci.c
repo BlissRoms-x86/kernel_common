@@ -46,6 +46,13 @@ static const struct pwm_lpss_boardinfo pwm_lpss_tng_info = {
 	.base_unit_bits = 22,
 };
 
+/* Tangier */
+static const struct pwm_lpss_boardinfo pwm_lpss_tng_info = {
+	.clk_rate = 19200000,
+	.npwm = 4,
+	.base_unit_bits = 22,
+};
+
 static int pwm_lpss_probe_pci(struct pci_dev *pdev,
 			      const struct pci_device_id *id)
 {
