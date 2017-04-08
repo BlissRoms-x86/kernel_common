@@ -11,10 +11,11 @@ CAN_BUILD_X86_64 := $(shell ./check_cc.sh $(CC) trivial_64bit_program.c)
 CAN_BUILD_WITH_NOPIE := $(shell ./check_cc.sh $(CC) trivial_program.c -no-pie)
 
 TARGETS_C_BOTHBITS := single_step_syscall sysret_ss_attrs syscall_nt test_mremap_vdso \
-			check_initial_reg_state sigreturn iopl mpx-mini-test ioperm \
+			check_initial_reg_state iopl mpx-mini-test ioperm \
 			protection_keys test_vdso test_vsyscall mov_ss_trap
-TARGETS_C_32BIT_ONLY := entry_from_vm86 syscall_arg_fault test_syscall_vdso unwind_vdso \
+TARGETS_C_32BIT_ONLY := entry_from_vm86 syscall_arg_fault sigreturn test_syscall_vdso unwind_vdso \
 			test_FCMOV test_FCOMI test_FISTTP \
+			ldt_gdt \
 			vdso_restorer
 TARGETS_C_64BIT_ONLY := fsgsbase sysret_rip
 # Some selftests require 32bit support enabled also on 64bit systems
