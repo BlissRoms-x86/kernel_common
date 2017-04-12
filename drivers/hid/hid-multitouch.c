@@ -171,7 +171,6 @@ static void mt_post_parse(struct mt_device *td);
  * these device-dependent functions determine what slot corresponds
  * to a valid contact that was just read.
  */
-
 static int cypress_compute_slot(struct mt_device *td)
 {
 	if (td->curdata.contactid != 0 || td->num_received == 0)
@@ -183,7 +182,10 @@ static int cypress_compute_slot(struct mt_device *td)
 static struct mt_class mt_classes[] = {
 	{ .name = MT_CLS_DEFAULT,
 		.quirks = MT_QUIRK_ALWAYS_VALID |
-			MT_QUIRK_CONTACT_CNT_ACCURATE },
+			MT_QUIRK_IGNORE_DUPLICATES |
+			MT_QUIRK_HOVERING |
+			MT_QUIRK_CONTACT_CNT_ACCURATE |
+			MT_QUIRK_NOT_SEEN_MEANS_UP },
 	{ .name = MT_CLS_NSMU,
 		.quirks = MT_QUIRK_NOT_SEEN_MEANS_UP },
 	{ .name = MT_CLS_SERIAL,
@@ -211,7 +213,8 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_IGNORE_DUPLICATES |
 			MT_QUIRK_HOVERING |
-			MT_QUIRK_CONTACT_CNT_ACCURATE },
+			MT_QUIRK_CONTACT_CNT_ACCURATE |
+			MT_QUIRK_NOT_SEEN_MEANS_UP },
 	{ .name = MT_CLS_EXPORT_ALL_INPUTS,
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_CONTACT_CNT_ACCURATE,
@@ -275,6 +278,11 @@ static struct mt_class mt_classes[] = {
 	},
 	{ .name = MT_CLS_NTRIG,
 		.quirks = MT_QUIRK_ALWAYS_VALID |
+			MT_QUIRK_INVALID_CONTACTID_FFFF,
+	},
+	{ .name = MT_CLS_NTRIG,
+		.quirks	= MT_QUIRK_NOT_SEEN_MEANS_UP |
+			MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_INVALID_CONTACTID_FFFF,
 	},
 	{ }
@@ -619,6 +627,10 @@ static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
 	    td->curdata.contactid == 0xffff)
 		return -1;
 
+	if ((quirks & MT_QUIRK_INVALID_CONTACTID_FFFF) &&
+	    td->curdata.contactid == 0xffff)
+		return -1;
+
 	return input_mt_get_slot_by_key(input, td->curdata.contactid);
 }
 
@@ -641,6 +653,12 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 		int slotnum = mt_compute_slot(td, input);
 		struct mt_slot *s = &td->curdata;
 		struct input_mt *mt = input->mt;
+
+		if ((td->mtclass.quirks & MT_QUIRK_INVALID_CONTACTID_FFFF) &&
+		    s->contactid == 0xffff) {
+			td->num_received++;
+			return;
+		}
 
 		if (slotnum < 0 || slotnum >= td->maxcontacts)
 			return;
@@ -678,7 +696,6 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 			input_event(input, EV_ABS, ABS_MT_TOUCH_MINOR, minor);
 		}
 	}
-
 inc_num_received:
 	td->num_received++;
 }
@@ -759,7 +776,6 @@ static void mt_process_mt_event(struct hid_device *hid, struct hid_field *field,
 		case HID_DG_TOUCH:
 			/* do nothing */
 			break;
-
 		default:
 			if (usage->type)
 				input_event(input, usage->type, usage->code,
@@ -1070,6 +1086,7 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 		case HID_CP_CONSUMER_CONTROL:
 			suffix = "Consumer Control";
 			break;
+
 		default:
 			suffix = "UNKNOWN";
 			break;
@@ -1118,7 +1135,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	/*
 	 * Handle special quirks for Windows 8 certified devices.
 	 */
-	if (id->group == HID_GROUP_MULTITOUCH_WIN_8)
+	/* if (id->group == HID_GROUP_MULTITOUCH_WIN_8) */
 		/*
 		 * Some multitouch screens do not like to be polled for input
 		 * reports. Fortunately, the Win8 spec says that all touches
@@ -1130,7 +1147,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		 * initial report fetching and then selectively fetch each
 		 * report we are interested in.
 		 */
-		hdev->quirks |= HID_QUIRK_NO_INIT_REPORTS;
+	/*	hdev->quirks |= HID_QUIRK_NO_INIT_REPORTS; */
 
 	td = devm_kzalloc(&hdev->dev, sizeof(struct mt_device), GFP_KERNEL);
 	if (!td) {
@@ -1152,7 +1169,8 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return -ENOMEM;
 	}
 
-	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID)
+	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID &&
+		id->group != HID_GROUP_MULTITOUCH_WIN_8)
 		td->serial_maybe = true;
 
 	ret = hid_parse(hdev);
@@ -1403,19 +1421,21 @@ static const struct hid_device_id mt_devices[] = {
 		MT_USB_DEVICE(USB_VENDOR_ID_ILITEK,
 			USB_DEVICE_ID_ILITEK_MULTITOUCH) },
 
-	/* Microsoft Type Cover */
+	/* Microsoft Type Cover 3 */
 	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
 		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
 			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3) },
-	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
-		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
-			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_2) },
 	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
 		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
 			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_JP) },
 	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
 		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
 			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_2) },
+
+	/* Microsoft Type Cover 3 */
 	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
 		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
 			USB_DEVICE_ID_MS_TYPE_COVER_4) },
