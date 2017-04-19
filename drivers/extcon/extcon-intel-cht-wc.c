@@ -196,12 +196,32 @@ static void cht_wc_extcon_set_5v_boost(struct cht_wc_extcon_data *ext,
 }
 
 /* Small helper to sync EXTCON_CHG_USB_SDP and EXTCON_USB state */
-static void cht_wc_extcon_set_state(struct cht_wc_extcon_data *ext,
-				    unsigned int cable, bool state)
+static void cht_wc_extcon_set_cable_state(struct cht_wc_extcon_data *ext,
+					  unsigned int cable, bool state)
 {
 	extcon_set_state_sync(ext->edev, cable, state);
 	if (cable == EXTCON_CHG_USB_SDP)
 		extcon_set_state_sync(ext->edev, EXTCON_USB, state);
+}
+
+static void cht_wc_extcon_set_state(struct cht_wc_extcon_data *ext,
+				    unsigned int new_cable)
+{
+	if (new_cable == EXTCON_NONE && !ext->usb_host) {
+		/* Route D+ and D- to PMIC for future charger detection */
+		cht_wc_extcon_set_phymux(ext, MUX_SEL_PMIC);
+	} else {
+		/* Route D+ and D- to SoC for the host or gadget controller */
+		cht_wc_extcon_set_phymux(ext, MUX_SEL_SOC);
+	}
+
+	if (new_cable != ext->previous_cable) {
+		cht_wc_extcon_set_cable_state(ext, new_cable, true);
+		cht_wc_extcon_set_cable_state(ext, ext->previous_cable, false);
+		ext->previous_cable = new_cable;
+	}
+
+	extcon_set_state_sync(ext->edev, EXTCON_USB_HOST, ext->usb_host);
 }
 
 static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
@@ -209,7 +229,7 @@ static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
 	int ret, pwrsrc_sts, id;
 	unsigned int cable = EXTCON_NONE;
 	/* Ignore errors in host mode, as the 5v boost converter is on then */
-	bool ignore_get_charger_errors = ext->usb_host;
+	bool ignore_get_charger_err = ext->usb_host;
 
 	ret = regmap_read(ext->regmap, CHT_WC_PWRSRC_STS, &pwrsrc_sts);
 	if (ret) {
@@ -218,33 +238,13 @@ static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
 	}
 
 	id = cht_wc_extcon_get_id(ext, pwrsrc_sts);
-	if (id == USB_ID_GND) {
-		/* The 5v boost causes a false VBUS / SDP detect, skip */
-		goto charger_det_done;
-	}
 
-	/* Plugged into a host/charger or not connected? */
-	if (!(pwrsrc_sts & CHT_WC_PWRSRC_VBUS)) {
-		/* Route D+ and D- to PMIC for future charger detection */
-		cht_wc_extcon_set_phymux(ext, MUX_SEL_PMIC);
-		goto set_state;
-	}
-
-	cable = cht_wc_extcon_get_charger(ext, ignore_get_charger_errors);
-
-charger_det_done:
-	/* Route D+ and D- to SoC for the host or gadget controller */
-	cht_wc_extcon_set_phymux(ext, MUX_SEL_SOC);
-
-set_state:
-	if (cable != ext->previous_cable) {
-		cht_wc_extcon_set_state(ext, cable, true);
-		cht_wc_extcon_set_state(ext, ext->previous_cable, false);
-		ext->previous_cable = cable;
-	}
+	/* When id == gnd the 5v boost causes a false VBUS detect */
+	if (id != USB_ID_GND && (pwrsrc_sts & CHT_WC_PWRSRC_VBUS))
+		cable = cht_wc_extcon_get_charger(ext, ignore_get_charger_err);
 
 	ext->usb_host = ((id == USB_ID_GND) || (id == USB_RID_A));
-	extcon_set_state_sync(ext->edev, EXTCON_USB_HOST, ext->usb_host);
+	cht_wc_extcon_set_state(ext, cable);
 }
 
 static irqreturn_t cht_wc_extcon_isr(int irq, void *data)
