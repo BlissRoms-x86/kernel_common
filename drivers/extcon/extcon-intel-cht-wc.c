@@ -125,7 +125,7 @@ static int cht_wc_extcon_get_charger(struct cht_wc_extcon_data *ext,
 		ret = regmap_read(ext->regmap, CHT_WC_USBSRC, &usbsrc);
 		if (ret) {
 			dev_err(ext->dev, "Error reading usbsrc: %d\n", ret);
-			return ret;
+			return EXTCON_CHG_USB_SDP; /* Save fallback */
 		}
 
 		status = usbsrc & CHT_WC_USBSRC_STS_MASK;
@@ -230,9 +230,7 @@ static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
 		goto set_state;
 	}
 
-	ret = cht_wc_extcon_get_charger(ext, ignore_get_charger_errors);
-	if (ret >= 0)
-		cable = ret;
+	cable = cht_wc_extcon_get_charger(ext, ignore_get_charger_errors);
 
 charger_det_done:
 	/* Route D+ and D- to SoC for the host or gadget controller */
