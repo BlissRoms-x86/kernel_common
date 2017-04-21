@@ -10,7 +10,7 @@
  */
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
-#include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include "f2fs.h"
 #include "node.h"
 #include "acl.h"
