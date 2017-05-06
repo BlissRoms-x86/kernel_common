@@ -130,6 +130,7 @@ int intel_plane_atomic_check_with_state(struct intel_crtc_state *crtc_state,
 	struct drm_i915_private *dev_priv = to_i915(plane->dev);
 	struct drm_plane_state *state = &intel_state->base;
 	struct intel_plane *intel_plane = to_intel_plane(plane);
+	unsigned int rotation = intel_plane_get_rotation(intel_state);
 	int ret;
 
 	/*
@@ -149,7 +150,7 @@ int intel_plane_atomic_check_with_state(struct intel_crtc_state *crtc_state,
 	intel_state->clip.y2 =
 		crtc_state->base.enable ? crtc_state->pipe_src_h : 0;
 
-	if (state->fb && drm_rotation_90_or_270(state->rotation)) {
+	if (state->fb && drm_rotation_90_or_270(rotation)) {
 		struct drm_format_name_buf format_name;
 
 		if (state->fb->modifier != I915_FORMAT_MOD_Y_TILED &&
@@ -178,8 +179,8 @@ int intel_plane_atomic_check_with_state(struct intel_crtc_state *crtc_state,
 
 	/* CHV ignores the mirror bit when the rotate bit is set :( */
 	if (IS_CHERRYVIEW(dev_priv) &&
-	    state->rotation & DRM_ROTATE_180 &&
-	    state->rotation & DRM_REFLECT_X) {
+	    rotation & DRM_ROTATE_180 &&
+	    rotation & DRM_REFLECT_X) {
 		DRM_DEBUG_KMS("Cannot rotate and reflect at the same time\n");
 		return -EINVAL;
 	}
