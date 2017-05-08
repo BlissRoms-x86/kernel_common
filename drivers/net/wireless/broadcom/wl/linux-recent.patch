@@ -1,0 +1,77 @@
+--- a/src/shared/linux_osl.c
++++ b/src/shared/linux_osl.c
+@@ -932,7 +932,11 @@
+ 	uint cycles;
+ 
+ #if defined(__i386__)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 3, 0)
++	cycles = (u32)rdtsc();
++#else
+ 	rdtscl(cycles);
++#endif
+ #else
+ 	cycles = 0;
+ #endif
+--- a/src/wl/sys/wl_cfg80211_hybrid.c
++++ b/src/wl/sys/wl_cfg80211_hybrid.c
+@@ -38,7 +38,11 @@
+ #include <wlioctl.h>
+ #include <proto/802.11.h>
+ #include <wl_cfg80211_hybrid.h>
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
++#include <linux/sched/signal.h>
++#endif
++
+ #define EVENT_TYPE(e) dtoh32((e)->event_type)
+ #define EVENT_FLAGS(e) dtoh16((e)->flags)
+ #define EVENT_STATUS(e) dtoh32((e)->status)
+@@ -235,6 +239,13 @@
+ };
+ #endif				
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
++#define ieee80211_band nl80211_band
++#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ
++#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ
++#define IEEE80211_NUM_BANDS NUM_NL80211_BANDS
++#endif
++
+ #define CHAN2G(_channel, _freq, _flags) {			\
+ 	.band			= IEEE80211_BAND_2GHZ,		\
+ 	.center_freq		= (_freq),			\
+@@ -2364,13 +2375,15 @@
+ 	memcpy(wl->profile->bssid, &e->addr, ETHER_ADDR_LEN);
+ 	memcpy(&wl->bssid, &e->addr, ETHER_ADDR_LEN);
+ 	wl_update_bss_info(wl);
+-	cfg80211_roamed(ndev,
+-#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)
+-			&wl->conf->channel,	 
+-#endif
+-			(u8 *)&wl->bssid,
+-			conn_info->req_ie, conn_info->req_ie_len,
+-			conn_info->resp_ie, conn_info->resp_ie_len, GFP_KERNEL);
++	struct cfg80211_roam_info roam_info = {
++		.channel = &wl->conf->channel,
++		.bssid = (u8 *)&wl->bssid,
++		.req_ie = conn_info->req_ie,
++		.req_ie_len = conn_info->req_ie_len,
++		.resp_ie = conn_info->resp_ie,
++		.resp_ie_len = conn_info->resp_ie_len,
++	};
++	cfg80211_roamed(ndev, &roam_info, GFP_KERNEL);
+ 	WL_DBG(("Report roaming result\n"));
+ 
+ 	set_bit(WL_STATUS_CONNECTED, &wl->status);
+--- a/src/wl/sys/wl_linux.c
++++ b/src/wl/sys/wl_linux.c
+@@ -2917,7 +2928,9 @@
+ 	skb->dev = wl->monitor_dev;
++#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4, 10, 0))
+ 	skb->dev->last_rx = jiffies;
++#endif
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)
+ 	skb_reset_mac_header(skb);
+ #else
+ 	skb->mac.raw = skb->data;
+ #endif
