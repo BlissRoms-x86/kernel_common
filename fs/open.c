@@ -193,7 +193,8 @@ static long do_sys_ftruncate(unsigned int fd, loff_t length, int small)
 		goto out_putf;
 
 	error = -EPERM;
-	if (IS_APPEND(inode))
+	/* Check IS_APPEND on real upper inode */
+	if (IS_APPEND(file_inode(f.file)))
 		goto out_putf;
 
 	sb_start_write(inode->i_sb);
@@ -899,6 +900,12 @@ static inline int build_open_flags(int flags, umode_t mode, struct open_flags *o
 {
 	int lookup_flags = 0;
 	int acc_mode = ACC_MODE(flags);
+
+	/*
+	 * Clear out all open flags we don't know about so that we don't report
+	 * them in fcntl(F_GETFD) or similar interfaces.
+	 */
+	flags &= VALID_OPEN_FLAGS;
 
 	if (flags & (O_CREAT | __O_TMPFILE))
 		op->mode = (mode & S_IALLUGO) | S_IFREG;

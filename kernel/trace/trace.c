@@ -1976,7 +1976,7 @@ static void __trace_find_cmdline(int pid, char comm[])
 
 	map = savedcmd->map_pid_to_cmdline[pid];
 	if (map != NO_CMDLINE_MAP)
-		strcpy(comm, get_saved_cmdlines(map));
+		strlcpy(comm, get_saved_cmdlines(map), TASK_COMM_LEN);
 	else
 		strcpy(comm, "<...>");
 }
@@ -3311,13 +3311,14 @@ static void test_cpu_buff_start(struct trace_iterator *iter)
 	if (!(iter->iter_flags & TRACE_FILE_ANNOTATE))
 		return;
 
-	if (iter->started && cpumask_test_cpu(iter->cpu, iter->started))
+	if (cpumask_available(iter->started) &&
+	    cpumask_test_cpu(iter->cpu, iter->started))
 		return;
 
 	if (per_cpu_ptr(iter->trace_buffer->data, iter->cpu)->skipped_entries)
 		return;
 
-	if (iter->started)
+	if (cpumask_available(iter->started))
 		cpumask_set_cpu(iter->cpu, iter->started);
 
 	/* Don't print started cpu buffer for the first entry of the trace */
