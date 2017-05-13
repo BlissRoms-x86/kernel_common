@@ -721,15 +721,18 @@ static int bma180_probe(struct i2c_client *client,
 	data = iio_priv(indio_dev);
 	i2c_set_clientdata(client, indio_dev);
 	data->client = client;
-	if (id) {
-		data->part_info = &bma180_part_info[id->driver_data];
+	if (dev->of_node) {
+		chip = (enum chip_ids)of_device_get_match_data(&client->dev);
+	} else if (id) {
+		chip = id->driver_data;
 	} else {
 		acpi_id = acpi_match_device(dev->driver->acpi_match_table, dev);
 		if (!acpi_id)
 			return -ENODEV;
 
-		data->part_info = &bma180_part_info[acpi_id->driver_data];
+		chip = acpi_id->driver_data;
 	}
+	data->part_info = &bma180_part_info[chip];
 
 	ret = data->part_info->chip_config(data);
 	if (ret < 0)

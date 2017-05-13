@@ -2232,7 +2232,7 @@ void intel_add_fb_offsets(int *x, int *y,
 
 {
 	const struct intel_framebuffer *intel_fb = to_intel_framebuffer(state->base.fb);
-	unsigned int rotation = state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(state);
 
 	if (drm_rotation_90_or_270(rotation)) {
 		*x += intel_fb->rotated[plane].x;
@@ -2285,7 +2285,7 @@ static u32 intel_adjust_tile_offset(int *x, int *y,
 	const struct drm_i915_private *dev_priv = to_i915(state->base.plane->dev);
 	const struct drm_framebuffer *fb = state->base.fb;
 	unsigned int cpp = fb->format->cpp[plane];
-	unsigned int rotation = state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(state);
 	unsigned int pitch = intel_fb_pitch(fb, plane, rotation);
 
 	WARN_ON(new_offset > old_offset);
@@ -2388,7 +2388,7 @@ u32 intel_compute_tile_offset(int *x, int *y,
 {
 	const struct drm_i915_private *dev_priv = to_i915(state->base.plane->dev);
 	const struct drm_framebuffer *fb = state->base.fb;
-	unsigned int rotation = state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(state);
 	int pitch = intel_fb_pitch(fb, plane, rotation);
 	u32 alignment = intel_surf_alignment(fb, plane);
 
@@ -2755,9 +2755,10 @@ intel_find_initial_plane_obj(struct intel_crtc *intel_crtc,
 	return;
 
 valid_fb:
+	intel_crtc->initial_rotation = plane_config->rotation;
 	mutex_lock(&dev->struct_mutex);
 	intel_state->vma =
-		intel_pin_and_fence_fb_obj(fb, primary->state->rotation);
+		intel_pin_and_fence_fb_obj(fb, intel_crtc->initial_rotation);
 	mutex_unlock(&dev->struct_mutex);
 	if (IS_ERR(intel_state->vma)) {
 		DRM_ERROR("failed to pin boot fb on pipe %d: %li\n",
@@ -2842,7 +2843,7 @@ static int skl_max_plane_width(const struct drm_framebuffer *fb, int plane,
 static int skl_check_main_surface(struct intel_plane_state *plane_state)
 {
 	const struct drm_framebuffer *fb = plane_state->base.fb;
-	unsigned int rotation = plane_state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(plane_state);
 	int x = plane_state->base.src.x1 >> 16;
 	int y = plane_state->base.src.y1 >> 16;
 	int w = drm_rect_width(&plane_state->base.src) >> 16;
@@ -2900,7 +2901,7 @@ static int skl_check_main_surface(struct intel_plane_state *plane_state)
 static int skl_check_nv12_aux_surface(struct intel_plane_state *plane_state)
 {
 	const struct drm_framebuffer *fb = plane_state->base.fb;
-	unsigned int rotation = plane_state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(plane_state);
 	int max_width = skl_max_plane_width(fb, 1, rotation);
 	int max_height = 4096;
 	int x = plane_state->base.src.x1 >> 17;
@@ -2929,7 +2930,7 @@ static int skl_check_nv12_aux_surface(struct intel_plane_state *plane_state)
 int skl_check_plane_surface(struct intel_plane_state *plane_state)
 {
 	const struct drm_framebuffer *fb = plane_state->base.fb;
-	unsigned int rotation = plane_state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(plane_state);
 	int ret;
 
 	if (!plane_state->base.visible)
@@ -2969,7 +2970,7 @@ static u32 i9xx_plane_ctl(const struct intel_crtc_state *crtc_state,
 		to_i915(plane_state->base.plane->dev);
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
-	unsigned int rotation = plane_state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(plane_state);
 	u32 dspcntr;
 
 	dspcntr = DISPLAY_PLANE_ENABLE | DISPPLANE_GAMMA_ENABLE;
@@ -3044,7 +3045,7 @@ int i9xx_check_plane_surface(struct intel_plane_state *plane_state)
 
 	/* HSW/BDW do this automagically in hardware */
 	if (!IS_HASWELL(dev_priv) && !IS_BROADWELL(dev_priv)) {
-		unsigned int rotation = plane_state->base.rotation;
+		unsigned int rotation = intel_plane_get_rotation(plane_state);
 		int src_w = drm_rect_width(&plane_state->base.src) >> 16;
 		int src_h = drm_rect_height(&plane_state->base.src) >> 16;
 
@@ -3332,7 +3333,7 @@ static void skylake_update_primary_plane(struct drm_plane *plane,
 	enum plane_id plane_id = to_intel_plane(plane)->id;
 	enum pipe pipe = to_intel_plane(plane)->pipe;
 	u32 plane_ctl = plane_state->ctl;
-	unsigned int rotation = plane_state->base.rotation;
+	unsigned int rotation = intel_plane_get_rotation(plane_state);
 	u32 stride = skl_plane_stride(fb, 0, rotation);
 	u32 surf_addr = plane_state->main.offset;
 	int scaler_id = plane_state->scaler_id;
@@ -4700,7 +4701,7 @@ static int skl_update_scaler_plane(struct intel_crtc_state *crtc_state,
 	ret = skl_update_scaler(crtc_state, force_detach,
 				drm_plane_index(&intel_plane->base),
 				&plane_state->scaler_id,
-				plane_state->base.rotation,
+				intel_plane_get_rotation(plane_state),
 				drm_rect_width(&plane_state->base.src) >> 16,
 				drm_rect_height(&plane_state->base.src) >> 16,
 				drm_rect_width(&plane_state->base.dst),
@@ -7347,6 +7348,9 @@ i9xx_get_initial_plane_config(struct intel_crtc *crtc,
 			plane_config->tiling = I915_TILING_X;
 			fb->modifier = I915_FORMAT_MOD_X_TILED;
 		}
+
+		if (val & DISPPLANE_ROTATE_180)
+			plane_config->rotation = DRM_ROTATE_180;
 	}
 
 	pixel_format = val & DISPPLANE_PIXFORMAT_MASK;
@@ -8396,6 +8400,9 @@ skylake_get_initial_plane_config(struct intel_crtc *crtc,
 		goto error;
 	}
 
+	if ((val & PLANE_CTL_ROTATE_MASK) == PLANE_CTL_ROTATE_180)
+		plane_config->rotation = DRM_ROTATE_180;
+
 	base = I915_READ(PLANE_SURF(pipe, 0)) & 0xfffff000;
 	plane_config->base = base;
 
@@ -8481,6 +8488,9 @@ ironlake_get_initial_plane_config(struct intel_crtc *crtc,
 			plane_config->tiling = I915_TILING_X;
 			fb->modifier = I915_FORMAT_MOD_X_TILED;
 		}
+
+		if (val & DISPPLANE_ROTATE_180)
+			plane_config->rotation = DRM_ROTATE_180;
 	}
 
 	pixel_format = val & DISPPLANE_PIXFORMAT_MASK;
@@ -9239,7 +9249,7 @@ static u32 i9xx_cursor_ctl(const struct intel_crtc_state *crtc_state,
 		return 0;
 	}
 
-	if (plane_state->base.rotation & DRM_ROTATE_180)
+	if (intel_plane_get_rotation(plane_state) & DRM_ROTATE_180)
 		cntl |= CURSOR_ROTATE_180;
 
 	return cntl;
@@ -9270,6 +9280,25 @@ static void i9xx_update_cursor(struct drm_crtc *crtc, u32 base,
 	intel_crtc->cursor_base = base;
 }
 
+static void intel_crtc_get_cursor_pos(struct drm_crtc *crtc,
+				      const struct drm_plane_state *cursor,
+				      int *x, int *y)
+{
+	struct drm_plane_state *primary = crtc->primary->state;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+
+	*x = cursor->crtc_x;
+	*y = cursor->crtc_y;
+
+	if (!primary)
+		return;
+
+	if (intel_crtc->initial_rotation == DRM_ROTATE_180) {
+		*x = primary->crtc_w - cursor->crtc_w - *x;
+		*y = primary->crtc_h - cursor->crtc_h - *y;
+	}
+}
+
 /* If no-part of the cursor is visible on the framebuffer, then the GPU may hang... */
 static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 				     const struct intel_plane_state *plane_state)
@@ -9277,14 +9306,13 @@ static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	int x, y, pipe = intel_crtc->pipe;
 	u32 base = intel_crtc->cursor_addr;
 	unsigned long irqflags;
 	u32 pos = 0;
 
 	if (plane_state) {
-		int x = plane_state->base.crtc_x;
-		int y = plane_state->base.crtc_y;
+		intel_crtc_get_cursor_pos(crtc, &plane_state->base, &x, &y);
 
 		if (x < 0) {
 			pos |= CURSOR_POS_SIGN << CURSOR_X_SHIFT;
@@ -9300,7 +9328,7 @@ static void intel_crtc_update_cursor(struct drm_crtc *crtc,
 
 		/* ILK+ do this automagically */
 		if (HAS_GMCH_DISPLAY(dev_priv) &&
-		    plane_state->base.rotation & DRM_ROTATE_180) {
+		    intel_plane_get_rotation(plane_state) & DRM_ROTATE_180) {
 			base += (plane_state->base.crtc_h *
 				 plane_state->base.crtc_w - 1) * 4;
 		}
@@ -10514,6 +10542,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	enum pipe pipe = intel_crtc->pipe;
 	struct intel_flip_work *work;
 	struct intel_engine_cs *engine;
+	unsigned int rotation;
 	bool mmio_flip;
 	struct drm_i915_gem_request *request;
 	struct i915_vma *vma;
@@ -10620,7 +10649,8 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 
 	mmio_flip = use_mmio_flip(engine, obj);
 
-	vma = intel_pin_and_fence_fb_obj(fb, primary->state->rotation);
+	rotation = intel_plane_get_rotation(intel_state);
+	vma = intel_pin_and_fence_fb_obj(fb, rotation);
 	if (IS_ERR(vma)) {
 		ret = PTR_ERR(vma);
 		goto cleanup_pending;
@@ -10630,7 +10660,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	intel_state->vma = vma;
 
 	work->gtt_offset = i915_ggtt_offset(vma) + intel_crtc->dspaddr_offset;
-	work->rotation = crtc->primary->state->rotation;
+	work->rotation = rotation;
 
 	/*
 	 * There's the potential that the next frame will not be compatible with
@@ -13154,9 +13184,12 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 				return ret;
 			}
 		} else {
+			unsigned int rotation;
 			struct i915_vma *vma;
 
-			vma = intel_pin_and_fence_fb_obj(fb, new_state->rotation);
+			rotation = intel_plane_get_rotation(
+					to_intel_plane_state(new_state));
+			vma = intel_pin_and_fence_fb_obj(fb, rotation);
 			if (IS_ERR(vma)) {
 				DRM_DEBUG_KMS("failed to pin object\n");
 				return PTR_ERR(vma);
@@ -13467,9 +13500,12 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 			goto out_unlock;
 		}
 	} else {
+		unsigned int rotation;
 		struct i915_vma *vma;
 
-		vma = intel_pin_and_fence_fb_obj(fb, new_plane_state->rotation);
+		rotation = intel_plane_get_rotation(
+					to_intel_plane_state(new_plane_state));
+		vma = intel_pin_and_fence_fb_obj(fb, rotation);
 		if (IS_ERR(vma)) {
 			DRM_DEBUG_KMS("failed to pin object\n");
 
@@ -15018,7 +15054,9 @@ int intel_modeset_init(struct drm_device *dev)
 	drm_modeset_unlock_all(dev);
 
 	for_each_intel_crtc(dev, crtc) {
-		struct intel_initial_plane_config plane_config = {};
+		struct intel_initial_plane_config plane_config = {
+			.rotation = DRM_ROTATE_0
+		};
 
 		if (!crtc->active)
 			continue;

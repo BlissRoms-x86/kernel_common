@@ -429,6 +429,7 @@ struct intel_initial_plane_config {
 	unsigned int tiling;
 	int size;
 	u32 base;
+	uint8_t rotation; /* DRM_ROTATE_* */
 };
 
 #define SKL_MIN_SRC_W 8
@@ -758,6 +759,12 @@ struct intel_crtc {
 	struct intel_flip_work *flip_work;
 
 	atomic_t unpin_work_count;
+
+	/*
+	 * Initial DRM_ROTATE_* as read back from the hardware at init, this
+	 * is used to compensate for e.g. upside-down mounted lcd-panels.
+	 */
+	uint8_t initial_rotation;
 
 	/* Display surface base address adjustement for pageflips. Note that on
 	 * gen4+ this only adjusts up to a tile, offsets within a tile are
@@ -1448,6 +1455,31 @@ int skl_max_scale(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state);
 static inline u32 intel_plane_ggtt_offset(const struct intel_plane_state *state)
 {
 	return i915_ggtt_offset(state->vma);
+}
+
+static inline unsigned int
+intel_plane_get_rotation(const struct intel_plane_state *plane_state)
+{
+	unsigned int rotation = plane_state->base.rotation;
+	unsigned int new_rotation = DRM_ROTATE_0;
+	struct intel_crtc *intel_crtc;
+
+	if (!plane_state->base.crtc)
+		return rotation;
+
+	/* We only support an initial rotation of DRM_ROTATE_180 for now */
+	intel_crtc = to_intel_crtc(plane_state->base.crtc);
+	if (intel_crtc->initial_rotation != DRM_ROTATE_180)
+		return rotation;
+
+	switch (rotation & DRM_ROTATE_MASK) {
+	case DRM_ROTATE_0:	new_rotation = DRM_ROTATE_180;	break;
+	case DRM_ROTATE_90:	new_rotation = DRM_ROTATE_270;	break;
+	case DRM_ROTATE_180:	new_rotation = DRM_ROTATE_0;	break;
+	case DRM_ROTATE_270:	new_rotation = DRM_ROTATE_90;	break;
+	}
+
+	return (rotation & ~DRM_ROTATE_MASK) | new_rotation;
 }
 
 u32 skl_plane_ctl(const struct intel_crtc_state *crtc_state,
