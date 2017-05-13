@@ -115,24 +115,58 @@
  *
  * - EXTCON_PROP_USB_VBUS
  * @type:	integer (intval)
- * @value:	0 (low) or 1 (high)
- * @default:	0 (low)
+ * @value:	0 (USB_VBUS_LOW) or 1 (USB_VBUS_HIGH)
+ * @default:	0 (USB_VBUS_LOW)
  * - EXTCON_PROP_USB_TYPEC_POLARITY
  * @type:	integer (intval)
- * @value:	0 (normal) or 1 (flip)
- * @default:	0 (normal)
+ * @value:	0 (USB_TYPEC_POLARITY_NORMAL) or 1 (USB_TYPEC_POLARITY_FLIP)
+ * @default:	0 (USB_TYPEC_POLARITY_NORMAL)
  * - EXTCON_PROP_USB_SS (SuperSpeed)
  * @type:       integer (intval)
- * @value:      0 (USB/USB2) or 1 (USB3)
- * @default:    0 (USB/USB2)
- *
+ * @value:      0 (USB_SS_NONE for USB/USB2) or 1 (USB_SS for USB3)
+ * @default:    0 (USB_SS_NONE for USB/USB2)
+ * - EXTCON_PROP_USB_PLUG
+ * @type:	integer (intval)
+ * @value:	enum extcon_prop_usb_plug
+ * @default:	0 (USB_PLUG_UNKNOWN)
  */
 #define EXTCON_PROP_USB_VBUS		0
 #define EXTCON_PROP_USB_TYPEC_POLARITY	1
 #define EXTCON_PROP_USB_SS		2
+#define EXTCON_PROP_USB_PLUG		3
+
+enum extcon_prop_usb_vbus {
+	USB_VBUS_LOW = 0,
+	USB_VBUS_HIGH,
+};
+
+enum extcon_prop_usb_typec_polarity {
+	USB_TYPEC_POLARITY_NORMAL = 0,
+	USB_TYPEC_POLARITY_FLIP,
+};
+
+enum extcon_prop_usb_ss {
+	USB_SS_NONE = 0,
+	USB_SS,
+};
+
+enum extcon_prop_usb_plug {
+	USB_PLUG_UNKNOWN = 0,
+	USB_TYPE_A,
+	USB_TYPE_A_SS,
+	USB_TYPE_B,
+	USB_TYPE_B_SS,
+	USB_MINI_A,
+	USB_MINI_AB,
+	USB_MINI_B,
+	USB_MICRO_AB,
+	USB_MICRO_B,
+	USB_MICRO_B_SS,
+	USB_TYPE_C,
+};
 
 #define EXTCON_PROP_USB_MIN		0
-#define EXTCON_PROP_USB_MAX		2
+#define EXTCON_PROP_USB_MAX		3
 #define EXTCON_PROP_USB_CNT	(EXTCON_PROP_USB_MAX - EXTCON_PROP_USB_MIN + 1)
 
 /* Properties of EXTCON_TYPE_CHG. */

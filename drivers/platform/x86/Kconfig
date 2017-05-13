@@ -669,6 +669,13 @@ config MSI_WMI
 	 To compile this driver as a module, choose M here: the module will
 	 be called msi-wmi.
 
+config PEAQ_WMI
+	tristate "PEAQ 2-in-1 WMI hotkey driver"
+	depends on ACPI_WMI
+	depends on INPUT
+	help
+	 Say Y here if you want to support WMI-based hotkeys on PEAQ 2-in-1s.
+
 config TOPSTAR_LAPTOP
 	tristate "Topstar Laptop Extras"
 	depends on ACPI
@@ -898,6 +905,16 @@ config INTEL_PMC_CORE
 	  Supported features:
 		- SLP_S0_RESIDENCY counter.
 
+config INTEL_INT0002
+	tristate "Intel INT0002 Virtual GPIO ACPI device driver"
+	depends on X86 && ACPI
+	---help---
+	  Some peripherals on Baytrail and Cherrytrail platforms signal
+	  PME to the PMC to wakeup the system. When this happens software
+	  needs to explicitly clear the interrupt source to avoid an IRQ
+	  storm on IRQ 9. This is modelled in ACPI through the INT0002
+	  ACPI device. This driver implements the clearing of the IRQ.
+
 config IBM_RTL
 	tristate "Device driver to enable PRTL support"
 	depends on PCI
@@ -1098,6 +1115,14 @@ config INTEL_TURBO_MAX_3
 	  CPU with higher performance to schedule tasks.
 	  This driver is only required when the system is not using Hardware
 	  P-States (HWP). In HWP mode, priority can be read from ACPI tables.
+
+config INTEL_CHT_USB_MUX
+	tristate "Intel Cherrytrail USB mux driver"
+	depends on ACPI && X86 && EXTCON
+	help
+	  This driver adds support for the internal USB mux for muxing the OTG
+	  USB data lines between the xHCI host controller and the dwc3 gadget
+	  controller found on Intel Cherrytrail SoCs.
 
 config SILEAD_DMI
 	bool "Tablets with Silead touchscreens"

@@ -253,12 +253,20 @@ static int axp20x_pek_probe_input_device(struct axp20x_pek *axp20x_pek,
 		return error;
 	}
 
+	if (axp20x_pek->axp20x->variant == AXP288_ID)
+		enable_irq_wake(axp20x_pek->irq_dbr);
+
 	return 0;
 }
 
 static int axp20x_pek_probe(struct platform_device *pdev)
 {
 	struct axp20x_pek *axp20x_pek;
+	bool register_input_device = true;
+#ifdef CONFIG_ACPI
+	unsigned long long hrv = 0;
+	acpi_status status;
+#endif
 	int error;
 
 	axp20x_pek = devm_kzalloc(&pdev->dev, sizeof(struct axp20x_pek),
@@ -268,13 +276,26 @@ static int axp20x_pek_probe(struct platform_device *pdev)
 
 	axp20x_pek->axp20x = dev_get_drvdata(pdev->dev.parent);
 
-	/*
-	 * Do not register the input device if there is an "INTCFD9"
-	 * gpio button ACPI device, that handles the power button too,
-	 * and otherwise we end up reporting all presses twice.
-	 */
-	if (!acpi_dev_found("INTCFD9") ||
-	    !IS_ENABLED(CONFIG_INPUT_SOC_BUTTON_ARRAY)) {
+#ifdef CONFIG_ACPI
+	if (axp20x_pek->axp20x->variant == AXP288_ID) {
+		status = acpi_evaluate_integer(ACPI_HANDLE(pdev->dev.parent),
+					       "_HRV", NULL, &hrv);
+		if (ACPI_FAILURE(status))
+			dev_err(&pdev->dev, "Failed to get PMIC hardware revision\n");
+
+		/*
+		 * On Cherry Trail platforms (hrv == 3), do not register the
+		 * input device if there is an "INTCFD9" or "ACPI0011" gpio
+		 * button ACPI device, as that handles the power button too,
+		 * and otherwise we end up reporting all presses twice.
+		 */
+		if (hrv == 3 && (acpi_dev_found("INTCFD9") ||
+				 acpi_dev_found("ACPI0011")))
+			register_input_device = false;
+	}
+#endif
+
+	if (register_input_device) {
 		error = axp20x_pek_probe_input_device(axp20x_pek, pdev);
 		if (error)
 			return error;
@@ -301,10 +322,35 @@ static int axp20x_pek_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int __maybe_unused axp20x_pek_resume_noirq(struct device *dev)
+{
+	struct axp20x_pek *axp20x_pek = dev_get_drvdata(dev);
+
+	if (axp20x_pek->axp20x->variant != AXP288_ID)
+		return 0;
+
+	/*
+	 * Clear interrupts from button presses during suspend, to avoid
+	 * a wakeup power-button press getting reported to userspace.
+	 */
+	regmap_write(axp20x_pek->axp20x->regmap,
+		     AXP20X_IRQ1_STATE + AXP288_IRQ_POKN / 8,
+		     BIT(AXP288_IRQ_POKN % 8));
+
+	return 0;
+}
+
+const struct dev_pm_ops axp20x_pek_pm_ops = {
+#ifdef CONFIG_PM_SLEEP
+	.resume_noirq = axp20x_pek_resume_noirq,
+#endif
+};
+
 static struct platform_driver axp20x_pek_driver = {
 	.probe		= axp20x_pek_probe,
 	.driver		= {
 		.name		= "axp20x-pek",
+		.pm		= &axp20x_pek_pm_ops,
 	},
 };
 module_platform_driver(axp20x_pek_driver);

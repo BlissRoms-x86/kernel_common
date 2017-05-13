@@ -160,6 +160,11 @@ config MFD_AXP20X_I2C
 	  components like regulators or the PEK (Power Enable Key) under the
 	  corresponding menus.
 
+	  Note on x86 this provides an ACPI OpRegion, so this must be 'y'
+	  (builtin) and not a module, as the OpRegion must be available as
+	  soon as possible. For the same reason the i2c bus driver options
+	  I2C_DESIGNWARE_PLATFORM and I2C_DESIGNWARE_BAYTRAIL must be 'y' too.
+
 config MFD_AXP20X_RSB
 	tristate "X-Powers AXP series PMICs with RSB"
 	select MFD_AXP20X
@@ -447,14 +452,21 @@ config LPC_SCH
 	  System Management Bus and General Purpose I/O.
 
 config INTEL_SOC_PMIC
-	bool "Support for Crystal Cove PMIC"
-	depends on GPIOLIB
-	depends on I2C=y
+	# This is a bool as it provides an ACPI Opregion which must be
+	# available as soon as possible
+	bool "Support for Intel Crystal Cove PMIC"
+	select GPIOLIB
 	select MFD_CORE
 	select REGMAP_I2C
 	select REGMAP_IRQ
+	# In order for the ACPI Opregion to be available the i2c-adapter
+	# driver must be builtin too, select it and its deps
+	depends on HAS_IOMEM
+	select I2C
+	select COMMON_CLK
+	select I2C_DESIGNWARE_PLATFORM
 	help
-	  Select this option to enable support for Crystal Cove PMIC
+	  Select this option to enable support for the Crystal Cove PMIC
 	  on some Intel SoC systems. The PMIC provides ADC, GPIO,
 	  thermal, charger and related power management functions
 	  on these systems.
@@ -469,6 +481,23 @@ config INTEL_SOC_PMIC_BXTWC
 	  on Intel Broxton systems. The PMIC provides ADC, GPIO,
 	  thermal, charger and related power management functions
 	  on these systems.
+
+config INTEL_SOC_PMIC_CHTWC
+	# This is a bool as it provides an ACPI Opregion which must be
+	# available as soon as possible
+	bool "Support for Intel Cherry Trail Whiskey Cove PMIC"
+	depends on ACPI && HAS_IOMEM
+	select MFD_CORE
+	select REGMAP_I2C
+	select REGMAP_IRQ
+	# In order for the ACPI Opregion to be available the i2c-adapter
+	# driver must be builtin too, select it and its deps
+	select I2C
+	select COMMON_CLK
+	select I2C_DESIGNWARE_PLATFORM
+	help
+	  Select this option to enable support for the Intel Cherry Trail
+	  Whiskey Cove PMIC found on some Intel Cherry Trail systems.
 
 config MFD_INTEL_LPSS
 	tristate

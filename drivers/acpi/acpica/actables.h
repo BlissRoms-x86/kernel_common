@@ -124,13 +124,16 @@ acpi_tb_install_standard_table(acpi_physical_address address,
 void acpi_tb_uninstall_table(struct acpi_table_desc *table_desc);
 
 acpi_status
-acpi_tb_load_table(u32 table_index, struct acpi_namespace_node *parent_node);
+acpi_tb_load_table(u32 *table_index,
+		   u8 reload, struct acpi_namespace_node *parent_node);
 
 acpi_status
 acpi_tb_install_and_load_table(acpi_physical_address address,
 			       u8 flags, u8 override, u32 *table_index);
 
 acpi_status acpi_tb_unload_table(u32 table_index);
+
+void acpi_tb_notify_table(u32 event, void *table);
 
 void acpi_tb_terminate(void);
 
@@ -160,7 +163,7 @@ void acpi_tb_check_dsdt_header(void);
 
 struct acpi_table_header *acpi_tb_copy_dsdt(u32 table_index);
 
-void
+acpi_status
 acpi_tb_install_table_with_override(struct acpi_table_desc *new_table_desc,
 				    u8 override, u32 *table_index);
 
