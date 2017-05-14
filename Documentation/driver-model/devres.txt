@@ -332,6 +332,11 @@ MEM
 MFD
   devm_mfd_add_devices()
 
+MUX
+  devm_mux_chip_alloc()
+  devm_mux_chip_register()
+  devm_mux_control_get()
+
 PCI
   pcim_enable_device()	: after success, all PCI ops become managed
   pcim_pin_device()	: keep PCI device enabled after release
