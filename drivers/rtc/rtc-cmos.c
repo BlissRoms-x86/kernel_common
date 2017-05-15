@@ -929,6 +929,7 @@ static int cmos_aie_poweroff(struct device *dev)
 
 static int cmos_suspend(struct device *dev)
 {
+#if 0
 	struct cmos_rtc	*cmos = dev_get_drvdata(dev);
 	unsigned char	tmp;
 
@@ -963,6 +964,9 @@ static int cmos_suspend(struct device *dev)
 	dev_dbg(dev, "suspend%s, ctrl %02x\n",
 			(tmp & RTC_AIE) ? ", alarm may wake" : "",
 			tmp);
+#endif
+	CMOS_WRITE(CMOS_READ(RTC_CONTROL) & ~RTC_IRQMASK, RTC_CONTROL);
+	hpet_mask_rtc_irq_bit(RTC_IRQMASK);
 
 	return 0;
 }
