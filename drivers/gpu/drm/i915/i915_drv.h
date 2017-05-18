@@ -3084,6 +3084,7 @@ extern bool intel_uncore_arm_unclaimed_mmio_detection(struct drm_i915_private *d
 extern void intel_uncore_fini(struct drm_i915_private *dev_priv);
 extern void intel_uncore_suspend(struct drm_i915_private *dev_priv);
 extern void intel_uncore_resume_early(struct drm_i915_private *dev_priv);
+extern void intel_uncore_runtime_resume(struct drm_i915_private *dev_priv);
 const char *intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id);
 void intel_uncore_forcewake_get(struct drm_i915_private *dev_priv,
 				enum forcewake_domains domains);
