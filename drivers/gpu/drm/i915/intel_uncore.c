@@ -252,6 +252,9 @@ static void intel_uncore_forcewake_reset(struct drm_i915_private *dev_priv,
 	int retry_count = 100;
 	enum forcewake_domains fw, active_domains;
 
+	/* Acquire the PUNIT->PMIC bus before modifying forcewake settings */
+	iosf_mbi_punit_acquire();
+
 	/* Hold uncore.lock across reset to prevent any register access
 	 * with forcewake not set correctly. Wait until all pending
 	 * timers are run before holding.
@@ -308,6 +311,7 @@ static void intel_uncore_forcewake_reset(struct drm_i915_private *dev_priv,
 		assert_forcewakes_inactive(dev_priv);
 
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
+	iosf_mbi_punit_release();
 }
 
 static u64 gen9_edram_size(struct drm_i915_private *dev_priv)
