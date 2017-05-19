@@ -72,6 +72,10 @@ static int xhci_pci_reinit(struct xhci_hcd *xhci, struct pci_dev *pdev)
 	 * new extended capabilities.
 	 */
 
+	/* Init Intel vendor defined extended capability */
+	if (pdev->vendor == PCI_VENDOR_ID_INTEL)
+		xhci_intel_cap_init(xhci);
+
 	/* PCI Memory-Write-Invalidate cycle support is optional (uncommon) */
 	if (!pci_set_mwi(pdev))
 		xhci_dbg(xhci, "MWI active\n");

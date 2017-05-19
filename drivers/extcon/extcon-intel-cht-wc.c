@@ -15,6 +15,7 @@
  * more details.
  */
 
+#include <linux/acpi.h>
 #include <linux/extcon.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -88,6 +89,7 @@ static const unsigned int cht_wc_extcon_cables[] = {
 	EXTCON_CHG_USB_CDP,
 	EXTCON_CHG_USB_DCP,
 	EXTCON_CHG_USB_ACA,
+	EXTCON_CHG_USB_FAST,
 	EXTCON_NONE,
 };
 
@@ -95,6 +97,9 @@ struct cht_wc_extcon_data {
 	struct device *dev;
 	struct regmap *regmap;
 	struct extcon_dev *edev;
+	struct extcon_dev *usbc;
+	struct notifier_block usbc_nb;
+	struct work_struct work;
 	unsigned int previous_cable;
 	bool usb_host;
 };
@@ -125,7 +130,7 @@ static int cht_wc_extcon_get_charger(struct cht_wc_extcon_data *ext,
 		ret = regmap_read(ext->regmap, CHT_WC_USBSRC, &usbsrc);
 		if (ret) {
 			dev_err(ext->dev, "Error reading usbsrc: %d\n", ret);
-			return ret;
+			return EXTCON_CHG_USB_SDP; /* Save fallback */
 		}
 
 		status = usbsrc & CHT_WC_USBSRC_STS_MASK;
@@ -196,20 +201,64 @@ static void cht_wc_extcon_set_5v_boost(struct cht_wc_extcon_data *ext,
 }
 
 /* Small helper to sync EXTCON_CHG_USB_SDP and EXTCON_USB state */
-static void cht_wc_extcon_set_state(struct cht_wc_extcon_data *ext,
-				    unsigned int cable, bool state)
+static void cht_wc_extcon_set_cable_state(struct cht_wc_extcon_data *ext,
+					  unsigned int cable, bool state)
 {
 	extcon_set_state_sync(ext->edev, cable, state);
 	if (cable == EXTCON_CHG_USB_SDP)
 		extcon_set_state_sync(ext->edev, EXTCON_USB, state);
 }
 
-static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
+static void cht_wc_extcon_set_state(struct cht_wc_extcon_data *ext,
+				    unsigned int new_cable)
 {
+	if (new_cable == EXTCON_NONE && !ext->usb_host) {
+		/* Route D+ and D- to PMIC for future charger detection */
+		cht_wc_extcon_set_phymux(ext, MUX_SEL_PMIC);
+	} else {
+		/* Route D+ and D- to SoC for the host or gadget controller */
+		cht_wc_extcon_set_phymux(ext, MUX_SEL_SOC);
+	}
+
+	if (new_cable != ext->previous_cable) {
+		cht_wc_extcon_set_cable_state(ext, new_cable, true);
+		cht_wc_extcon_set_cable_state(ext, ext->previous_cable, false);
+		ext->previous_cable = new_cable;
+	}
+
+	extcon_set_state_sync(ext->edev, EXTCON_USB_HOST, ext->usb_host);
+}
+
+static void cht_wc_extcon_usb_c_event(struct work_struct *work)
+{
+	struct cht_wc_extcon_data *ext =
+		container_of(work, struct cht_wc_extcon_data, work);
+	unsigned int cable = EXTCON_NONE;
+
+	if (extcon_get_state(ext->usbc, EXTCON_CHG_USB_SDP) > 0) {
+		/*
+		 * USB-C to USB-A cable ? Try BC1.2 charger detection from
+		 * WC PMIC, ignore charger detection errors.
+		 */
+		cable = cht_wc_extcon_get_charger(ext, true);
+	} else if (extcon_get_state(ext->usbc, EXTCON_CHG_USB_CDP) > 0) {
+		cable = EXTCON_CHG_USB_CDP;
+	} else if (extcon_get_state(ext->usbc, EXTCON_CHG_USB_FAST) > 0) {
+		cable = EXTCON_CHG_USB_FAST;
+	}
+
+	ext->usb_host = (extcon_get_state(ext->usbc, EXTCON_USB_HOST) > 0);
+	cht_wc_extcon_set_state(ext, cable);
+}
+
+static void cht_wc_extcon_pwrsrc_event(struct work_struct *work)
+{
+	struct cht_wc_extcon_data *ext =
+		container_of(work, struct cht_wc_extcon_data, work);
 	int ret, pwrsrc_sts, id;
 	unsigned int cable = EXTCON_NONE;
 	/* Ignore errors in host mode, as the 5v boost converter is on then */
-	bool ignore_get_charger_errors = ext->usb_host;
+	bool ignore_get_charger_err = ext->usb_host;
 
 	ret = regmap_read(ext->regmap, CHT_WC_PWRSRC_STS, &pwrsrc_sts);
 	if (ret) {
@@ -218,35 +267,13 @@ static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
 	}
 
 	id = cht_wc_extcon_get_id(ext, pwrsrc_sts);
-	if (id == USB_ID_GND) {
-		/* The 5v boost causes a false VBUS / SDP detect, skip */
-		goto charger_det_done;
-	}
 
-	/* Plugged into a host/charger or not connected? */
-	if (!(pwrsrc_sts & CHT_WC_PWRSRC_VBUS)) {
-		/* Route D+ and D- to PMIC for future charger detection */
-		cht_wc_extcon_set_phymux(ext, MUX_SEL_PMIC);
-		goto set_state;
-	}
-
-	ret = cht_wc_extcon_get_charger(ext, ignore_get_charger_errors);
-	if (ret >= 0)
-		cable = ret;
-
-charger_det_done:
-	/* Route D+ and D- to SoC for the host or gadget controller */
-	cht_wc_extcon_set_phymux(ext, MUX_SEL_SOC);
-
-set_state:
-	if (cable != ext->previous_cable) {
-		cht_wc_extcon_set_state(ext, cable, true);
-		cht_wc_extcon_set_state(ext, ext->previous_cable, false);
-		ext->previous_cable = cable;
-	}
+	/* When id == gnd the 5v boost causes a false VBUS detect */
+	if (id != USB_ID_GND && (pwrsrc_sts & CHT_WC_PWRSRC_VBUS))
+		cable = cht_wc_extcon_get_charger(ext, ignore_get_charger_err);
 
 	ext->usb_host = ((id == USB_ID_GND) || (id == USB_RID_A));
-	extcon_set_state_sync(ext->edev, EXTCON_USB_HOST, ext->usb_host);
+	cht_wc_extcon_set_state(ext, cable);
 }
 
 static irqreturn_t cht_wc_extcon_isr(int irq, void *data)
@@ -260,7 +287,7 @@ static irqreturn_t cht_wc_extcon_isr(int irq, void *data)
 		return IRQ_NONE;
 	}
 
-	cht_wc_extcon_pwrsrc_event(ext);
+	schedule_work(&ext->work);
 
 	ret = regmap_write(ext->regmap, CHT_WC_PWRSRC_IRQ, irqs);
 	if (ret) {
@@ -269,6 +296,17 @@ static irqreturn_t cht_wc_extcon_isr(int irq, void *data)
 	}
 
 	return IRQ_HANDLED;
+}
+
+static int cht_wc_extcon_usbc_evt(struct notifier_block *nb,
+				  unsigned long event, void *param)
+{
+	struct cht_wc_extcon_data *ext =
+		container_of(nb, struct cht_wc_extcon_data, usbc_nb);
+
+	schedule_work(&ext->work);
+
+	return NOTIFY_OK;
 }
 
 static int cht_wc_extcon_sw_control(struct cht_wc_extcon_data *ext, bool enable)
@@ -301,6 +339,15 @@ static int cht_wc_extcon_probe(struct platform_device *pdev)
 	ext->dev = &pdev->dev;
 	ext->regmap = pmic->regmap;
 	ext->previous_cable = EXTCON_NONE;
+
+	if (acpi_dev_present("INT33FE", NULL, -1)) {
+		ext->usbc = extcon_get_extcon_dev("fusb302");
+		if (!ext->usbc)
+			return -EPROBE_DEFER;
+
+		dev_info(&pdev->dev,
+			 "Using FUSB302 extcon for USB Type-C cable info\n");
+	}
 
 	/* Initialize extcon device */
 	ext->edev = devm_extcon_dev_allocate(ext->dev, cht_wc_extcon_cables);
@@ -337,24 +384,39 @@ static int cht_wc_extcon_probe(struct platform_device *pdev)
 	/* Route D+ and D- to PMIC for initial charger detection */
 	cht_wc_extcon_set_phymux(ext, MUX_SEL_PMIC);
 
-	/* Get initial state */
-	cht_wc_extcon_pwrsrc_event(ext);
+	if (ext->usbc) {
+		INIT_WORK(&ext->work, cht_wc_extcon_usb_c_event);
+		ext->usbc_nb.notifier_call = cht_wc_extcon_usbc_evt;
+		ret = devm_extcon_register_notifier_all(&pdev->dev, ext->usbc,
+							&ext->usbc_nb);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"Error registering usbc extcon notifier: %d\n",
+				ret);
+			goto disable_sw_control;
+		}
+	} else {
+		INIT_WORK(&ext->work, cht_wc_extcon_pwrsrc_event);
+		ret = devm_request_threaded_irq(ext->dev, irq, NULL,
+						cht_wc_extcon_isr, IRQF_ONESHOT,
+						pdev->name, ext);
+		if (ret) {
+			dev_err(ext->dev, "Error requesting irq: %d\n", ret);
+			goto disable_sw_control;
+		}
 
-	ret = devm_request_threaded_irq(ext->dev, irq, NULL, cht_wc_extcon_isr,
-					IRQF_ONESHOT, pdev->name, ext);
-	if (ret) {
-		dev_err(ext->dev, "Error requesting interrupt: %d\n", ret);
-		goto disable_sw_control;
-	}
-
-	/* Unmask irqs */
-	ret = regmap_write(ext->regmap, CHT_WC_PWRSRC_IRQ_MASK,
+		/* Unmask irqs */
+		ret = regmap_write(ext->regmap, CHT_WC_PWRSRC_IRQ_MASK,
 			   (int)~(CHT_WC_PWRSRC_VBUS | CHT_WC_PWRSRC_ID_GND |
 				  CHT_WC_PWRSRC_ID_FLOAT));
-	if (ret) {
-		dev_err(ext->dev, "Error writing irq-mask: %d\n", ret);
-		goto disable_sw_control;
+		if (ret) {
+			dev_err(ext->dev, "Error writing irq-mask: %d\n", ret);
+			goto disable_sw_control;
+		}
 	}
+
+	/* Get initial state */
+	schedule_work(&ext->work);
 
 	platform_set_drvdata(pdev, ext);
 

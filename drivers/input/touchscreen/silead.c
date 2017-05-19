@@ -31,6 +31,7 @@
 #include <linux/irq.h>
 #include <linux/regulator/consumer.h>
 
+#include <acpi/acpi_bus.h>
 #include <asm/unaligned.h>
 
 #define SILEAD_TS_NAME		"silead_ts"
@@ -494,12 +495,21 @@ static int silead_ts_probe(struct i2c_client *client,
 	if (error)
 		return error;
 
-	/* Power GPIO pin */
-	data->gpio_power = devm_gpiod_get_optional(dev, "power", GPIOD_OUT_LOW);
-	if (IS_ERR(data->gpio_power)) {
-		if (PTR_ERR(data->gpio_power) != -EPROBE_DEFER)
-			dev_err(dev, "Shutdown GPIO request failed\n");
-		return PTR_ERR(data->gpio_power);
+	/*
+	 * If device power is not managed by ACPI, get the power_gpio
+	 * and manage it ourselves.
+	 */
+#ifdef CONFIG_ACPI
+	if (!acpi_bus_power_manageable(ACPI_HANDLE(dev)))
+#endif
+	{
+		data->gpio_power = devm_gpiod_get_optional(dev, "power",
+							   GPIOD_OUT_LOW);
+		if (IS_ERR(data->gpio_power)) {
+			if (PTR_ERR(data->gpio_power) != -EPROBE_DEFER)
+				dev_err(dev, "Power GPIO request failed\n");
+			return PTR_ERR(data->gpio_power);
+		}
 	}
 
 	error = silead_ts_setup(client);

@@ -35,6 +35,14 @@ config EXTCON_AXP288
 	  Say Y here to enable support for USB peripheral detection
 	  and USB MUX switching by X-Power AXP288 PMIC.
 
+config EXTCON_FUSB302
+	tristate "FUSB302 USB TYPE-C controller support"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Say Y here to enable support for USB TYPE-C cable detection using
+	  a FUSB302 USB TYPE-C controller.
+
 config EXTCON_GPIO
 	tristate "GPIO extcon support"
 	depends on GPIOLIB || COMPILE_TEST

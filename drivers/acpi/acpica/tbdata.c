@@ -50,6 +50,14 @@
 #define _COMPONENT          ACPI_TABLES
 ACPI_MODULE_NAME("tbdata")
 
+/* Local prototypes */
+static u8
+acpi_tb_compare_tables(struct acpi_table_desc *table_desc, u32 table_index);
+
+static acpi_status
+acpi_tb_validate_table_for_load(u32 *table_index,
+				struct acpi_table_header **out_table);
+
 /*******************************************************************************
  *
  * FUNCTION:    acpi_tb_init_table_descriptor
@@ -64,6 +72,7 @@ ACPI_MODULE_NAME("tbdata")
  * DESCRIPTION: Initialize a new table descriptor
  *
  ******************************************************************************/
+
 void
 acpi_tb_init_table_descriptor(struct acpi_table_desc *table_desc,
 			      acpi_physical_address address,
@@ -770,9 +779,165 @@ void acpi_tb_set_table_loaded_flag(u32 table_index, u8 is_loaded)
 
 /*******************************************************************************
  *
+ * FUNCTION:    acpi_tb_compare_tables
+ *
+ * PARAMETERS:  table_desc          - Table 1 descriptor to be compared
+ *              table_index         - Index of table 2 to be compared
+ *
+ * RETURN:      TRUE if both tables are identical.
+ *
+ * DESCRIPTION: This function compares a table with another table that has
+ *              already been installed in the root table list.
+ *
+ ******************************************************************************/
+
+static u8
+acpi_tb_compare_tables(struct acpi_table_desc *table_desc, u32 table_index)
+{
+	acpi_status status = AE_OK;
+	u8 is_identical;
+	struct acpi_table_header *table;
+	u32 table_length;
+	u8 table_flags;
+
+	status =
+	    acpi_tb_acquire_table(&acpi_gbl_root_table_list.tables[table_index],
+				  &table, &table_length, &table_flags);
+	if (ACPI_FAILURE(status)) {
+		return (FALSE);
+	}
+
+	/*
+	 * Check for a table match on the entire table length,
+	 * not just the header.
+	 */
+	is_identical = (u8)((table_desc->length != table_length ||
+			     memcmp(table_desc->pointer, table, table_length)) ?
+			    FALSE : TRUE);
+
+	/* Release the acquired table */
+
+	acpi_tb_release_table(table, table_length, table_flags);
+	return (is_identical);
+}
+
+/*******************************************************************************
+ *
+ * FUNCTION:    acpi_tb_validate_table_for_load
+ *
+ * PARAMETERS:  table_index         - Index of table
+ *              out_table           - Validated table
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: This function returns failures if a table cannot be loaded.
+ *              For now, we use special logic to avoid reloading of tables,
+ *              as such, table index may be updated.
+ *
+ ******************************************************************************/
+
+static acpi_status
+acpi_tb_validate_table_for_load(u32 *table_index,
+				struct acpi_table_header **out_table)
+{
+	u32 i;
+	struct acpi_table_desc *table_desc;
+	acpi_status status = AE_OK;
+	struct acpi_table_header *new_dsdt;
+
+	/* Acquire the table lock */
+
+	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
+
+	table_desc = &acpi_gbl_root_table_list.tables[*table_index];
+
+	/*
+	 * Note: Now table is "INSTALLED", it must be validated before
+	 * using.
+	 */
+	status = acpi_tb_get_table(table_desc, out_table);
+	if (ACPI_FAILURE(status)) {
+		goto unlock_and_exit;
+	}
+
+	if (*table_index == acpi_gbl_dsdt_index) {
+		/*
+		 * Save the DSDT pointer for simple access. This is the mapped memory
+		 * address. We must take care here because the address of the .Tables
+		 * array can change dynamically as tables are loaded at run-time.
+		 * Note: .Pointer field is not validated until after call to
+		 * acpi_get_table_by_index().
+		 */
+		acpi_gbl_DSDT = table_desc->pointer;
+
+		/*
+		 * Optionally copy the entire DSDT to local memory (instead of simply
+		 * mapping it.) There are some BIOSs that corrupt or replace the
+		 * original DSDT, creating the need for this option. Default is FALSE,
+		 * do not copy the DSDT.
+		 */
+		if (acpi_gbl_copy_dsdt_locally) {
+			new_dsdt = acpi_tb_copy_dsdt(acpi_gbl_dsdt_index);
+			if (new_dsdt) {
+				acpi_gbl_DSDT = new_dsdt;
+			}
+		}
+
+		/*
+		 * Save the original DSDT header for detection of table corruption
+		 * and/or replacement of the DSDT from outside the OS.
+		 */
+		memcpy(&acpi_gbl_original_dsdt_header, acpi_gbl_DSDT,
+		       sizeof(struct acpi_table_header));
+	}
+
+	/* Check if table is already loaded */
+
+	for (i = 0; i < acpi_gbl_root_table_list.current_table_count; ++i) {
+		/*
+		 * Check for a table match on the entire table length, not just the
+		 * header.
+		 */
+		if (!acpi_tb_compare_tables(table_desc, i)) {
+			continue;
+		}
+
+		/*
+		 * Note: the current mechanism does not unregister a table if it is
+		 * dynamically unloaded. The related namespace entries are deleted,
+		 * but the table remains in the root table list.
+		 *
+		 * The assumption here is that the number of different tables that
+		 * will be loaded is actually small, and there is minimal overhead
+		 * in just keeping the table in case it is needed again.
+		 *
+		 * If this assumption changes in the future (perhaps on large
+		 * machines with many table load/unload operations), tables will
+		 * need to be unregistered when they are unloaded, and slots in the
+		 * root table list should be reused when empty.
+		 */
+		*table_index = i;
+		if (acpi_gbl_root_table_list.tables[i].
+		    flags & ACPI_TABLE_IS_LOADED) {
+			status = AE_ALREADY_EXISTS;
+			goto unlock_and_exit;
+		}
+	}
+
+unlock_and_exit:
+
+	/* Release the table lock */
+
+	(void)acpi_ut_release_mutex(ACPI_MTX_TABLES);
+	return (status);
+}
+
+/*******************************************************************************
+ *
  * FUNCTION:    acpi_tb_load_table
  *
  * PARAMETERS:  table_index             - Table index
+ *              reload                  - Whether reload should be performed
  *              parent_node             - Where table index is returned
  *
  * RETURN:      Status
@@ -782,7 +947,8 @@ void acpi_tb_set_table_loaded_flag(u32 table_index, u8 is_loaded)
  ******************************************************************************/
 
 acpi_status
-acpi_tb_load_table(u32 table_index, struct acpi_namespace_node *parent_node)
+acpi_tb_load_table(u32 *table_index,
+		   u8 reload, struct acpi_namespace_node *parent_node)
 {
 	struct acpi_table_header *table;
 	acpi_status status;
@@ -790,41 +956,49 @@ acpi_tb_load_table(u32 table_index, struct acpi_namespace_node *parent_node)
 
 	ACPI_FUNCTION_TRACE(tb_load_table);
 
-	/*
-	 * Note: Now table is "INSTALLED", it must be validated before
-	 * using.
-	 */
-	status = acpi_get_table_by_index(table_index, &table);
+	/* Sanity checks */
+
+	status = acpi_tb_validate_table_for_load(table_index, &table);
 	if (ACPI_FAILURE(status)) {
+		if (status == AE_ALREADY_EXISTS) {
+			/*
+			 * Skip the table loading process but return the table index to
+			 * the caller with the exception muted.
+			 */
+			status = AE_OK;
+		}
 		return_ACPI_STATUS(status);
 	}
 
-	status = acpi_ns_load_table(table_index, parent_node);
+	status = acpi_ns_load_table(*table_index, parent_node);
 
-	/* Execute any module-level code that was found in the table */
-
-	if (!acpi_gbl_parse_table_as_term_list
-	    && acpi_gbl_group_module_level_code) {
+	/*
+	 * Execute any module-level code that was found in the table. This only
+	 * applies when new grammar support is not set (as MLC are executed in
+	 * place) and dynamic table loading. For static table loading, executes
+	 * MLC here if group module level code is not set, otherwise, it is
+	 * executed in acpi_initialize_objects().
+	 */
+	if (!acpi_gbl_parse_table_as_term_list &&
+	    (reload || !acpi_gbl_group_module_level_code)) {
 		acpi_ns_exec_module_code_list();
 	}
 
-	/*
-	 * Update GPEs for any new _Lxx/_Exx methods. Ignore errors. The host is
-	 * responsible for discovering any new wake GPEs by running _PRW methods
-	 * that may have been loaded by this table.
-	 */
-	status = acpi_tb_get_owner_id(table_index, &owner_id);
-	if (ACPI_SUCCESS(status)) {
-		acpi_ev_update_gpes(owner_id);
+	if (reload) {
+		/*
+		 * Update GPEs for any new _Lxx/_Exx methods. Ignore errors. The host
+		 * is responsible for discovering any new wake GPEs by running _PRW
+		 * methods that may have been loaded by this table.
+		 */
+		status = acpi_tb_get_owner_id(*table_index, &owner_id);
+		if (ACPI_SUCCESS(status)) {
+			acpi_ev_update_gpes(owner_id);
+		}
 	}
 
-	/* Invoke table handler if present */
+	/* Invoke table handler */
 
-	if (acpi_gbl_table_handler) {
-		(void)acpi_gbl_table_handler(ACPI_TABLE_EVENT_LOAD, table,
-					     acpi_gbl_table_handler_context);
-	}
-
+	acpi_tb_notify_table(ACPI_TABLE_EVENT_LOAD, table);
 	return_ACPI_STATUS(status);
 }
 
@@ -860,7 +1034,7 @@ acpi_tb_install_and_load_table(acpi_physical_address address,
 		goto exit;
 	}
 
-	status = acpi_tb_load_table(i, acpi_gbl_root_node);
+	status = acpi_tb_load_table(&i, TRUE, acpi_gbl_root_node);
 
 exit:
 	*table_index = i;
@@ -892,15 +1066,11 @@ acpi_status acpi_tb_unload_table(u32 table_index)
 		return_ACPI_STATUS(AE_NOT_EXIST);
 	}
 
-	/* Invoke table handler if present */
+	/* Invoke table handler */
 
-	if (acpi_gbl_table_handler) {
-		status = acpi_get_table_by_index(table_index, &table);
-		if (ACPI_SUCCESS(status)) {
-			(void)acpi_gbl_table_handler(ACPI_TABLE_EVENT_UNLOAD,
-						     table,
-						     acpi_gbl_table_handler_context);
-		}
+	status = acpi_get_table_by_index(table_index, &table);
+	if (ACPI_SUCCESS(status)) {
+		acpi_tb_notify_table(ACPI_TABLE_EVENT_UNLOAD, table);
 	}
 
 	/* Delete the portion of the namespace owned by this table */
@@ -913,4 +1083,27 @@ acpi_status acpi_tb_unload_table(u32 table_index)
 	(void)acpi_tb_release_owner_id(table_index);
 	acpi_tb_set_table_loaded_flag(table_index, FALSE);
 	return_ACPI_STATUS(status);
+}
+
+/*******************************************************************************
+ *
+ * FUNCTION:    acpi_tb_notify_table
+ *
+ * PARAMETERS:  event               - Table event
+ *              table               - Validated table pointer
+ *
+ * RETURN:      None
+ *
+ * DESCRIPTION: Notify a table event to the users.
+ *
+ ******************************************************************************/
+
+void acpi_tb_notify_table(u32 event, void *table)
+{
+	/* Invoke table handler if present */
+
+	if (acpi_gbl_table_handler) {
+		(void)acpi_gbl_table_handler(event, table,
+					     acpi_gbl_table_handler_context);
+	}
 }
