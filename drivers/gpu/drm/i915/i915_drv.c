@@ -2371,6 +2371,8 @@ static int intel_runtime_suspend(struct device *kdev)
 
 	intel_runtime_pm_disable_interrupts(dev_priv);
 
+	intel_uncore_suspend(dev_priv);
+
 	ret = 0;
 	if (IS_GEN9_LP(dev_priv)) {
 		bxt_display_core_uninit(dev_priv);
@@ -2383,14 +2385,14 @@ static int intel_runtime_suspend(struct device *kdev)
 
 	if (ret) {
 		DRM_ERROR("Runtime suspend failed, disabling it (%d)\n", ret);
+		intel_uncore_runtime_resume(dev_priv);
+
 		intel_runtime_pm_enable_interrupts(dev_priv);
 
 		enable_rpm_wakeref_asserts(dev_priv);
 
 		return ret;
 	}
-
-	intel_uncore_suspend(dev_priv);
 
 	enable_rpm_wakeref_asserts(dev_priv);
 	WARN_ON_ONCE(atomic_read(&dev_priv->pm.wakeref_count));
