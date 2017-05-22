@@ -264,6 +264,12 @@ static int arizona_ldo1_common_init(struct platform_device *pdev,
 		}
 	}
 
+	if (pdata->ldoena == 0) {
+		dev_warn(&pdev->dev, "LDOENA return is 0 - Assuming default 405\n");
+		pdata->ldoena = 405;
+		config.ena_gpio_initialized = true;
+	}
+
 	config.ena_gpio = pdata->ldoena;
 
 	if (pdata->init_data)
