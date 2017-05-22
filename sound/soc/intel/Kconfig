@@ -151,6 +151,19 @@ config SND_SOC_INTEL_BYTCR_RT5640_MACH
           Say Y if you have such a device.
           If unsure select "N".
 
+config SND_SOC_INTEL_BYTCR_WM5102_MACH
+        tristate "ASoC Audio driver for Intel Baytrail and Baytrail-CR with WM5102 codec"
+	depends on X86 && SPI && ACPI
+	select SND_SOC_WM5102
+	select SND_SST_ATOM_HIFI2_PLATFORM
+	select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
+	help
+          This adds support for ASoC machine driver for Intel(R) Baytrail and Baytrail-CR
+          platforms with WM5102 audio codec.
+          Say Y if you have such a device.
+          If unsure select "N".
+
 config SND_SOC_INTEL_BYTCR_RT5651_MACH
         tristate "ASoC Audio driver for Intel Baytrail and Baytrail-CR with RT5651 codec"
 	depends on X86 && I2C && ACPI

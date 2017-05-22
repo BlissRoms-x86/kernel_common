@@ -240,9 +240,16 @@ static int sst_platform_get_resources(struct intel_sst_drv *ctx)
 }
 
 
-static int is_byt_cr(struct device *dev, bool *bytcr)
+static int is_byt_cr(struct device *dev, struct sst_acpi_mach *mach, bool *bytcr)
 {
 	int status = 0;
+
+	/* Lenovo Yoga2 exception - acpi_ipc_irq_index is the 1st index,
+	   but iosf_mbi_read (bios_status) returns 0 for bits 26:27 */
+	if (!strcmp(mach->drv_name, "bytcr_wm5102")) {
+		*bytcr = true;
+		return status;
+	}
 
 	if (IS_ENABLED(CONFIG_IOSF_MBI)) {
 		static const struct x86_cpu_id cpu_ids[] = {
@@ -320,7 +327,7 @@ static int sst_acpi_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	ret = is_byt_cr(dev, &bytcr);
+	ret = is_byt_cr(dev, mach, &bytcr);
 	if (!((ret < 0) || (bytcr == false))) {
 		dev_info(dev, "Detected Baytrail-CR platform\n");
 
@@ -507,6 +514,20 @@ static struct sst_acpi_mach sst_acpi_bytcr[] = {
 		.drv_name = "bytcr_rt5640",
 		.fw_filename = "intel/fw_sst_0f28.bin",
 		.board = "bytcr_rt5640",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "WM510204",
+		.drv_name = "bytcr_wm5102",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_wm5102",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "WM510205",
+		.drv_name = "bytcr_wm5102",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_wm5102",
 		.pdata = &byt_rvp_platform_data
 	},
 	{
