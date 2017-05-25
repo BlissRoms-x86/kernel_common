@@ -1,0 +1,5 @@
+[gerrit]
+host=review-x86.blissroms.com
+port=29418
+project=kernel_common.git
+defaultbranch=k4.4-b
