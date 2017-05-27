@@ -623,9 +623,7 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 	char var8[CFG_VAR_NAME_MAX];
 	efi_char16_t var16[CFG_VAR_NAME_MAX];
 	struct efivar_entry *ev;
-	u32 efiattr_dummy;
 	int i, j, ret;
-	unsigned long efilen;
 
         if (dev && ACPI_COMPANION(dev))
                 dev = &ACPI_COMPANION(dev)->dev;
@@ -684,15 +682,18 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 		return -ENOMEM;
 	memcpy(&ev->var.VariableName, var16, sizeof(var16));
 	ev->var.VendorGuid = GMIN_CFG_VAR_EFI_GUID;
+	ev->var.DataSize = *out_len;
 
-	efilen = *out_len;
-	ret = efivar_entry_get(ev, &efiattr_dummy, &efilen, out);
+	ret = efivar_entry_get(ev, &ev->var.Attributes,
+			       &ev->var.DataSize, ev->var.Data);
+	if (ret == 0) {
+		memcpy(out, ev->var.Data, ev->var.DataSize);
+		*out_len = ev->var.DataSize;
+	} else {
+		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
+	}
 
 	kfree(ev);
-	*out_len = efilen;
-
-	if (ret)
- 		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
 
 	return ret;
 }
