@@ -55,6 +55,7 @@ static struct firmware_header *firmware_header;
  * during package generation. Please do not modify  */
 #ifndef ISP2401
 static const char *release_version = STR(irci_stable_candrpv_0415_20150521_0458);
+static const char *alt_release_version = STR(irci_stable_candrpv_0415_20150423_1753);
 #else
 static const char *release_version = STR(irci_ecr-master_20150911_0724);
 #endif
@@ -201,12 +202,15 @@ sh_css_check_firmware_version(const char *fw_data)
 	firmware_header = (struct firmware_header *)fw_data;
 	file_header = &firmware_header->file_header;
 
-	if (strcmp(file_header->version, release_version) != 0) {
-		return false;
-	} else {
-		/* firmware version matches */
-		return true;
-	}
+	if (strcmp(file_header->version, release_version) == 0)
+		return true; /* firmware version matches */
+
+#ifndef ISP2401
+	if (strcmp(file_header->version, alt_release_version) == 0)
+		return true; /* firmware version matches */
+#endif
+
+	return false;
 }
 
 enum ia_css_err
