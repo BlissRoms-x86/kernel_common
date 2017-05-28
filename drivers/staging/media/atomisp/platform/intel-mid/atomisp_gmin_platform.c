@@ -311,6 +311,16 @@ static const struct gmin_cfg_var i8880_vars[] = {
         {},
 };
 
+static const struct gmin_cfg_var insyde_t701_vars[] = {
+        {"OVTI2680:00_CsiPort", "1"},
+        {"OVTI2680:00_CsiLanes","1"},
+        {"OVTI2680:00_CamClk","0"},
+        {"INT0310:00_CsiPort", "0"},
+        {"INT0310:00_CsiLanes", "1"},
+        {"INT0310:00_CamClk", "1"},
+        {},
+};
+
 static const struct {
 	const char *dmi_board_name;
 	const struct gmin_cfg_var *vars;
@@ -320,6 +330,7 @@ static const struct {
         { "MRD7", mrd7_vars },
         { "ST70408", ecs7_vars },
         { "VTA0803", i8880_vars },
+        { "T701", insyde_t701_vars },
 };
 
 
