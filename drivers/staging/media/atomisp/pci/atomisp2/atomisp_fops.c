@@ -773,6 +773,8 @@ static int atomisp_open(struct file *file)
 	bool acc_node = false;
 	int ret;
 
+	msleep(2500);
+
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 
 	rt_mutex_lock(&isp->mutex);
