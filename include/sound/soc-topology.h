@@ -30,6 +30,8 @@ struct snd_soc_dapm_context;
 struct snd_soc_card;
 struct snd_kcontrol_new;
 struct snd_soc_dai_link;
+struct snd_soc_dai_driver;
+struct snd_soc_dai;
 
 /* object scan be loaded and unloaded in groups with identfying indexes */
 #define SND_SOC_TPLG_INDEX_ALL	0	/* ID that matches all FW objects */
@@ -126,8 +128,7 @@ struct snd_soc_tplg_ops {
 
 	/* FE DAI - used for any driver specific init */
 	int (*dai_load)(struct snd_soc_component *,
-		struct snd_soc_dai_driver *dai_drv,
-		struct snd_soc_tplg_pcm *pcm, struct snd_soc_dai *dai);
+		struct snd_soc_dai_driver *dai_drv);
 	int (*dai_unload)(struct snd_soc_component *,
 		struct snd_soc_dobj *);
 
