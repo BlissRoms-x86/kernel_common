@@ -126,7 +126,8 @@ struct snd_soc_tplg_ops {
 
 	/* FE DAI - used for any driver specific init */
 	int (*dai_load)(struct snd_soc_component *,
-		struct snd_soc_dai_driver *dai_drv);
+		struct snd_soc_dai_driver *dai_drv,
+		struct snd_soc_tplg_pcm *pcm, struct snd_soc_dai *dai);
 	int (*dai_unload)(struct snd_soc_component *,
 		struct snd_soc_dobj *);
 
