@@ -2129,6 +2129,38 @@ int snd_soc_set_dmi_name(struct snd_soc_card *card, const char *flavour)
 EXPORT_SYMBOL_GPL(snd_soc_set_dmi_name);
 #endif /* CONFIG_DMI */
 
+static void soc_check_tplg_fes(struct snd_soc_card *card)
+{
+	struct snd_soc_platform *platform;
+	struct snd_soc_dai_link *dai_link;
+	int i;
+
+	list_for_each_entry(platform, &platform_list, list) {
+
+		/* does this platform overide FEs ? */
+		if (!platform->driver->ignore_machine)
+			continue;
+
+		/* for this machine ? */
+		if (strcmp(platform->driver->ignore_machine, card->name))
+			continue;
+
+		/* machine matches, so override the rtd data */
+		for (i = 0; i < card->num_links; i++) {
+
+			dai_link = &card->dai_link[i];
+
+			if (dai_link->dynamic) {
+				dai_link->ignore = true;
+				continue;
+			}
+
+			dai_link->platform_name = platform->component.name;
+		}
+
+	}
+}
+
 static int snd_soc_instantiate_card(struct snd_soc_card *card)
 {
 	struct snd_soc_codec *codec;
@@ -2138,6 +2170,9 @@ static int snd_soc_instantiate_card(struct snd_soc_card *card)
 
 	mutex_lock(&client_mutex);
 	mutex_lock_nested(&card->mutex, SND_SOC_CARD_CLASS_INIT);
+
+	/* check whether any platform is ignore machine FE and using topology */
+	soc_check_tplg_fes(card);
 
 	/* bind DAIs */
 	for (i = 0; i < card->num_links; i++) {

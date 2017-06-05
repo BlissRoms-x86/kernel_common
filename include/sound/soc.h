@@ -975,6 +975,9 @@ struct snd_soc_platform_driver {
 
 	/* platform stream compress ops */
 	const struct snd_compr_ops *compr_ops;
+
+	/* this platform uses topology and ignore machine driver FEs */
+	const char *ignore_machine;
 };
 
 struct snd_soc_dai_link_component {
