@@ -1107,6 +1107,9 @@ static int soc_bind_dai_link(struct snd_soc_card *card,
 	const char *platform_name;
 	int i;
 
+	if (dai_link->ignore)
+		return 0;
+
 	dev_dbg(card->dev, "ASoC: binding %s\n", dai_link->name);
 
 	if (soc_is_dai_link_bound(card, dai_link)) {
