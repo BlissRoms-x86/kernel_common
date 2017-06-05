@@ -26,6 +26,7 @@ static acpi_status snd_soc_acpi_find_name(acpi_handle handle, u32 level,
 		return AE_OK;
 
 	if (adev->status.present && adev->status.functional) {
+
 		name = acpi_dev_name(adev);
 		*(const char **)ret = name;
 		return AE_CTRL_TERMINATE;
@@ -42,7 +43,9 @@ const char *snd_soc_acpi_find_name_from_hid(const u8 hid[ACPI_ID_LEN])
 	status = acpi_get_devices(hid, snd_soc_acpi_find_name, NULL,
 				  (void **)&name);
 
-	if (ACPI_FAILURE(status) || name[0] == '\0')
+	/* some BIOSes can return success with a NULL name */
+	if (ACPI_FAILURE(status) || name == NULL ||
+		(name != NULL && name[0] == '\0'))
 		return NULL;
 
 	return name;
