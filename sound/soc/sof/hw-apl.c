@@ -1459,8 +1459,7 @@ int apl_load_firmware(struct snd_sof_dev *sdev,
 	const struct firmware *fw)
 {
 	struct snd_sof_pdata *plat_data = dev_get_platdata(sdev->dev);
-	struct firmware stripped_firmware;
-	int ret, stream_tag;
+	int ret;
 
 	/* set code loading condition to true */
 	sdev->code_loading = 1;
@@ -1475,6 +1474,19 @@ int apl_load_firmware(struct snd_sof_dev *sdev,
 
 	if (plat_data->fw == NULL)
 		return -EINVAL;
+
+	return ret;
+}
+
+/*
+ *firmware download and run for BXT/APL
+ */
+
+int apl_run_firmware(struct snd_sof_dev *sdev)
+{
+	struct snd_sof_pdata *plat_data = dev_get_platdata(sdev->dev);
+	struct firmware stripped_firmware;
+	int ret, stream_tag;
 
 	stripped_firmware.data = plat_data->fw->data;
 	stripped_firmware.size = plat_data->fw->size;
@@ -1499,6 +1511,9 @@ int apl_load_firmware(struct snd_sof_dev *sdev,
 		}
 	}
 
+	/* init for booting wait */
+	init_waitqueue_head(&sdev->boot_wait);
+	sdev->boot_complete = false;
 	/* at this point DSP ROM has been initialized and should be ready for 
 	 * code loading and firmware boot 
 	 */
@@ -1508,7 +1523,19 @@ int apl_load_firmware(struct snd_sof_dev *sdev,
 		goto irq_err;
 	} 
 
-	dev_dbg(sdev->dev, "Firmware download successful\n");
+	dev_dbg(sdev->dev, "Firmware download successful, booting...\n");
+
+	/* now wait for the DSP to boot */
+	ret = wait_event_timeout(sdev->boot_wait, sdev->boot_complete,
+		msecs_to_jiffies(sdev->boot_timeout));
+	if (ret == 0) {
+		dev_err(sdev->dev, "error: firmware boot timeout\n");
+		snd_sof_dsp_dbg_dump(sdev, SOF_DBG_REGS | SOF_DBG_MBOX |
+			SOF_DBG_TEXT | SOF_DBG_PCI);
+		return -EIO;
+	} else
+		dev_info(sdev->dev, "firmware boot complete\n");
+
 	return ret;
 
 irq_err:
@@ -1750,6 +1777,9 @@ struct snd_sof_dsp_ops snd_sof_bxt_ops = {
 	
 	/* firmware loading */
 	.load_firmware = apl_load_firmware,
+
+	/* firmware run */
+	.run = apl_run_firmware,
 
 };
 EXPORT_SYMBOL(snd_sof_bxt_ops);
