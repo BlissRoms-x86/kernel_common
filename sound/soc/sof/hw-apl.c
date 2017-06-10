@@ -85,8 +85,13 @@
 #define APL_DRSM_BAR			3
 #define APL_DSP_BAR			4
 
-#define APL_MBOX_OFFSET 		0x80000
-#define APL_MBOX_DUMP_SIZE 		0x30
+#define SRAM_WINDOW0_OFFSET	0x80000
+#define SRAM_WINDOW1_OFFSET	0xA0000
+#define SRAM_WINDOW2_OFFSET	0xC0000
+#define SRAM_WINDOW3_OFFSET	0xE0000
+
+#define APL_MBOX_OFFSET 		SRAM_WINDOW0_OFFSET
+#define APL_MBOX_DUMP_SIZE 		0x50
 
 #define APL_MBOX_UPLINK_OFFSET	0x81000
 
@@ -142,11 +147,20 @@ static void apl_dump(struct snd_sof_dev *sdev, u32 flags)
 	}
 
 	if (flags & SOF_DBG_MBOX) {
-		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4)
-		{
+		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
 			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, 
 					APL_DSP_BAR, i + APL_MBOX_OFFSET));
+		}
+		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
+			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
+				i, snd_sof_dsp_read(sdev, 
+					APL_DSP_BAR, i + APL_MBOX_OFFSET + 1000));
+		}
+		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
+			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
+				i, snd_sof_dsp_read(sdev, 
+					APL_DSP_BAR, i + SRAM_WINDOW1_OFFSET));
 		}
 	}
 
@@ -219,6 +233,7 @@ static void apl_block_read(struct snd_sof_dev *sdev, u32 offset, void *dest,
 	volatile void __iomem *src = sdev->bar[sdev->mmio_bar] + offset;
 	memcpy_fromio(dest, src, size);
 }
+
 /*
  * IPC Mailbox IO
  */
@@ -404,9 +419,10 @@ static int apl_transfer_fw(struct snd_sof_dev *sdev, int stream_tag)
 static int apl_cl_setup_bdl(struct snd_sof_dev *sdev, 
 	struct snd_dma_buffer *dmab,
 	struct snd_sof_hda_stream *stream, __le32 **bdlp,
-	int offset, int size, int with_ioc)
+	int size)
 {
 	__le32 *bdl = *bdlp;
+	int offset = 0;
 
 	while (size > 0) {
 		dma_addr_t addr;
@@ -432,7 +448,10 @@ static int apl_cl_setup_bdl(struct snd_sof_dev *sdev,
 		 * when the whole fragment is processed
 		 */
 		size -= chunk;
-		bdl[APL_BDL_ARRAY_IOC] = (size || !with_ioc) ? 0 : cpu_to_le32(0x01);
+		if (size)
+			bdl[APL_BDL_ARRAY_IOC] = 0;
+		else
+			bdl[APL_BDL_ARRAY_IOC] = cpu_to_le32(0x01);
 		bdl += 4;
 		stream->frags++;
 		offset += chunk;
@@ -546,7 +565,7 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 	stream->frags = 0;		
 
 	bdl = (u32 *)stream->bdl.area;
-	ret = apl_cl_setup_bdl(sdev, dmab, stream, &bdl, 0, size, 1);
+	ret = apl_cl_setup_bdl(sdev, dmab, stream, &bdl, size);
 	if (ret < 0) {
 		dev_dbg(sdev->dev, "error: set up bdl fail\n");
 		goto error;
@@ -1530,8 +1549,7 @@ int apl_run_firmware(struct snd_sof_dev *sdev)
 		msecs_to_jiffies(sdev->boot_timeout));
 	if (ret == 0) {
 		dev_err(sdev->dev, "error: firmware boot timeout\n");
-		snd_sof_dsp_dbg_dump(sdev, SOF_DBG_REGS | SOF_DBG_MBOX |
-			SOF_DBG_TEXT | SOF_DBG_PCI);
+		snd_sof_dsp_dbg_dump(sdev,  SOF_DBG_MBOX | SOF_DBG_TEXT);
 		return -EIO;
 	} else
 		dev_info(sdev->dev, "firmware boot complete\n");
