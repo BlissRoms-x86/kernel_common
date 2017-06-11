@@ -562,7 +562,7 @@ static const struct snd_soc_component_driver sof_dai_component = {
 void snd_sof_new_dai_drv(struct snd_sof_dev *sdev)
 {
 	struct snd_soc_dai_driver *dd = &sdev->dai_drv;
-	struct snd_sof_pdata *plat_data = sdev->pdata;
+	//struct snd_sof_pdata *plat_data = sdev->pdata;
 
 	sdev->cmpnt_drv = &sof_dai_component;
 	dd->playback.channels_min = 1;

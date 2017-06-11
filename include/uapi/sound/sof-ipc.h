@@ -83,20 +83,21 @@
 
 
 /* Global Message Types */
-#define SOF_IPC_GLB_REPLY			SOF_GLB_TYPE(0x0)
-#define SOF_IPC_GLB_COMPOUND			SOF_GLB_TYPE(0x1)
-#define SOF_IPC_GLB_TPLG_MSG			SOF_GLB_TYPE(0x2)
-#define SOF_IPC_GLB_PM_MSG			SOF_GLB_TYPE(0x3)
-#define SOF_IPC_GLB_COMP_MSG			SOF_GLB_TYPE(0x4)
-#define SOF_IPC_GLB_STREAM_MSG			SOF_GLB_TYPE(0x5)
+#define SOF_IPC_GLB_REPLY			SOF_GLB_TYPE(0x1)
+#define SOF_IPC_GLB_COMPOUND			SOF_GLB_TYPE(0x2)
+#define SOF_IPC_GLB_TPLG_MSG			SOF_GLB_TYPE(0x3)
+#define SOF_IPC_GLB_PM_MSG			SOF_GLB_TYPE(0x4)
+#define SOF_IPC_GLB_COMP_MSG			SOF_GLB_TYPE(0x5)
+#define SOF_IPC_GLB_STREAM_MSG			SOF_GLB_TYPE(0x6)
+#define SOF_IPC_FW_READY			SOF_GLB_TYPE(0x7)
 
 /*
  * DSP Command Message Types
  */
 
 /* reply - error details in mailbox reply */
-#define SOF_IPC_REPLY_SUCCESS			SOF_CMD_TYPE(0x000)
-#define SOF_IPC_REPLY_ERROR			SOF_CMD_TYPE(0x001)
+#define SOF_IPC_REPLY_SUCCESS			SOF_CMD_TYPE(0x001)
+#define SOF_IPC_REPLY_ERROR			SOF_CMD_TYPE(0x002)
 
 /* topology */
 #define SOF_IPC_TPLG_COMP_NEW			SOF_CMD_TYPE(0x000)
@@ -148,13 +149,6 @@
 
 /* Get message component id */
 #define SOF_IPC_MESSAGE_ID(x)			(x & 0xffff)
-
-/*
- * Firmware ready message
- */
-/* Firmware Ready Message */
-#define SOF_FW_READY				(0x1 << 29)
-
 
 /* maximum message size for mailbox Tx/Tx */
 #define SOF_IPC_MSG_MAX_SIZE			128
@@ -431,6 +425,8 @@ enum sof_comp_type {
 	SOF_COMP_TONE,
 	SOF_COMP_SWITCH,
 	SOF_COMP_BUFFER,
+	SOF_COMP_EQ_IIR,
+	SOF_COMP_EQ_FIR,
 };
 
 /* create new generic component - SOF_IPC_TPLG_COMP_NEW */
@@ -532,6 +528,37 @@ struct sof_ipc_comp_mux {
 struct sof_ipc_comp_tone {
 	struct sof_ipc_comp comp;
 	struct sof_ipc_pcm_comp pcm;
+	int32_t frequency;
+	int32_t amplitude;
+	int32_t freq_mult;
+	int32_t ampl_mult;
+	int32_t length;
+	int32_t period;
+	int32_t repeats;
+	int32_t ramp_step;
+} __attribute__((packed));
+
+/* IPC to pass configuration blobs to equalizers and re-assign responses */
+struct sof_ipc_eq_fir_blob {
+	struct sof_ipc_comp comp;
+	struct sof_ipc_host_buffer buffer;
+	int32_t data[];
+} __attribute__((packed));
+
+struct sof_ipc_eq_iir_blob {
+	struct sof_ipc_comp comp;
+	struct sof_ipc_host_buffer buffer;
+	int32_t data[];
+} __attribute__((packed));
+
+struct sof_ipc_eq_fir_switch {
+	struct sof_ipc_comp comp;
+	int32_t data[];
+} __attribute__((packed));
+
+struct sof_ipc_eq_iir_switch {
+	struct sof_ipc_comp comp;
+	int32_t data[];
 } __attribute__((packed));
 
 /* frees components, buffers and pipelines
@@ -622,6 +649,8 @@ struct sof_ipc_pm_ctx {
  * Firmware boot and version
  */
 
+#define SOF_IPC_MAX_ELEMS	16
+
 /* extended data types that can be appended onto end of sof_ipc_fw_ready */
 enum sof_ipc_ext_data {
 	SOF_IPC_EXT_DMA_BUFFER = 0,
@@ -646,9 +675,6 @@ struct sof_ipc_fw_ready {
 	uint32_t inbox_size;
 	uint32_t outbox_size;
 	struct sof_ipc_fw_version version;
-
-	/* header to first extended capability/platform structure */
-	struct sof_ipc_hdr ext_hdr;
 } __attribute__((packed));
 
 /*
@@ -661,6 +687,12 @@ enum sof_ipc_region {
 	SOF_IPC_REGION_TRACE,
 	SOF_IPC_REGION_DEBUG,
 	SOF_IPC_REGION_STREAM,
+	SOF_IPC_REGION_REGS,
+};
+
+struct sof_ipc_ext_data_hdr {
+	struct sof_ipc_hdr hdr;
+	enum sof_ipc_ext_data type;			/* SOF_IPC_EXT_ */
 };
 
 struct sof_ipc_dma_buffer_elem {
@@ -671,27 +703,26 @@ struct sof_ipc_dma_buffer_elem {
 
 /* extended data DMA buffers for IPC, trace and debug */
 struct sof_ipc_dma_buffer_data {
-	struct sof_ipc_hdr hdr;
-	enum sof_ipc_ext_data type;			/* SOF_IPC_EXT_DMA_BUFFER */
+	struct sof_ipc_ext_data_hdr ext_hdr;
 	uint32_t num_buffers;
-	struct sof_ipc_dma_buffer_elem buffer[0];	/* host files in buffer[n].buffer */
+	struct sof_ipc_dma_buffer_elem buffer[];	/* host files in buffer[n].buffer */
 }  __attribute__((packed));
 
 
 struct sof_ipc_window_elem {
 	enum sof_ipc_region type;
-	uint32_t id;	/* platform specific window ID - used to map to host memory */
-	uint32_t offset;/* offset in window for region, as window can be partitioned */
+	uint32_t id;	/* platform specific - used to map to host memory */
 	uint32_t flags;	/* R, W, RW, etc - to define */
-	uint32_t size;
+	uint32_t size;	/* size of region in bytes */
+	uint32_t offset; /* offset in window region as windows can be partitioned */
 };
 
 /* extended data memory windows for IPC, trace and debug */
 struct sof_ipc_window {
-	struct sof_ipc_hdr hdr;
-	enum sof_ipc_ext_data type;			/* SOF_IPC_EXT_DMA_BUFFER */
+	struct sof_ipc_ext_data_hdr ext_hdr;
 	uint32_t num_windows;
-	struct sof_ipc_window_elem window[0];
+	struct sof_ipc_window_elem window[];
 }  __attribute__((packed));
+
 
 #endif

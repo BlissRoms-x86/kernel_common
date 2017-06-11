@@ -121,7 +121,7 @@ static const struct file_operations sof_dfs_fops = {
 	.llseek = default_llseek,
 };
 
-static int sof_debugfs_create_item(struct snd_sof_dev *sdev,
+int snd_sof_debugfs_create_item(struct snd_sof_dev *sdev,
 	void __iomem *base, size_t size, const char *name)
 {
 	struct snd_sof_dfsentry *dfse;
@@ -147,7 +147,7 @@ static int sof_debugfs_create_item(struct snd_sof_dev *sdev,
 
 	return 0;
 }
-
+EXPORT_SYMBOL(snd_sof_debugfs_create_item);
 
 int snd_sof_dbg_init(struct snd_sof_dev *sdev)
 {
@@ -165,7 +165,7 @@ int snd_sof_dbg_init(struct snd_sof_dev *sdev)
 
 		map = &ops->debug_map[i];
 
-		err = sof_debugfs_create_item(sdev,
+		err = snd_sof_debugfs_create_item(sdev,
 			sdev->bar[map->bar] + map->offset, map->size, map->name);
 		if (err < 0)
 			dev_err(sdev->dev, "cannot create debugfs for %s\n",

@@ -321,7 +321,7 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp,
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct sof_ipc_comp_dai dai;
-	int ret, ext_tokens;
+	int ret = -EINVAL, ext_tokens;
 
 	/* configure dai IPC message */
 	memset(&dai, 0, sizeof(dai));

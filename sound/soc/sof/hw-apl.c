@@ -85,12 +85,9 @@
 #define APL_DRSM_BAR			3
 #define APL_DSP_BAR			4
 
-#define SRAM_WINDOW0_OFFSET	0x80000
-#define SRAM_WINDOW1_OFFSET	0xA0000
-#define SRAM_WINDOW2_OFFSET	0xC0000
-#define SRAM_WINDOW3_OFFSET	0xE0000
+#define SRAM_WINDOW_OFFSET(x)		(0x80000 + x * 0x20000)
 
-#define APL_MBOX_OFFSET 		SRAM_WINDOW0_OFFSET
+#define APL_MBOX_OFFSET 		SRAM_WINDOW_OFFSET(0)
 #define APL_MBOX_DUMP_SIZE 		0x50
 
 #define APL_MBOX_UPLINK_OFFSET	0x81000
@@ -148,19 +145,19 @@ static void apl_dump(struct snd_sof_dev *sdev, u32 flags)
 
 	if (flags & SOF_DBG_MBOX) {
 		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
-			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
+			dev_dbg(sdev->dev, "regs: 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, 
 					APL_DSP_BAR, i + APL_MBOX_OFFSET));
 		}
 		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
-			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
+			dev_dbg(sdev->dev, "inbox: 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, 
 					APL_DSP_BAR, i + APL_MBOX_OFFSET + 1000));
 		}
 		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
-			dev_dbg(sdev->dev, "mbox: 0x%2.2x value 0x%8.8x\n",
+			dev_dbg(sdev->dev, "outbox: 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, 
-					APL_DSP_BAR, i + SRAM_WINDOW1_OFFSET));
+					APL_DSP_BAR, i + SRAM_WINDOW_OFFSET(1)));
 		}
 	}
 
@@ -630,6 +627,76 @@ error:
 /*
  * IPC Firmware ready.
  */
+
+static void apl_get_windows(struct snd_sof_dev *sdev)
+{
+	struct sof_ipc_window_elem *elem;
+	int i;	
+	u32 inbox_offset = 0, outbox_offset = 0;
+	u32 inbox_size = 0, outbox_size = 0;
+
+	if (sdev->info_window == NULL)
+		return;
+
+	for (i = 0; i < sdev->info_window->num_windows; i++) {
+
+		elem = &sdev->info_window->window[i];
+
+		switch (elem->type) {
+		case SOF_IPC_REGION_INBOX:
+			inbox_offset =
+				elem->offset + SRAM_WINDOW_OFFSET(elem->id);
+			inbox_size = elem->size;
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + inbox_offset,
+				elem->size, "inbox");
+			break;
+		case SOF_IPC_REGION_OUTBOX:
+			outbox_offset =
+				elem->offset + SRAM_WINDOW_OFFSET(elem->id);
+			outbox_size = elem->size;
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + outbox_offset,
+				elem->size, "outbox");
+			break;
+		case SOF_IPC_REGION_TRACE:
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + elem->offset +
+				SRAM_WINDOW_OFFSET(elem->id),
+				elem->size, "trace");
+			break;
+		case SOF_IPC_REGION_DEBUG:
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + elem->offset +
+				SRAM_WINDOW_OFFSET(elem->id),
+				elem->size, "debug");
+			break;
+		case SOF_IPC_REGION_STREAM:
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + elem->offset +
+				SRAM_WINDOW_OFFSET(elem->id),
+				elem->size, "stream");
+			break;
+		case SOF_IPC_REGION_REGS:
+			snd_sof_debugfs_create_item(sdev,
+				sdev->bar[APL_DSP_BAR] + elem->offset +
+				SRAM_WINDOW_OFFSET(elem->id),
+				elem->size, "regs");
+			break;	
+		default:
+			break;
+		}
+	}
+
+	snd_sof_dsp_mailbox_init(sdev, inbox_offset, inbox_size, 
+		outbox_offset, outbox_size);
+
+	dev_dbg(sdev->dev, " mailbox upstream 0x%x - size 0x%x\n",
+		inbox_offset, inbox_size);
+	dev_dbg(sdev->dev, " mailbox downstream 0x%x - size 0x%x\n",
+		outbox_offset, outbox_size);
+}
+
 static int apl_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 {
 	struct sof_ipc_fw_ready *fw_ready = &sdev->fw_ready;
@@ -644,18 +711,14 @@ static int apl_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 
 	/* copy data from the DSP FW ready offset */
 	apl_block_read(sdev, offset, fw_ready,	sizeof(*fw_ready));
-
-	snd_sof_dsp_mailbox_init(sdev,
-		fw_ready->inbox_offset, fw_ready->inbox_size, 
-		fw_ready->outbox_offset, fw_ready->outbox_size);
-
-	dev_dbg(sdev->dev, " mailbox upstream 0x%x - size 0x%x\n",
-		fw_ready->inbox_offset, fw_ready->inbox_size);
-	dev_dbg(sdev->dev, " mailbox downstream 0x%x - size 0x%x\n",
-		fw_ready->outbox_offset, fw_ready->outbox_size);
-
 	dev_info(sdev->dev, " Firmware info: version %d:%d-%s build %d on %s:%s\n", 
 		v->major, v->minor, v->tag, v->build, v->date, v->time);
+
+	/* now check for extended data */
+	snd_sof_fw_parse_ext_data(sdev,
+		APL_MBOX_UPLINK_OFFSET + sizeof(struct sof_ipc_fw_ready));
+
+	apl_get_windows(sdev);
 
 	return 0;
 }
@@ -694,8 +757,7 @@ out:
 static irqreturn_t apl_irq_thread(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
-	u64 header = 0;
-	u32 hipcie, hipct, hipcte;
+	u32 hipcie, hipct, hipcte, msg = 0, msg_ext = 0;
 	irqreturn_t ret = IRQ_NONE;
 
 	/* here we handle IPC interrupts only */
@@ -728,20 +790,21 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 
 	/* new message from DSP */
 	if (hipct & SKL_ADSP_REG_HIPCT_BUSY) {
+
 		hipcte = snd_sof_dsp_read(sdev, APL_DSP_BAR,
 			SKL_ADSP_REG_HIPCTE);
-		header = hipct;
-		header <<= 32;
-		header |= hipcte;
+		msg = hipct & SKL_ADSP_REG_HIPCT_MSG_MASK;
+		msg_ext = hipcte & SKL_ADSP_REG_HIPCTE_MSG_MASK;
 
-		dev_dbg(sdev->dev, "ipc: firmware response :%llx\n", header);
+		dev_dbg(sdev->dev, "ipc: firmware response, msg:0x%x, msg_ext:0x%x\n",
+			msg, msg_ext);
 
-		if (header) {
+		if ((msg & SOF_GLB_TYPE_MASK) == SOF_IPC_GLB_REPLY) {
 			/* handle immediate reply from DSP core */
-			snd_sof_ipc_process_reply(sdev, header);
+			snd_sof_ipc_process_reply(sdev, msg);
 		} else {
 			dev_dbg(sdev->dev, "ipc: firmware notification\n");
-			snd_sof_ipc_process_notification(sdev, header);
+			snd_sof_ipc_process_notification(sdev, msg);
 		}
 
 		/* clear busy interrupt */
@@ -1533,6 +1596,7 @@ int apl_run_firmware(struct snd_sof_dev *sdev)
 	/* init for booting wait */
 	init_waitqueue_head(&sdev->boot_wait);
 	sdev->boot_complete = false;
+
 	/* at this point DSP ROM has been initialized and should be ready for 
 	 * code loading and firmware boot 
 	 */
@@ -1543,16 +1607,6 @@ int apl_run_firmware(struct snd_sof_dev *sdev)
 	} 
 
 	dev_dbg(sdev->dev, "Firmware download successful, booting...\n");
-
-	/* now wait for the DSP to boot */
-	ret = wait_event_timeout(sdev->boot_wait, sdev->boot_complete,
-		msecs_to_jiffies(sdev->boot_timeout));
-	if (ret == 0) {
-		dev_err(sdev->dev, "error: firmware boot timeout\n");
-		snd_sof_dsp_dbg_dump(sdev,  SOF_DBG_MBOX | SOF_DBG_TEXT);
-		return -EIO;
-	} else
-		dev_info(sdev->dev, "firmware boot complete\n");
 
 	return ret;
 
@@ -1656,14 +1710,15 @@ static int apl_probe(struct snd_sof_dev *sdev)
 	}
 
 	/* clear stream status */
-	for ( i = 0 ; i < hdev->num_capture ; i++ ) {
+	for (i = 0 ; i < hdev->num_capture ; i++ ) {
 		stream = &hdev->cstream[i];
 		if (stream)
 			snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,
 				stream->sd_offset + HDA_ADSP_REG_CL_SD_STS,
 				HDA_CL_DMA_SD_INT_MASK, HDA_CL_DMA_SD_INT_MASK);
-	} 
-	for ( i = 0 ; i < hdev->num_playback ; i++ ) {
+	}
+
+	for (i = 0 ; i < hdev->num_playback ; i++ ) {
 		stream = &hdev->pstream[i];
 		if (stream)
 			snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,

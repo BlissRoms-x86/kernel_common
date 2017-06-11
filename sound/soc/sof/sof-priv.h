@@ -333,6 +333,10 @@ struct snd_sof_dev {
 	struct list_head widget_list;
 	struct snd_soc_component *component;
 
+	/* FW configuration */
+	struct sof_ipc_dma_buffer_data *info_buffer;
+	struct sof_ipc_window *info_window;
+
 	/* IPC timeouts in ms */
 	int ipc_timeout;
 	int boot_timeout;
@@ -369,6 +373,7 @@ int snd_sof_run_firmware(struct snd_sof_dev *sdev);
 int snd_sof_parse_module_memcpy(struct snd_sof_dev *sdev,
 	struct snd_sof_mod_hdr *module);
 void snd_sof_fw_unload(struct snd_sof_dev *sdev);
+int snd_sof_fw_parse_ext_data(struct snd_sof_dev *sdev, u32 offset);
 
 
 /*
@@ -423,6 +428,8 @@ void snd_sof_free_topology(struct snd_sof_dev *sdev);
 int snd_sof_init_trace(struct snd_sof_dev *sdev);
 int snd_sof_dbg_init(struct snd_sof_dev *sdev);
 void snd_sof_free_debug(struct snd_sof_dev *sdev);
+int snd_sof_debugfs_create_item(struct snd_sof_dev *sdev,
+	void __iomem *base, size_t size, const char *name);
 
 /*
  * Platform specific ops.
