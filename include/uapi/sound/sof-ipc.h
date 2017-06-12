@@ -81,7 +81,6 @@
 #define SOF_CMD_TYPE_MASK			(0xfff << SOF_CMD_TYPE_SHIFT)
 #define SOF_CMD_TYPE(x)				(x << SOF_CMD_TYPE_SHIFT)
 
-
 /* Global Message Types */
 #define SOF_IPC_GLB_REPLY			SOF_GLB_TYPE(0x1)
 #define SOF_IPC_GLB_COMPOUND			SOF_GLB_TYPE(0x2)
@@ -723,6 +722,5 @@ struct sof_ipc_window {
 	uint32_t num_windows;
 	struct sof_ipc_window_elem window[];
 }  __attribute__((packed));
-
 
 #endif
