@@ -36,6 +36,7 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/pm.h>
@@ -82,6 +83,72 @@ struct sdhci_acpi_host {
 	struct platform_device		*pdev;
 	bool				use_runtime_pm;
 };
+
+struct dmi_probe_blacklist_data {
+	const char *hid_uid;
+	const char * const *bios_dates;
+};
+
+static char *blacklist;
+
+static bool sdhci_acpi_compare_hid_uid(const char *match, const char *hid,
+				       const char *uid)
+{
+	const char *hid_end, *uid_end, *end;
+
+	if (!match || !hid || !uid)
+		return false;
+
+	end = match + strlen(match);
+
+	do {
+		hid_end = strchr(match, ':');
+		if (!hid_end)
+			return false;
+
+		uid_end = strchr(hid_end, ',');
+		if (!uid_end)
+			uid_end = end;
+
+		if (strlen(hid) == (hid_end - match) &&
+		    strncmp(match, hid, hid_end - match) == 0 &&
+		    strlen(uid) == (uid_end - hid_end - 1) &&
+		    strncmp(hid_end + 1, uid, uid_end - hid_end - 1) == 0)
+			return true;
+
+		match = uid_end + 1;
+	} while (uid_end != end);
+
+	return false;
+}
+
+static const char *sdhci_acpi_get_dmi_blacklist(const struct dmi_system_id *bl)
+{
+	const struct dmi_system_id *dmi_id;
+	const struct dmi_probe_blacklist_data *bl_data;
+	const char *bios_date;
+	int i;
+
+	dmi_id = dmi_first_match(bl);
+	if (!dmi_id)
+		return NULL;
+
+	bl_data = dmi_id->driver_data;
+
+	if (!bl_data->bios_dates)
+		return bl_data->hid_uid;
+
+	bios_date = dmi_get_system_info(DMI_BIOS_DATE);
+	if (!bios_date)
+		return NULL;
+
+	for (i = 0; bl_data->bios_dates[i]; i++) {
+		if (strcmp(bl_data->bios_dates[i], bios_date) == 0)
+			return bl_data->hid_uid;
+	}
+
+	return NULL;
+}
 
 static inline bool sdhci_acpi_flag(struct sdhci_acpi_host *c, unsigned int flag)
 {
@@ -358,6 +425,33 @@ static const struct acpi_device_id sdhci_acpi_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, sdhci_acpi_ids);
 
+const struct dmi_probe_blacklist_data gpd_win_bl_data = {
+	.hid_uid = "80860F14:2",
+	.bios_dates = (const char * const []){
+		"10/25/2016", "11/18/2016", "02/21/2017", NULL },
+};
+
+static const struct dmi_system_id dmi_probe_blacklist[] = {
+	{
+		/*
+		 * Match for the GPDwin which unfortunately uses somewhat
+		 * generic dmi strings, which is why we test for 4 strings
+		 * and a known BIOS date.
+		 * Comparing against 29 other byt/cht boards, board_name is
+		 * unique to the GPDwin, where as only 2 other boards have the
+		 * same board_serial and 3 others have the same board_vendor
+		 */
+		.driver_data = (void *)&gpd_win_bl_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Default string"),
+			DMI_MATCH(DMI_BOARD_SERIAL, "Default string"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Default string"),
+		},
+	},
+	{ }
+};
+
 static const struct sdhci_acpi_slot *sdhci_acpi_get_slot(const char *hid,
 							 const char *uid)
 {
@@ -378,6 +472,7 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	acpi_handle handle = ACPI_HANDLE(dev);
+	const char *bl = blacklist;
 	struct acpi_device *device, *child;
 	struct sdhci_acpi_host *c;
 	struct sdhci_host *host;
@@ -390,20 +485,23 @@ static int sdhci_acpi_probe(struct platform_device *pdev)
 	if (acpi_bus_get_device(handle, &device))
 		return -ENODEV;
 
+	hid = acpi_device_hid(device);
+	uid = device->pnp.unique_id;
+
+	if (!bl)
+		bl = sdhci_acpi_get_dmi_blacklist(dmi_probe_blacklist);
+
+	if (sdhci_acpi_compare_hid_uid(bl, hid, uid))
+		return -ENODEV;
+
 	/* Power on the SDHCI controller and its children */
 	acpi_device_fix_up_power(device);
 	list_for_each_entry(child, &device->children, node)
 		if (child->status.present && child->status.enabled)
 			acpi_device_fix_up_power(child);
 
-	if (acpi_bus_get_status(device) || !device->status.present)
-		return -ENODEV;
-
 	if (sdhci_acpi_byt_defer(dev))
 		return -EPROBE_DEFER;
-
-	hid = acpi_device_hid(device);
-	uid = device->pnp.unique_id;
 
 	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!iomem)
@@ -582,6 +680,9 @@ static struct platform_driver sdhci_acpi_driver = {
 };
 
 module_platform_driver(sdhci_acpi_driver);
+
+module_param(blacklist, charp, 0444);
+MODULE_PARM_DESC(blacklist, "ACPI <HID:UID>[,HID:UID] which should be ignored");
 
 MODULE_DESCRIPTION("Secure Digital Host Controller Interface ACPI driver");
 MODULE_AUTHOR("Adrian Hunter");

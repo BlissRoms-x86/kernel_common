@@ -274,6 +274,8 @@ source "drivers/gpu/drm/meson/Kconfig"
 
 source "drivers/gpu/drm/tinydrm/Kconfig"
 
+source "drivers/gpu/drm/gm12u320/Kconfig"
+
 # Keep legacy drivers last
 
 menuconfig DRM_LEGACY

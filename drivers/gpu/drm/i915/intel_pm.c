@@ -3365,6 +3365,7 @@ skl_plane_downscale_amount(const struct intel_crtc_state *cstate,
 			   const struct intel_plane_state *pstate)
 {
 	struct intel_plane *plane = to_intel_plane(pstate->base.plane);
+	unsigned int rotation = intel_plane_get_rotation(pstate);
 	uint32_t downscale_h, downscale_w;
 	uint32_t src_w, src_h, dst_w, dst_h;
 
@@ -3384,7 +3385,7 @@ skl_plane_downscale_amount(const struct intel_crtc_state *cstate,
 		dst_h = drm_rect_height(&pstate->base.dst);
 	}
 
-	if (drm_rotation_90_or_270(pstate->base.rotation))
+	if (drm_rotation_90_or_270(rotation))
 		swap(dst_w, dst_h);
 
 	downscale_h = max(src_h / dst_h, (uint32_t)DRM_PLANE_HELPER_NO_SCALING);
@@ -3401,6 +3402,7 @@ skl_plane_relative_data_rate(const struct intel_crtc_state *cstate,
 {
 	struct intel_plane *plane = to_intel_plane(pstate->plane);
 	struct intel_plane_state *intel_pstate = to_intel_plane_state(pstate);
+	unsigned int rotation = intel_plane_get_rotation(intel_pstate);
 	uint32_t down_scale_amount, data_rate;
 	uint32_t width = 0, height = 0;
 	struct drm_framebuffer *fb;
@@ -3420,7 +3422,7 @@ skl_plane_relative_data_rate(const struct intel_crtc_state *cstate,
 	width = drm_rect_width(&intel_pstate->base.src) >> 16;
 	height = drm_rect_height(&intel_pstate->base.src) >> 16;
 
-	if (drm_rotation_90_or_270(pstate->rotation))
+	if (drm_rotation_90_or_270(rotation))
 		swap(width, height);
 
 	/* for planar format */
@@ -3489,6 +3491,7 @@ skl_ddb_min_alloc(const struct drm_plane_state *pstate,
 {
 	struct drm_framebuffer *fb = pstate->fb;
 	struct intel_plane_state *intel_pstate = to_intel_plane_state(pstate);
+	unsigned int rotation = intel_plane_get_rotation(intel_pstate);
 	uint32_t src_w, src_h;
 	uint32_t min_scanlines = 8;
 	uint8_t plane_bpp;
@@ -3508,7 +3511,7 @@ skl_ddb_min_alloc(const struct drm_plane_state *pstate,
 	src_w = drm_rect_width(&intel_pstate->base.src) >> 16;
 	src_h = drm_rect_height(&intel_pstate->base.src) >> 16;
 
-	if (drm_rotation_90_or_270(pstate->rotation))
+	if (drm_rotation_90_or_270(rotation))
 		swap(src_w, src_h);
 
 	/* Halve UV plane width and height for NV12 */
@@ -3522,7 +3525,7 @@ skl_ddb_min_alloc(const struct drm_plane_state *pstate,
 	else
 		plane_bpp = fb->format->cpp[0];
 
-	if (drm_rotation_90_or_270(pstate->rotation)) {
+	if (drm_rotation_90_or_270(rotation)) {
 		switch (plane_bpp) {
 		case 1:
 			min_scanlines = 32;
@@ -3757,6 +3760,7 @@ static int skl_compute_plane_wm(const struct drm_i915_private *dev_priv,
 	struct drm_plane_state *pstate = &intel_pstate->base;
 	struct drm_framebuffer *fb = pstate->fb;
 	uint32_t latency = dev_priv->wm.skl_latency[level];
+	unsigned int rotation = intel_plane_get_rotation(intel_pstate);
 	uint_fixed_16_16_t method1, method2;
 	uint_fixed_16_16_t plane_blocks_per_line;
 	uint_fixed_16_16_t selected_result;
@@ -3798,13 +3802,13 @@ static int skl_compute_plane_wm(const struct drm_i915_private *dev_priv,
 		height = drm_rect_height(&intel_pstate->base.src) >> 16;
 	}
 
-	if (drm_rotation_90_or_270(pstate->rotation))
+	if (drm_rotation_90_or_270(rotation))
 		swap(width, height);
 
 	cpp = fb->format->cpp[0];
 	plane_pixel_rate = skl_adjusted_plane_pixel_rate(cstate, intel_pstate);
 
-	if (drm_rotation_90_or_270(pstate->rotation)) {
+	if (drm_rotation_90_or_270(rotation)) {
 		int cpp = (fb->format->format == DRM_FORMAT_NV12) ?
 			fb->format->cpp[1] :
 			fb->format->cpp[0];
