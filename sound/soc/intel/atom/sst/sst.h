@@ -338,10 +338,10 @@ struct sst_shim_regs64 {
 };
 
 struct sst_fw_save {
-	void *iram;
-	void *dram;
-	void *sram;
-	void *ddr;
+	void *iram;	/* allocated via kvmalloc() */
+	void *dram;	/* allocated via kvmalloc() */
+	void *sram;	/* allocated via kvmalloc() */
+	void *ddr;	/* allocated via kvmalloc() */
 };
 
 /**
