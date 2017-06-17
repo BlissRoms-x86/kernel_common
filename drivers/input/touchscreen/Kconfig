@@ -155,7 +155,7 @@ config TOUCHSCREEN_CHIPONE_ICN8318
 	tristate "chipone icn8318 touchscreen controller"
 	depends on GPIOLIB || COMPILE_TEST
 	depends on I2C
-	depends on OF
+	depends on OF || ACPI
 	help
 	  Say Y here if you have a ChipOne icn8318 or icn8505 based
 	  I2C touchscreen.
