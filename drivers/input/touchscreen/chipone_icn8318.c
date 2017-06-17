@@ -13,6 +13,7 @@
  */
 
 #include <asm/unaligned.h>
+#include <linux/acpi.h>
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
@@ -215,6 +216,43 @@ static int icn8318_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(icn8318_pm_ops, icn8318_suspend, icn8318_resume);
 
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id icn8318_acpi_match[] = {
+	{ "CHPN0001", ICN8505 },
+	{ }
+};
+MODULE_DEVICE_TABLE(acpi, icn8318_acpi_match);
+
+static int icn8318_probe_acpi(struct icn8318_data *data, struct device *dev)
+{
+	const struct acpi_device_id *id;
+	struct acpi_device *adev;
+
+	adev = ACPI_COMPANION(dev);
+	id = acpi_match_device(icn8318_acpi_match, dev);
+	if (!adev || !id)
+		return -ENODEV;
+
+	data->model = id->driver_data;
+
+	/*
+	 * Disable ACPI power management the _PS3 method is empty, so
+	 * there is no powersaving when using ACPI power management.
+	 * The _PS0 method resets the controller causing it to loose its
+	 * firmware, which has been loaded by the BIOS and we do not
+	 * know how to restore the firmware.
+	 */
+	adev->flags.power_manageable = 0;
+
+	return 0;
+}
+#else
+static int icn8318_probe_acpi(struct icn8318_data *data, struct device *dev)
+{
+	return -ENODEV;
+}
+#endif
+
 static int icn8318_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -245,6 +283,9 @@ static int icn8318_probe(struct i2c_client *client,
 	if (!input)
 		return -ENOMEM;
 
+	data->client = client;
+	data->input = input;
+
 	input->name = client->name;
 	input->id.bustype = BUS_I2C;
 	input->open = icn8318_start;
@@ -254,7 +295,13 @@ static int icn8318_probe(struct i2c_client *client,
 	input_set_capability(input, EV_ABS, ABS_MT_POSITION_X);
 	input_set_capability(input, EV_ABS, ABS_MT_POSITION_Y);
 
-	data->model = (long)of_device_get_match_data(dev);
+	if (client->dev.of_node) {
+		data->model = (long)of_device_get_match_data(dev);
+	} else {
+		error = icn8318_probe_acpi(data, dev);
+		if (error)
+			return error;
+	}
 
 	if (data->model == ICN8318) {
 		data->touchdata_reg = ICN8318_REG_TOUCHDATA;
@@ -288,8 +335,6 @@ static int icn8318_probe(struct i2c_client *client,
 	if (error)
 		return error;
 
-	data->client = client;
-	data->input = input;
 	input_set_drvdata(input, data);
 
 	error = devm_request_threaded_irq(dev, client->irq, NULL, icn8318_irq,
@@ -328,6 +373,7 @@ static struct i2c_driver icn8318_driver = {
 	.driver = {
 		.name	= "chipone_icn8318",
 		.pm	= &icn8318_pm_ops,
+		.acpi_match_table = ACPI_PTR(icn8318_acpi_match),
 		.of_match_table = icn8318_of_match,
 	},
 	.probe = icn8318_probe,
