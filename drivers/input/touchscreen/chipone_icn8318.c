@@ -129,16 +129,6 @@ static irqreturn_t icn8318_irq(int irq, void *dev_id)
 		return IRQ_HANDLED;
 	}
 
-	if (touch_data.softbutton) {
-		/*
-		 * Other data is invalid when a softbutton is pressed.
-		 * This needs some extra devicetree bindings to map the icn8318
-		 * softbutton codes to evdev codes. Currently no known devices
-		 * use this.
-		 */
-		return IRQ_HANDLED;
-	}
-
 	if (touch_data.touch_count > ICN8318_MAX_TOUCHES) {
 		dev_warn(dev, "Too much touches %d > %d\n",
 			 touch_data.touch_count, ICN8318_MAX_TOUCHES);
@@ -161,6 +151,7 @@ static irqreturn_t icn8318_irq(int irq, void *dev_id)
 	}
 
 	input_mt_sync_frame(data->input);
+	input_report_key(data->input, KEY_LEFTMETA, touch_data.softbutton == 1);
 	input_sync(data->input);
 
 	return IRQ_HANDLED;
@@ -321,6 +312,7 @@ static int icn8318_probe(struct i2c_client *client,
 				     le16_to_cpu(resolution[0]) - 1, 0, 0);
 		input_set_abs_params(input, ABS_MT_POSITION_Y, 0,
 				     le16_to_cpu(resolution[1]) - 1, 0, 0);
+		input_set_capability(input, EV_KEY, KEY_LEFTMETA);
 	}
 
 	touchscreen_parse_properties(input, true, &data->prop);
