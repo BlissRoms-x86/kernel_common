@@ -157,7 +157,8 @@ config TOUCHSCREEN_CHIPONE_ICN8318
 	depends on I2C
 	depends on OF
 	help
-	  Say Y here if you have a ChipOne icn8318 based I2C touchscreen.
+	  Say Y here if you have a ChipOne icn8318 or icn8505 based
+	  I2C touchscreen.
 
 	  If unsure, say N.
 
