@@ -1278,6 +1278,14 @@ static struct i2c_driver i2c_hid_driver = {
 
 static int __init i2c_hid_init(void)
 {
+	/*
+	 * The CHPN0001 ACPI device has a _CID of PNP0C50 but is not HID
+	 * compatible, just probing it puts the device in an unusable state due
+	 * to it also have ACPI power management issues.
+	 */
+	if (acpi_dev_present("CHPN0001", NULL, -1))
+		return -ENODEV;
+
 	return i2c_add_driver(&i2c_hid_driver);
 }
 module_init(i2c_hid_init);
