@@ -1276,7 +1276,17 @@ static struct i2c_driver i2c_hid_driver = {
 	.id_table	= i2c_hid_id_table,
 };
 
-module_i2c_driver(i2c_hid_driver);
+static int __init i2c_hid_init(void)
+{
+	return i2c_add_driver(&i2c_hid_driver);
+}
+module_init(i2c_hid_init);
+
+static void __exit i2c_hid_exit(void)
+{
+	i2c_del_driver(&i2c_hid_driver);
+}
+module_exit(i2c_hid_exit);
 
 MODULE_DESCRIPTION("HID over I2C core driver");
 MODULE_AUTHOR("Benjamin Tissoires <benjamin.tissoires@gmail.com>");
