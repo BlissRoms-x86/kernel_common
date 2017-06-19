@@ -137,7 +137,8 @@ static int icn8318_start(struct input_dev *dev)
 	struct icn8318_data *data = input_get_drvdata(dev);
 
 	enable_irq(data->client->irq);
-	gpiod_set_value_cansleep(data->wake_gpio, 1);
+	if (data->wake_gpio)
+		gpiod_set_value_cansleep(data->wake_gpio, 1);
 
 	return 0;
 }
@@ -149,7 +150,8 @@ static void icn8318_stop(struct input_dev *dev)
 	disable_irq(data->client->irq);
 	i2c_smbus_write_byte_data(data->client, ICN8318_REG_POWER,
 				  ICN8318_POWER_HIBERNATE);
-	gpiod_set_value_cansleep(data->wake_gpio, 0);
+	if (data->wake_gpio)
+		gpiod_set_value_cansleep(data->wake_gpio, 0);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -197,7 +199,7 @@ static int icn8318_probe(struct i2c_client *client,
 	if (!data)
 		return -ENOMEM;
 
-	data->wake_gpio = devm_gpiod_get(dev, "wake", GPIOD_OUT_LOW);
+	data->wake_gpio = devm_gpiod_get_optional(dev, "wake", GPIOD_OUT_LOW);
 	if (IS_ERR(data->wake_gpio)) {
 		error = PTR_ERR(data->wake_gpio);
 		if (error != -EPROBE_DEFER)
