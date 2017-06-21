@@ -1790,6 +1790,9 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 				 CRC_PMIC_PWM_PERIOD_NS);
 	panel->backlight.enabled = panel->backlight.level != 0;
 
+	DRM_INFO("Using %s pwm-device for backlight control\n",
+		 dev_name(panel->backlight.pwm->chip->dev));
+
 	return 0;
 }
 
