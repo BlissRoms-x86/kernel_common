@@ -15,6 +15,8 @@
 #include <linux/usb/typec.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_soc_pmic.h>
+#include <linux/pci.h>
+#include <linux/pm_runtime.h>
 
 /* Register offsets */
 #define WCOVE_CHGRIRQ0		0x4e09
@@ -86,6 +88,7 @@ struct wcove_typec {
 	struct typec_port *port;
 	struct typec_capability cap;
 	struct typec_partner *partner;
+	struct pci_dev *xhci_dev;
 };
 
 enum wcove_typec_func {
@@ -107,6 +110,18 @@ enum wcove_typec_role {
 
 static guid_t guid = GUID_INIT(0x482383f0, 0x2876, 0x4e49,
 			       0x86, 0x85, 0xdb, 0x66, 0x21, 0x1a, 0xf0, 0x37);
+
+static int wcove_access_xhci(struct wcove_typec *wcove, bool enable)
+{
+	if (wcove->xhci_dev) {
+		if (enable) {
+			pm_runtime_get_sync(&wcove->xhci_dev->dev);
+		} else {
+			pm_runtime_put(&wcove->xhci_dev->dev);
+		}
+	}
+	return 0;
+}
 
 static int wcove_typec_func(struct wcove_typec *wcove,
 			    enum wcove_typec_func func, int param)
@@ -205,7 +220,9 @@ static irqreturn_t wcove_typec_irq(int irq, void *data)
 				 WCOVE_ORIENTATION_NORMAL);
 
 		/* This makes sure the device controller is disconnected */
+                wcove_access_xhci(wcove, true);
 		wcove_typec_func(wcove, WCOVE_FUNC_ROLE, WCOVE_ROLE_HOST);
+                wcove_access_xhci(wcove, false);
 
 		/* Port to default role */
 		typec_set_data_role(wcove->port, TYPEC_DEVICE);
@@ -257,11 +274,15 @@ static irqreturn_t wcove_typec_irq(int irq, void *data)
 	}
 
 	if (role == TYPEC_SINK) {
+                wcove_access_xhci(wcove, true);
 		wcove_typec_func(wcove, WCOVE_FUNC_ROLE, WCOVE_ROLE_DEVICE);
+                wcove_access_xhci(wcove, false);
 		typec_set_data_role(wcove->port, TYPEC_DEVICE);
 		typec_set_pwr_role(wcove->port, TYPEC_SINK);
 	} else {
+                wcove_access_xhci(wcove, true);
 		wcove_typec_func(wcove, WCOVE_FUNC_ROLE, WCOVE_ROLE_HOST);
+                wcove_access_xhci(wcove, false);
 		typec_set_pwr_role(wcove->port, TYPEC_SOURCE);
 		typec_set_data_role(wcove->port, TYPEC_HOST);
 	}
@@ -342,6 +363,8 @@ static int wcove_typec_probe(struct platform_device *pdev)
 	regmap_write(wcove->regmap, USBC_IRQMASK2, val & ~USBC_IRQMASK2_ALL);
 
 	platform_set_drvdata(pdev, wcove);
+
+	wcove->xhci_dev = pci_get_class(PCI_CLASS_SERIAL_USB_XHCI, NULL);
 	return 0;
 }
 
