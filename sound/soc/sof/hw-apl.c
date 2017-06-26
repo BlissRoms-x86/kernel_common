@@ -124,8 +124,9 @@
 
 /* ROM status IDs */
 #define APL_ROM_STS_MASK		0xf
+#define APL_ROM_INIT				0x1
 #define APL_IPC_PURGE_FW		0x01004000
-#define APL_ROM_INIT			0x5
+#define APL_FW_VERIFIED			0x5
 #define APL_ROM_RFW_START		0xf
 
 #define APL_ADSPIC_IPC			1
@@ -503,7 +504,7 @@ static int apl_transfer_fw(struct snd_sof_dev *sdev, int stream_tag)
 	}
 
 	status = snd_sof_dsp_register_poll(sdev, APL_DSP_BAR, 
-			APL_ADSP_FW_STATUS, APL_ROM_STS_MASK, APL_ROM_INIT, 
+			APL_ADSP_FW_STATUS, APL_ROM_STS_MASK, APL_FW_VERIFIED,
 			APL_BASEFW_TIMEOUT);
 
 	ret = apl_trigger(sdev, stream, SNDRV_PCM_TRIGGER_STOP);
@@ -856,6 +857,7 @@ static irqreturn_t apl_irq_handler(int irq, void *context)
 
 	/* IPC message ? */
 	if (sdev->irq_status & APL_ADSPIS_IPC) {
+		/* disable IPC interrupt */
 		snd_sof_dsp_update_bits_unlocked(sdev, APL_DSP_BAR,
 			APL_DSP_REG_ADSPIC, APL_ADSPIC_IPC, 0);
 		ret = IRQ_WAKE_THREAD;
@@ -884,6 +886,7 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 
 	/* reply message from DSP */
 	if (hipcie & APL_DSP_REG_HIPCIE_DONE) {
+		/* mask Done interrupt */
 		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR,
 			APL_DSP_REG_HIPCCTL, APL_DSP_REG_HIPCCTL_DONE, 0);
 
@@ -928,6 +931,7 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 	}
 
 	if (ret == IRQ_HANDLED) {
+		/* reenable IPC interrupt */
 		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, APL_DSP_REG_ADSPIC,
 			APL_ADSPIC_IPC, APL_ADSPIC_IPC);
 		/* continue to send any remaining messages... */
