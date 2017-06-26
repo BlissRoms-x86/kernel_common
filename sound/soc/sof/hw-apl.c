@@ -756,7 +756,7 @@ static void apl_get_windows(struct snd_sof_dev *sdev)
 		elem = &sdev->info_window->window[i];
 
 		switch (elem->type) {
-		case SOF_IPC_REGION_INBOX:
+		case SOF_IPC_REGION_UPBOX:
 			inbox_offset =
 				elem->offset + SRAM_WINDOW_OFFSET(elem->id);
 			inbox_size = elem->size;
@@ -764,7 +764,7 @@ static void apl_get_windows(struct snd_sof_dev *sdev)
 				sdev->bar[APL_DSP_BAR] + inbox_offset,
 				elem->size, "inbox");
 			break;
-		case SOF_IPC_REGION_OUTBOX:
+		case SOF_IPC_REGION_DOWNBOX:
 			outbox_offset =
 				elem->offset + SRAM_WINDOW_OFFSET(elem->id);
 			outbox_size = elem->size;
