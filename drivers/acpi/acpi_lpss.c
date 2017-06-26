@@ -631,6 +631,8 @@ static void acpi_lpss_set_ltr(struct device *dev, s32 val)
 }
 
 #ifdef CONFIG_PM
+static void lpss_iosf_exit_d3_state(void);
+
 /**
  * acpi_lpss_save_ctx() - Save the private registers of LPSS device
  * @dev: LPSS device
@@ -695,6 +697,9 @@ static int acpi_lpss_activate(struct device *dev)
 {
 	struct lpss_private_data *pdata = acpi_driver_data(ACPI_COMPANION(dev));
 	int ret;
+
+	if (lpss_quirks & LPSS_QUIRK_ALWAYS_POWER_ON && iosf_mbi_available())
+		lpss_iosf_exit_d3_state();
 
 	ret = acpi_dev_runtime_resume(dev);
 	if (ret)
