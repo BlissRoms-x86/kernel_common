@@ -98,6 +98,8 @@ struct lpss_private_data {
 	u32 prv_reg_ctx[LPSS_PRV_REG_COUNT];
 };
 
+static void lpss_iosf_exit_d3_state(void);
+
 /* LPSS run time quirks */
 static unsigned int lpss_quirks;
 
@@ -695,6 +697,9 @@ static int acpi_lpss_activate(struct device *dev)
 {
 	struct lpss_private_data *pdata = acpi_driver_data(ACPI_COMPANION(dev));
 	int ret;
+
+	if (lpss_quirks & LPSS_QUIRK_ALWAYS_POWER_ON && iosf_mbi_available())
+		lpss_iosf_exit_d3_state();
 
 	ret = acpi_dev_runtime_resume(dev);
 	if (ret)
