@@ -329,28 +329,28 @@ void snd_sof_ipc_process_notification(struct snd_sof_dev *sdev, u32 msg_id)
 	uint32_t cmd;
 	int err = -EINVAL;
 
-	/* first check for FW boot completion as it's special case */
-	if (!sdev->boot_complete) {
-		if (sdev->ops->fw_ready)
-			err = sdev->ops->fw_ready(sdev, msg_id);
-		if (err < 0) {
-			dev_err(sdev->dev, "DSP firmware boot timeout %d\n",
-				err);
-			return;
-		}
-
-		/* firware boot completed OK */	
-		sdev->boot_complete = true;
-		dev_dbg(sdev->dev, "booting DSP firmware completed\n");
-		wake_up(&sdev->boot_wait);
-		return;
-	}
-
-	/* now check for regular notifications */
 	cmd = msg_id & SOF_GLB_TYPE_MASK;
 	switch (cmd) {
 	case SOF_IPC_GLB_REPLY:
 		sof_ipc_notify_reply(sdev, msg_id);
+		break;
+	case SOF_IPC_FW_READY:
+		/* check for FW boot completion */
+		if (!sdev->boot_complete) {
+			if (sdev->ops->fw_ready)
+				err = sdev->ops->fw_ready(sdev, msg_id);
+			if (err < 0) {
+				dev_err(sdev->dev, "DSP firmware boot timeout %d\n",
+					err);
+				return;
+			}
+
+			/* firware boot completed OK */
+			sdev->boot_complete = true;
+			dev_dbg(sdev->dev, "booting DSP firmware completed\n");
+			wake_up(&sdev->boot_wait);
+			return;
+		}
 		break;
 	case SOF_IPC_GLB_COMPOUND:
 	case SOF_IPC_GLB_TPLG_MSG:
