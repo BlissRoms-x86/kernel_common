@@ -1,7 +1,7 @@
 * ChipOne icn8318 I2C touchscreen controller
 
 Required properties:
- - compatible		  : "chipone,icn8318"
+ - compatible		  : "chipone,icn8318" or "chipone,icn8505"
  - reg			  : I2C slave address of the chip (0x40)
  - interrupt-parent	  : a phandle pointing to the interrupt controller
 			    serving the interrupt for this chip

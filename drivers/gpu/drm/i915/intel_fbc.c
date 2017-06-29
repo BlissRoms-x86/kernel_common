@@ -735,7 +735,7 @@ static void intel_fbc_update_state_cache(struct intel_crtc *crtc,
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		cache->crtc.hsw_bdw_pixel_rate = crtc_state->pixel_rate;
 
-	cache->plane.rotation = plane_state->base.rotation;
+	cache->plane.rotation = intel_plane_get_rotation(plane_state);
 	/*
 	 * Src coordinates are already rotated by 270 degrees for
 	 * the 90/270 degree plane rotation cases (to match the

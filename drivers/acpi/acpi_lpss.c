@@ -69,6 +69,10 @@ ACPI_MODULE_NAME("acpi_lpss");
 #define LPSS_SAVE_CTX			BIT(4)
 #define LPSS_NO_D3_DELAY		BIT(5)
 
+/* Crystal Cove PMIC shares same ACPI ID between different platforms */
+#define BYT_CRC_HRV			2
+#define CHT_CRC_HRV			3
+
 struct lpss_private_data;
 
 struct lpss_device_desc {
@@ -92,6 +96,8 @@ struct lpss_private_data {
 	const struct lpss_device_desc *dev_desc;
 	u32 prv_reg_ctx[LPSS_PRV_REG_COUNT];
 };
+
+static void lpss_iosf_exit_d3_state(void);
 
 /* LPSS run time quirks */
 static unsigned int lpss_quirks;
@@ -155,7 +161,7 @@ static struct pwm_lookup byt_pwm_lookup[] = {
 
 static void byt_pwm_setup(struct lpss_private_data *pdata)
 {
-	if (!acpi_dev_present("INT33FD", NULL, -1))
+	if (!acpi_dev_present("INT33FD", NULL, BYT_CRC_HRV))
 		pwm_add_table(byt_pwm_lookup, ARRAY_SIZE(byt_pwm_lookup));
 }
 
@@ -678,6 +684,9 @@ static int acpi_lpss_activate(struct device *dev)
 	struct lpss_private_data *pdata = acpi_driver_data(ACPI_COMPANION(dev));
 	int ret;
 
+	if (lpss_quirks & LPSS_QUIRK_ALWAYS_POWER_ON && iosf_mbi_available())
+		lpss_iosf_exit_d3_state();
+
 	ret = acpi_dev_runtime_resume(dev);
 	if (ret)
 		return ret;
@@ -753,51 +762,6 @@ static int acpi_lpss_resume_early(struct device *dev)
 
 static DEFINE_MUTEX(lpss_iosf_mutex);
 
-static void lpss_iosf_enter_d3_state(void)
-{
-	u32 value1 = 0;
-	u32 mask1 = LPSS_GPIODEF0_DMA_D3_MASK | LPSS_GPIODEF0_DMA_LLP;
-	u32 value2 = LPSS_PMCSR_D3hot;
-	u32 mask2 = LPSS_PMCSR_Dx_MASK;
-	/*
-	 * PMC provides an information about actual status of the LPSS devices.
-	 * Here we read the values related to LPSS power island, i.e. LPSS
-	 * devices, excluding both LPSS DMA controllers, along with SCC domain.
-	 */
-	u32 func_dis, d3_sts_0, pmc_status, pmc_mask = 0xfe000ffe;
-	int ret;
-
-	ret = pmc_atom_read(PMC_FUNC_DIS, &func_dis);
-	if (ret)
-		return;
-
-	mutex_lock(&lpss_iosf_mutex);
-
-	ret = pmc_atom_read(PMC_D3_STS_0, &d3_sts_0);
-	if (ret)
-		goto exit;
-
-	/*
-	 * Get the status of entire LPSS power island per device basis.
-	 * Shutdown both LPSS DMA controllers if and only if all other devices
-	 * are already in D3hot.
-	 */
-	pmc_status = (~(d3_sts_0 | func_dis)) & pmc_mask;
-	if (pmc_status)
-		goto exit;
-
-	iosf_mbi_modify(LPSS_IOSF_UNIT_LPIO1, MBI_CFG_WRITE,
-			LPSS_IOSF_PMCSR, value2, mask2);
-
-	iosf_mbi_modify(LPSS_IOSF_UNIT_LPIO2, MBI_CFG_WRITE,
-			LPSS_IOSF_PMCSR, value2, mask2);
-
-	iosf_mbi_modify(LPSS_IOSF_UNIT_LPIOEP, MBI_CR_WRITE,
-			LPSS_IOSF_GPIODEF0, value1, mask1);
-exit:
-	mutex_unlock(&lpss_iosf_mutex);
-}
-
 static void lpss_iosf_exit_d3_state(void)
 {
 	u32 value1 = LPSS_GPIODEF0_DMA1_D3 | LPSS_GPIODEF0_DMA2_D3 |
@@ -832,17 +796,7 @@ static int acpi_lpss_runtime_suspend(struct device *dev)
 	if (pdata->dev_desc->flags & LPSS_SAVE_CTX)
 		acpi_lpss_save_ctx(dev, pdata);
 
-	ret = acpi_dev_runtime_suspend(dev);
-
-	/*
-	 * This call must be last in the sequence, otherwise PMC will return
-	 * wrong status for devices being about to be powered off. See
-	 * lpss_iosf_enter_d3_state() for further information.
-	 */
-	if (lpss_quirks & LPSS_QUIRK_ALWAYS_POWER_ON && iosf_mbi_available())
-		lpss_iosf_enter_d3_state();
-
-	return ret;
+	return acpi_dev_runtime_suspend(dev);
 }
 
 static int acpi_lpss_runtime_resume(struct device *dev)
@@ -850,10 +804,6 @@ static int acpi_lpss_runtime_resume(struct device *dev)
 	struct lpss_private_data *pdata = acpi_driver_data(ACPI_COMPANION(dev));
 	int ret;
 
-	/*
-	 * This call is kept first to be in symmetry with
-	 * acpi_lpss_runtime_suspend() one.
-	 */
 	if (lpss_quirks & LPSS_QUIRK_ALWAYS_POWER_ON && iosf_mbi_available())
 		lpss_iosf_exit_d3_state();
 

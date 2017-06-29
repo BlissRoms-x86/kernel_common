@@ -311,6 +311,16 @@ static const struct gmin_cfg_var i8880_vars[] = {
         {},
 };
 
+static const struct gmin_cfg_var insyde_t701_vars[] = {
+        {"OVTI2680:00_CsiPort", "1"},
+        {"OVTI2680:00_CsiLanes","1"},
+        {"OVTI2680:00_CamClk","0"},
+        {"INT0310:00_CsiPort", "0"},
+        {"INT0310:00_CsiLanes", "1"},
+        {"INT0310:00_CamClk", "1"},
+        {},
+};
+
 static const struct {
 	const char *dmi_board_name;
 	const struct gmin_cfg_var *vars;
@@ -320,6 +330,7 @@ static const struct {
         { "MRD7", mrd7_vars },
         { "ST70408", ecs7_vars },
         { "VTA0803", i8880_vars },
+        { "T701", insyde_t701_vars },
 };
 
 
@@ -623,9 +634,7 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 	char var8[CFG_VAR_NAME_MAX];
 	efi_char16_t var16[CFG_VAR_NAME_MAX];
 	struct efivar_entry *ev;
-	u32 efiattr_dummy;
 	int i, j, ret;
-	unsigned long efilen;
 
         if (dev && ACPI_COMPANION(dev))
                 dev = &ACPI_COMPANION(dev)->dev;
@@ -684,15 +693,18 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 		return -ENOMEM;
 	memcpy(&ev->var.VariableName, var16, sizeof(var16));
 	ev->var.VendorGuid = GMIN_CFG_VAR_EFI_GUID;
+	ev->var.DataSize = *out_len;
 
-	efilen = *out_len;
-	ret = efivar_entry_get(ev, &efiattr_dummy, &efilen, out);
+	ret = efivar_entry_get(ev, &ev->var.Attributes,
+			       &ev->var.DataSize, ev->var.Data);
+	if (ret == 0) {
+		memcpy(out, ev->var.Data, ev->var.DataSize);
+		*out_len = ev->var.DataSize;
+	} else if (dev) {
+		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
+	}
 
 	kfree(ev);
-	*out_len = efilen;
-
-	if (ret)
- 		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
 
 	return ret;
 }

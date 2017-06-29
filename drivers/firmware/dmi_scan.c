@@ -780,7 +780,7 @@ void __init dmi_set_dump_stack_arch_desc(void)
  *	dmi_matches - check if dmi_system_id structure matches system DMI data
  *	@dmi: pointer to the dmi_system_id structure to check
  */
-static bool dmi_matches(const struct dmi_system_id *dmi)
+bool dmi_matches(const struct dmi_system_id *dmi)
 {
 	int i;
 
@@ -804,6 +804,7 @@ static bool dmi_matches(const struct dmi_system_id *dmi)
 	}
 	return true;
 }
+EXPORT_SYMBOL(dmi_matches);
 
 /**
  *	dmi_is_end_of_table - check for end-of-table marker
