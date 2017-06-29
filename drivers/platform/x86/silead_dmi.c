@@ -122,6 +122,20 @@ static const struct silead_ts_dmi_data pipo_w2s_data = {
 	.properties	= pipo_w2s_props,
 };
 
+static const struct property_entry itworks_tw891_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1600),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 890),
+	PROPERTY_ENTRY_BOOL("touchscreen-inverted-y"),
+	PROPERTY_ENTRY_BOOL("touchscreen-swapped-x-y"),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl3670-itworks-tw891.fw"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data itworks_tw891_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= itworks_tw891_props,
+};
+
 static const struct dmi_system_id silead_ts_dmi_table[] = {
 	{
 		/* CUBE iwork8 Air */
@@ -185,6 +199,14 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "PIPO"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "W2S"),
+		},
+	},
+	{
+		/* I.T.Works TW891 */
+		.driver_data = (void *)&itworks_tw891_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "To be filled by O.E.M."),
+			DMI_MATCH(DMI_PRODUCT_NAME, "TW891"),
 		},
 	},
 	{ },
