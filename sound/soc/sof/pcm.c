@@ -354,7 +354,7 @@ static struct snd_pcm_ops sof_pcm_ops = {
 	.page		= snd_pcm_sgbuf_ops_page,
 };
 
-struct snd_sof_pcm *find_spcm(struct snd_sof_dev *sdev,
+static struct snd_sof_pcm *find_spcm(struct snd_sof_dev *sdev,
 	struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_sof_pcm *spcm = NULL;

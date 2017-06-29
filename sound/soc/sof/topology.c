@@ -66,6 +66,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
 #include <linux/firmware.h>
+#include <linux/string.h>
 #include <sound/soc-topology.h>
 #include <sound/soc.h>
 #include <uapi/sound/sof-ipc.h>
@@ -86,6 +87,20 @@ static void sof_process_ext_tokens(struct snd_soc_component *scomp, u32 id,
 {
 	/* process all extended token types */
 	// TODO: support any extended tokens.
+}
+
+
+static struct snd_sof_widget *find_swidget(struct snd_sof_dev *sdev,
+	char *name)
+{
+	struct snd_sof_widget *swidget = NULL;
+
+	list_for_each_entry(swidget, &sdev->widget_list, list) {
+		if (strcmp(name, swidget->widget->name) == 0)
+			return swidget;
+	}
+
+	return NULL;
 }
 
 /*
@@ -453,6 +468,7 @@ static int sof_widget_load_buffer(struct snd_soc_component *scomp,
 		buffer.comp.hdr.cmd, &buffer, sizeof(buffer), r, sizeof(*r));
 }
 
+
 static void sof_pipeline_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
 	struct sof_ipc_pipe_new *pipeline,
@@ -467,8 +483,17 @@ static void sof_pipeline_get_words(struct snd_soc_component *scomp,
 		elem = &array->value[i];
 
 		switch (elem->token) {
+		case SOF_TKN_SCHED_DEADLINE:
+			pipeline->deadline = elem->value;
+			break;
+		case SOF_TKN_SCHED_PRIORITY:
+			pipeline->priority = elem->value;
+			break;
+		case SOF_TKN_SCHED_MIPS:
+			pipeline->mips = elem->value;
+			break;
 		case SOF_TKN_SCHED_CORE:
-			//buffer->size = elem->value;
+			pipeline->core = elem->value;
 			break;
 		default:
 			/* non fatal */
@@ -531,6 +556,7 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct sof_ipc_pipe_new pipeline;
+	struct snd_sof_widget *comp_swidget;
 	int ret;
 
 	/* configure dai IPC message */
@@ -538,6 +564,15 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 	pipeline.hdr.size = sizeof(pipeline);
 	pipeline.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_BUFFER_NEW;
 	pipeline.pipeline_id = swidget->comp_id;
+
+	/* component at start of pipeline is our stream id */
+	comp_swidget = find_swidget(sdev, tw->sname);
+	if (comp_swidget == NULL) {
+		dev_err(sdev->dev, "error: widget %s refers to non existant widget %s\n",
+			tw->name, tw->sname);
+		//return -EINVAL;
+	} else
+		pipeline.comp_id = comp_swidget->comp_id;
 
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_pipeline_get_data(scomp, swidget, tw, &pipeline);
@@ -785,9 +820,6 @@ static int sof_widget_ready(struct snd_soc_component *scomp,
 	swidget->sdev = sdev;
 	swidget->widget = w;
 	swidget->comp_id = sdev->next_comp_id++;
-	w->dobj.private = swidget;
-	mutex_init(&swidget->mutex);
-	list_add(&swidget->list, &sdev->widget_list);
 
 	/* handle any special case widgets */
 	switch (w->id) {
@@ -817,12 +849,33 @@ static int sof_widget_ready(struct snd_soc_component *scomp,
 		ret = sof_widget_load_buffer(scomp, swidget, tw, &reply);
 		break;
 	case snd_soc_dapm_effect:
+		break;
+	case snd_soc_dapm_scheduler:
+		ret = sof_widget_load_pipeline(scomp, swidget, tw, &reply);
+		break;
 	default:
 		break;
 	}
 
 	/* check IPC return value */
+	if (ret < 0) {
+		dev_err(sdev->dev, "error: failed to add widget id %d type %d name : %s stream %s\n",
+			tw->shift, tw->id, tw->name,
+			tw->sname ? tw->sname : "none");
+		return ret;
+	}
 
+	/* check IPC reply */
+	if (reply.hdr.cmd & SOF_IPC_REPLY_ERROR) {
+		dev_err(sdev->dev, "error: DSP failed to add widget id %d type %d name : %s stream %s reply 0x%x\n",
+			tw->shift, tw->id, tw->name,
+			tw->sname ? tw->sname : "none", reply.hdr.cmd);
+		//return ret; // TODO:
+	}
+
+	w->dobj.private = swidget;
+	mutex_init(&swidget->mutex);
+	list_add(&swidget->list, &sdev->widget_list);
 	return ret;
 }
 
@@ -970,7 +1023,7 @@ int snd_sof_load_topology(struct snd_sof_dev *sdev, const char *file)
 
 	hdr = (struct snd_soc_tplg_hdr *)fw->data;
 	ret = snd_soc_tplg_component_load(sdev->component,
-					&sof_tplg_ops, fw, hdr->index);
+			&sof_tplg_ops, fw, SND_SOC_TPLG_INDEX_ALL);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: tplg component load failed %d\n", ret);
 		release_firmware(fw);
