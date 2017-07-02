@@ -727,7 +727,7 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 	struct cfg80211_scan_request *scan_request;
 	s32 err = 0;
 
-	brcmf_dbg(SCAN, "Enter\n");
+	brcmf_err("Enter\n");
 
 	/* clear scan request, because the FW abort can cause a second call */
 	/* to this functon and might cause a double cfg80211_scan_done      */
@@ -739,7 +739,7 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 
 	if (fw_abort) {
 		/* Do a scan abort to stop the driver's scan engine */
-		brcmf_dbg(SCAN, "ABORT scan in firmware\n");
+		brcmf_err("ABORT scan in firmware\n");
 		memset(&params_le, 0, sizeof(params_le));
 		eth_broadcast_addr(params_le.bssid);
 		params_le.bss_type = DOT11_BSSTYPE_ANY;
@@ -765,7 +765,7 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 	 * which takes precedence.
 	 */
 	if (cfg->internal_escan) {
-		brcmf_dbg(SCAN, "scheduled scan completed\n");
+		brcmf_err("internal escan completed, aborted: %d\n", aborted);
 		cfg->internal_escan = false;
 		if (!aborted)
 			cfg80211_sched_scan_results(cfg_to_wiphy(cfg), 0);
@@ -774,12 +774,12 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 			.aborted = aborted,
 		};
 
-		brcmf_dbg(SCAN, "ESCAN Completed scan: %s\n",
+		brcmf_err("ESCAN Completed scan: %s\n",
 			  aborted ? "Aborted" : "Done");
 		cfg80211_scan_done(scan_request, &info);
 	}
 	if (!test_and_clear_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status))
-		brcmf_dbg(SCAN, "Scan complete, probably P2P scan\n");
+		brcmf_err("Scan complete, probably P2P scan\n");
 
 	return err;
 }
@@ -832,9 +832,11 @@ int brcmf_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 
 	if (ndev) {
 		if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status) &&
-		    cfg->escan_info.ifp == netdev_priv(ndev))
+		    cfg->escan_info.ifp == netdev_priv(ndev)) {
+		    	brcmf_err("del interface, abort scan\n");
 			brcmf_notify_escan_complete(cfg, netdev_priv(ndev),
 						    true, true);
+		}
 
 		brcmf_fil_iovar_int_set(netdev_priv(ndev), "mpc", 1);
 	}
@@ -988,21 +990,21 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 	n_ssids = request->n_ssids;
 	n_channels = request->n_channels;
 	/* Copy channel array if applicable */
-	brcmf_dbg(SCAN, "### List of channelspecs to scan ### %d\n",
+	brcmf_err("### List of channelspecs to scan ### %d\n",
 		  n_channels);
 	if (n_channels > 0) {
 		for (i = 0; i < n_channels; i++) {
 			chanspec = channel_to_chanspec(&cfg->d11inf,
 						       request->channels[i]);
-			brcmf_dbg(SCAN, "Chan : %d, Channel spec: %x\n",
+			brcmf_err("Chan : %d, Channel spec: %x\n",
 				  request->channels[i]->hw_value, chanspec);
 			params_le->channel_list[i] = cpu_to_le16(chanspec);
 		}
 	} else {
-		brcmf_dbg(SCAN, "Scanning all channels\n");
+		brcmf_err("Scanning all channels\n");
 	}
 	/* Copy ssid array if applicable */
-	brcmf_dbg(SCAN, "### List of SSIDs to scan ### %d\n", n_ssids);
+	brcmf_err("### List of SSIDs to scan ### %d\n", n_ssids);
 	if (n_ssids > 0) {
 		offset = offsetof(struct brcmf_scan_params_le, channel_list) +
 				n_channels * sizeof(u16);
@@ -1015,17 +1017,17 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 			memcpy(ssid_le.SSID, request->ssids[i].ssid,
 			       request->ssids[i].ssid_len);
 			if (!ssid_le.SSID_len)
-				brcmf_dbg(SCAN, "%d: Broadcast scan\n", i);
+				brcmf_err("%d: Broadcast scan\n", i);
 			else
-				brcmf_dbg(SCAN, "%d: scan for  %s size =%d\n",
+				brcmf_err("%d: scan for  %s size =%d\n",
 					  i, ssid_le.SSID, ssid_le.SSID_len);
 			memcpy(ptr, &ssid_le, sizeof(ssid_le));
 			ptr += sizeof(ssid_le);
 		}
 	} else {
-		brcmf_dbg(SCAN, "Broadcast scan %p\n", request->ssids);
+		brcmf_err("Broadcast scan %p\n", request->ssids);
 		if ((request->ssids) && request->ssids->ssid_len) {
-			brcmf_dbg(SCAN, "SSID %s len=%d\n",
+			brcmf_err("SSID %s len=%d\n",
 				  params_le->ssid_le.SSID,
 				  request->ssids->ssid_len);
 			params_le->ssid_le.SSID_len =
@@ -1049,7 +1051,7 @@ brcmf_run_escan(struct brcmf_cfg80211_info *cfg, struct brcmf_if *ifp,
 	struct brcmf_escan_params_le *params;
 	s32 err = 0;
 
-	brcmf_dbg(SCAN, "E-SCAN START\n");
+	brcmf_err("E-SCAN START\n");
 
 	if (request != NULL) {
 		/* Allocate space for populating ssids in struct */
@@ -1092,7 +1094,7 @@ brcmf_do_escan(struct brcmf_if *ifp, struct cfg80211_scan_request *request)
 	struct brcmf_scan_results *results;
 	struct escan_info *escan = &cfg->escan_info;
 
-	brcmf_dbg(SCAN, "Enter\n");
+	brcmf_err("Enter\n");
 	escan->ifp = ifp;
 	escan->wiphy = cfg->wiphy;
 	escan->escan_state = WL_ESCAN_STATE_SCANNING;
@@ -1130,7 +1132,7 @@ brcmf_cfg80211_escan(struct wiphy *wiphy, struct brcmf_cfg80211_vif *vif,
 	struct brcmf_ssid_le ssid_le;
 	u32 SSID_len;
 
-	brcmf_dbg(SCAN, "START ESCAN\n");
+	brcmf_err("START ESCAN\n");
 
 	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
 		brcmf_err("Scanning already: status (%lu)\n", cfg->scan_status);
@@ -1169,6 +1171,7 @@ brcmf_cfg80211_escan(struct wiphy *wiphy, struct brcmf_cfg80211_vif *vif,
 	cfg->scan_request = request;
 	set_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status);
 	if (escan_req) {
+		brcmf_err("escan start\n");
 		cfg->escan_info.run = brcmf_run_escan;
 		err = brcmf_p2p_scan_prep(wiphy, request, vif);
 		if (err)
@@ -1178,7 +1181,7 @@ brcmf_cfg80211_escan(struct wiphy *wiphy, struct brcmf_cfg80211_vif *vif,
 		if (err)
 			goto scan_out;
 	} else {
-		brcmf_dbg(SCAN, "ssid \"%s\", ssid_len (%d)\n",
+		brcmf_err("normal scan ssid \"%s\", ssid_len (%d)\n",
 			  ssids->ssid, ssids->ssid_len);
 		memset(&ssid_le, 0, sizeof(ssid_le));
 		SSID_len = min_t(u8, sizeof(ssid_le.SSID), ssids->ssid_len);
@@ -1189,7 +1192,7 @@ brcmf_cfg80211_escan(struct wiphy *wiphy, struct brcmf_cfg80211_vif *vif,
 			ssid_le.SSID_len = cpu_to_le32(SSID_len);
 			spec_scan = true;
 		} else
-			brcmf_dbg(SCAN, "Broadcast scan\n");
+			brcmf_err("Broadcast scan\n");
 
 		passive_scan = cfg->active_scan ? 0 : 1;
 		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PASSIVE_SCAN,
@@ -1203,7 +1206,7 @@ brcmf_cfg80211_escan(struct wiphy *wiphy, struct brcmf_cfg80211_vif *vif,
 					     sizeof(ssid_le));
 		if (err) {
 			if (err == -EBUSY)
-				brcmf_dbg(INFO, "BUSY: scan for \"%s\" canceled\n",
+				brcmf_err("BUSY: scan for \"%s\" canceled\n",
 					  ssid_le.SSID);
 			else
 				brcmf_err("WLC_SCAN error (%d)\n", err);
@@ -2865,7 +2868,7 @@ static s32 brcmf_inform_bss(struct brcmf_cfg80211_info *cfg)
 			  bss_list->version);
 		return -EOPNOTSUPP;
 	}
-	brcmf_dbg(SCAN, "scanned AP count (%d)\n", bss_list->count);
+	brcmf_err("scanned AP count (%d)\n", bss_list->count);
 	for (i = 0; i < bss_list->count; i++) {
 		bi = next_bss_le(bss_list, bi);
 		err = brcmf_inform_single_bss(cfg, bi);
@@ -3016,6 +3019,8 @@ void brcmf_abort_scanning(struct brcmf_cfg80211_info *cfg)
 {
 	struct escan_info *escan = &cfg->escan_info;
 
+	brcmf_err("brcmf_abort_scanning called\n");
+
 	set_bit(BRCMF_SCAN_STATUS_ABORT, &cfg->scan_status);
 	if (cfg->internal_escan || cfg->scan_request) {
 		escan->escan_state = WL_ESCAN_STATE_IDLE;
@@ -3023,6 +3028,8 @@ void brcmf_abort_scanning(struct brcmf_cfg80211_info *cfg)
 	}
 	clear_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status);
 	clear_bit(BRCMF_SCAN_STATUS_ABORT, &cfg->scan_status);
+
+	brcmf_err("brcmf_abort_scanning done\n");
 }
 
 static void brcmf_cfg80211_escan_timeout_worker(struct work_struct *work)
@@ -3104,13 +3111,15 @@ brcmf_cfg80211_escan_handler(struct brcmf_if *ifp,
 	if (status == BRCMF_E_STATUS_ABORT)
 		goto exit;
 
+	brcmf_err("scan complete status %08x\n", status);
+
 	if (!test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
 		brcmf_err("scan not ready, bsscfgidx=%d\n", ifp->bsscfgidx);
 		return -EPERM;
 	}
 
 	if (status == BRCMF_E_STATUS_PARTIAL) {
-		brcmf_dbg(SCAN, "ESCAN Partial result\n");
+		brcmf_err("ESCAN Partial result\n");
 		escan_result_le = (struct brcmf_escan_result_le *) data;
 		if (!escan_result_le) {
 			brcmf_err("Invalid escan result (NULL pointer)\n");
@@ -3123,11 +3132,13 @@ brcmf_cfg80211_escan_handler(struct brcmf_if *ifp,
 		}
 		bss_info_le = &escan_result_le->bss_info_le;
 
-		if (brcmf_p2p_scan_finding_common_channel(cfg, bss_info_le))
+		if (brcmf_p2p_scan_finding_common_channel(cfg, bss_info_le)) {
+			brcmf_err("no common channel\n");
 			goto exit;
+		}
 
 		if (!cfg->internal_escan && !cfg->scan_request) {
-			brcmf_dbg(SCAN, "result without cfg80211 request\n");
+			brcmf_err("result without cfg80211 request\n");
 			goto exit;
 		}
 
@@ -3170,14 +3181,17 @@ brcmf_cfg80211_escan_handler(struct brcmf_if *ifp,
 		list->count++;
 	} else {
 		cfg->escan_info.escan_state = WL_ESCAN_STATE_IDLE;
-		if (brcmf_p2p_scan_finding_common_channel(cfg, NULL))
+		if (brcmf_p2p_scan_finding_common_channel(cfg, NULL)) {
+			brcmf_err("no common channel\n");
 			goto exit;
+		}
 		if (cfg->internal_escan || cfg->scan_request) {
 			brcmf_inform_bss(cfg);
 			aborted = status != BRCMF_E_STATUS_SUCCESS;
+			brcmf_err("Completing scan, aborted %d\n", aborted);
 			brcmf_notify_escan_complete(cfg, ifp, aborted, false);
 		} else
-			brcmf_dbg(SCAN, "Ignored scan complete result 0x%x\n",
+			brcmf_err("Ignored scan complete result 0x%x\n",
 				  status);
 	}
 exit:
@@ -3261,13 +3275,16 @@ static int brcmf_start_internal_escan(struct brcmf_if *ifp,
 	int err;
 
 	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
+		brcmf_err("abort current scan for internal scan\n");
 		/* Abort any on-going scan */
 		brcmf_abort_scanning(cfg);
 	}
 
 	set_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status);
 	cfg->escan_info.run = brcmf_run_escan;
+	brcmf_err("starting internel escan for internal scan\n");
 	err = brcmf_do_escan(ifp, request);
+	brcmf_err("internal escan start result %d\n", err);
 	if (err) {
 		clear_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status);
 		return err;
@@ -3318,15 +3335,15 @@ brcmf_notify_sched_scan_results(struct brcmf_if *ifp,
 	u32 status;
 	u32 datalen;
 
-	brcmf_dbg(SCAN, "Enter\n");
+	brcmf_err("Enter\n");
 
 	if (e->datalen < (sizeof(*pfn_result) + sizeof(*netinfo))) {
-		brcmf_dbg(SCAN, "Event data to small. Ignore\n");
+		brcmf_err("Event data to small. Ignore\n");
 		return 0;
 	}
 
 	if (e->event_code == BRCMF_E_PFN_NET_LOST) {
-		brcmf_dbg(SCAN, "PFN NET LOST event. Do Nothing\n");
+		brcmf_err("PFN NET LOST event. Do Nothing\n");
 		return 0;
 	}
 
@@ -3338,7 +3355,7 @@ brcmf_notify_sched_scan_results(struct brcmf_if *ifp,
 	 * multiple NET_FOUND events. For now place a warning here.
 	 */
 	WARN_ON(status != BRCMF_PNO_SCAN_COMPLETE);
-	brcmf_dbg(SCAN, "PFN NET FOUND event. count: %d\n", result_count);
+	brcmf_err("PFN NET FOUND event. count: %d\n", result_count);
 	if (!result_count) {
 		brcmf_err("FALSE PNO Event. (pfn_count == 0)\n");
 		goto out_err;
@@ -3363,7 +3380,7 @@ brcmf_notify_sched_scan_results(struct brcmf_if *ifp,
 
 		if (netinfo->SSID_len > IEEE80211_MAX_SSID_LEN)
 			netinfo->SSID_len = IEEE80211_MAX_SSID_LEN;
-		brcmf_dbg(SCAN, "SSID:%.32s Channel:%d\n",
+		brcmf_err("SSID:%.32s Channel:%d\n",
 			  netinfo->SSID, netinfo->channel);
 		err = brcmf_internal_escan_add_info(request,
 						    netinfo->SSID,
@@ -3392,7 +3409,7 @@ brcmf_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	struct brcmf_if *ifp = netdev_priv(ndev);
 	struct brcmf_cfg80211_info *cfg = wiphy_priv(wiphy);
 
-	brcmf_dbg(SCAN, "Enter n_match_sets:%d n_ssids:%d\n",
+	brcmf_err("Enter n_match_sets:%d n_ssids:%d\n",
 		  req->n_match_sets, req->n_ssids);
 
 	if (test_bit(BRCMF_SCAN_STATUS_SUPPRESS, &cfg->scan_status)) {
@@ -3402,7 +3419,7 @@ brcmf_cfg80211_sched_scan_start(struct wiphy *wiphy,
 	}
 
 	if (req->n_match_sets <= 0) {
-		brcmf_dbg(SCAN, "invalid number of matchsets specified: %d\n",
+		brcmf_err("invalid number of matchsets specified: %d\n",
 			  req->n_match_sets);
 		return -EINVAL;
 	}
@@ -3416,7 +3433,7 @@ static int brcmf_cfg80211_sched_scan_stop(struct wiphy *wiphy,
 	struct brcmf_cfg80211_info *cfg = wiphy_to_cfg(wiphy);
 	struct brcmf_if *ifp = netdev_priv(ndev);
 
-	brcmf_dbg(SCAN, "enter\n");
+	brcmf_err("enter\n");
 	brcmf_pno_clean(ifp);
 	if (cfg->internal_escan)
 		brcmf_notify_escan_complete(cfg, ifp, true, true);
@@ -3479,17 +3496,17 @@ brcmf_wowl_nd_results(struct brcmf_if *ifp, const struct brcmf_event_msg *e,
 	struct brcmf_pno_scanresults_le *pfn_result;
 	struct brcmf_pno_net_info_le *netinfo;
 
-	brcmf_dbg(SCAN, "Enter\n");
+	brcmf_err("Enter\n");
 
 	if (e->datalen < (sizeof(*pfn_result) + sizeof(*netinfo))) {
-		brcmf_dbg(SCAN, "Event data to small. Ignore\n");
+		brcmf_err("Event data to small. Ignore\n");
 		return 0;
 	}
 
 	pfn_result = (struct brcmf_pno_scanresults_le *)data;
 
 	if (e->event_code == BRCMF_E_PFN_NET_LOST) {
-		brcmf_dbg(SCAN, "PFN NET LOST event. Ignore\n");
+		brcmf_err("PFN NET LOST event. Ignore\n");
 		return 0;
 	}
 
@@ -3700,8 +3717,10 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
 		brcmf_cfg80211_sched_scan_stop(wiphy, ndev, 0);
 
 	/* end any scanning */
-	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status))
+	if (test_bit(BRCMF_SCAN_STATUS_BUSY, &cfg->scan_status)) {
+		brcmf_err("abort scan for suspend\n");
 		brcmf_abort_scanning(cfg);
+	}
 
 	if (wowl == NULL) {
 		brcmf_bus_wowl_config(cfg->pub->bus_if, false);
@@ -3730,6 +3749,7 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
 exit:
 	brcmf_dbg(TRACE, "Exit\n");
 	/* clear any scanning activity */
+	brcmf_err("clear stan_status\n");
 	cfg->scan_status = 0;
 	return 0;
 }
@@ -5003,6 +5023,7 @@ static int brcmf_cfg80211_crit_proto_start(struct wiphy *wiphy,
 		return -EINVAL;
 
 	/* suppress and abort scanning */
+	brcmf_err("crit mode start\n");
 	set_bit(BRCMF_SCAN_STATUS_SUPPRESS, &cfg->scan_status);
 	brcmf_abort_scanning(cfg);
 
@@ -5017,6 +5038,7 @@ static void brcmf_cfg80211_crit_proto_stop(struct wiphy *wiphy,
 
 	vif = container_of(wdev, struct brcmf_cfg80211_vif, wdev);
 
+	brcmf_err("crit mode stop\n");
 	brcmf_btcoex_set_mode(vif, BRCMF_BTCOEX_ENABLED, 0);
 	clear_bit(BRCMF_SCAN_STATUS_SUPPRESS, &cfg->scan_status);
 }
