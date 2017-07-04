@@ -66,6 +66,7 @@ static struct usb_driver btusb_driver;
 #define BTUSB_BCM2045		0x40000
 #define BTUSB_IFNUM_2		0x80000
 #define BTUSB_CW6622		0x100000
+#define BTUSB_BCM2045_0000_0000	0x200000
 
 static const struct usb_device_id btusb_table[] = {
 	/* Generic Bluetooth USB device */
@@ -123,6 +124,10 @@ static const struct usb_device_id btusb_table[] = {
 
 	/* Canyon CN-BTU1 with HID interfaces */
 	{ USB_DEVICE(0x0c10, 0x0000) },
+
+	/* Broadcom BCM2045 with the prod:vend ids not filled GRRR */
+	{ USB_DEVICE(0x0000, 0x0000),
+	  .driver_info = BTUSB_BCM2045 | BTUSB_BCM2045_0000_0000 },
 
 	/* Broadcom BCM20702A0 */
 	{ USB_DEVICE(0x413c, 0x8197) },
@@ -2891,6 +2896,16 @@ static int btusb_probe(struct usb_interface *intf,
 
 	if (id->driver_info == BTUSB_IGNORE)
 		return -ENODEV;
+
+	if (id->driver_info & BTUSB_BCM2045_0000_0000) {
+		struct usb_device *udev = interface_to_usbdev(intf);
+
+		/* Device with prod:vend id set to 0000:0000, check strings */
+		if (!udev->manufacturer || !udev->product ||
+		    strcmp(udev->manufacturer, "Broadcom Corp") != 0 ||
+		    strcmp(udev->product, "BCM2045A0") != 0)
+			return -ENODEV;
+	}
 
 	if (id->driver_info & BTUSB_ATH3012) {
 		struct usb_device *udev = interface_to_usbdev(intf);
