@@ -750,8 +750,16 @@ EXPORT_SYMBOL_GPL(i2c_match_id);
 static int i2c_device_match(struct device *dev, struct device_driver *drv)
 {
 	struct i2c_client	*client = i2c_verify_client(dev);
-	struct i2c_driver	*driver;
+	struct i2c_driver	*driver = to_i2c_driver(drv);
+	int ret;
 
+	if (driver->match && client) {
+		ret = driver->match(client);
+		if (ret < 0)
+			return 0;
+		if (ret > 0)
+			return 1;
+	}
 
 	/* Attempt an OF style match */
 	if (i2c_of_match_device(drv->of_match_table, client))
@@ -760,8 +768,6 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 	/* Then ACPI style match */
 	if (acpi_driver_match_device(dev, drv))
 		return 1;
-
-	driver = to_i2c_driver(drv);
 
 	/* Finally an I2C match */
 	if (i2c_match_id(driver->id_table, client))
