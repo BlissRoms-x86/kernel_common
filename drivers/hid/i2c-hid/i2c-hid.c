@@ -891,6 +891,26 @@ static void i2c_hid_acpi_fix_up_power(struct device *dev)
 		acpi_device_fix_up_power(adev);
 }
 
+static const struct acpi_device_id i2c_hid_acpi_blacklist[] = {
+	/*
+	 * The CHPN0001 ACPI device has a _CID of PNP0C50 but is not HID
+	 * compatible, just probing it puts the device in an unusable state due
+	 * to it also have ACPI power management issues.
+	 */
+	{"CHPN0001", 0 },
+	{ },
+};
+
+static int i2c_hid_match(struct i2c_client *client)
+{
+	struct acpi_device *adev = ACPI_COMPANION(&client->dev);
+
+	if (adev && acpi_match_device_ids(adev, i2c_hid_acpi_blacklist) == 0)
+		return -ENODEV;
+
+	return 0;
+}
+
 static const struct acpi_device_id i2c_hid_acpi_match[] = {
 	{"ACPI0C50", 0 },
 	{"PNP0C50", 0 },
@@ -905,6 +925,7 @@ static inline int i2c_hid_acpi_pdata(struct i2c_client *client,
 }
 
 static inline void i2c_hid_acpi_fix_up_power(struct device *dev) {}
+static int i2c_hid_match(struct i2c_client *client) { return 0; }
 #endif
 
 #ifdef CONFIG_OF
@@ -1255,6 +1276,7 @@ static struct i2c_driver i2c_hid_driver = {
 		.of_match_table = of_match_ptr(i2c_hid_of_match),
 	},
 
+	.match		= i2c_hid_match,
 	.probe		= i2c_hid_probe,
 	.remove		= i2c_hid_remove,
 	.shutdown	= i2c_hid_shutdown,
