@@ -561,4 +561,12 @@ config CHARGER_RT9455
 	help
 	  Say Y to enable support for Richtek RT9455 battery charger.
 
+config SURFACE3_POWER
+	tristate "Surface 3 power management driver"
+	depends on I2C
+	depends on GPIOLIB
+	help
+	  This driver provides support for the power supply features of
+	  the Surface 3.
+
 endif # POWER_SUPPLY
