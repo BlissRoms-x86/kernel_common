@@ -194,6 +194,8 @@ struct snd_sof_control {
 struct snd_sof_widget {
 	struct snd_sof_dev *sdev;
 	int comp_id;
+	int complete;
+	int id;
 
 	struct snd_soc_dapm_widget *widget;
 	struct mutex mutex;

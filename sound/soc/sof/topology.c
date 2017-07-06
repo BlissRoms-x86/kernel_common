@@ -135,6 +135,8 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	// TODO: TLV
 	//v.step_size = 
 
+	dev_dbg(sdev->dev, "tplg: load kcontrol index %d\n", scontrol->comp_id);
+
 	/* configure channel IDs */
 	for (i = 0; i < mc->num_channels; i++) {
 		v.pcm.chmap[i] = mc->channel[i].id;
@@ -147,7 +149,7 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 
 
 /* external kcontrol init - used for any driver specific init */
-static int sof_control_load(struct snd_soc_component *scomp,
+static int sof_control_load(struct snd_soc_component *scomp, int index,
 	struct snd_kcontrol_new *kc, struct snd_soc_tplg_ctl_hdr *hdr)
 {
 	struct soc_mixer_control *sm;
@@ -330,7 +332,7 @@ static int sof_widget_dai_get_data(struct snd_soc_component *scomp,
 
 
 
-static int sof_widget_load_dai(struct snd_soc_component *scomp,
+static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 	struct snd_sof_widget *swidget,
 	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
 {
@@ -344,6 +346,7 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp,
 	dai.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
 	dai.comp.id = swidget->comp_id;
 	dai.comp.type = SOF_COMP_DAI;
+	dai.comp.pipeline_id = index;
 
 	/* get the rest from private data i.e. tuples */
 	ext_tokens = sof_widget_dai_get_data(scomp, swidget, tw, &dai);
@@ -393,7 +396,6 @@ static void sof_buffer_get_words(struct snd_soc_component *scomp,
 				elem->token);
 			break;
 		}
-
 	}
 }
 
@@ -414,7 +416,7 @@ static int sof_widget_buffer_get_data(struct snd_soc_component *scomp,
 		/* validate size */
 		size -= asize;
 		if (size < 0) {
-			dev_err(sdev->dev, "error: invalid buffer size 0x%x\n",
+			dev_err(sdev->dev, "error: invalid buffer structure size 0x%x\n",
 				asize);
 			return -EINVAL;
 		} 
@@ -442,7 +444,7 @@ static int sof_widget_buffer_get_data(struct snd_soc_component *scomp,
 	return 0;
 }
 
-static int sof_widget_load_buffer(struct snd_soc_component *scomp,
+static int sof_widget_load_buffer(struct snd_soc_component *scomp, int index,
 	struct snd_sof_widget *swidget,
 	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
 {
@@ -456,6 +458,7 @@ static int sof_widget_load_buffer(struct snd_soc_component *scomp,
 	buffer.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_BUFFER_NEW;
 	buffer.comp.id = swidget->comp_id ;
 	buffer.comp.type = SOF_COMP_BUFFER;
+	buffer.comp.pipeline_id = index;
 
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_buffer_get_data(scomp, swidget, tw, &buffer);
@@ -466,6 +469,103 @@ static int sof_widget_load_buffer(struct snd_soc_component *scomp,
 
 	return sof_ipc_tx_message_wait(sdev->ipc, 
 		buffer.comp.hdr.cmd, &buffer, sizeof(buffer), r, sizeof(*r));
+}
+
+static void sof_pcm_get_words(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_host *host,
+	struct snd_soc_tplg_vendor_array *array)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_vendor_value_elem *elem;
+	int i;
+
+	for (i = 0; i < array->num_elems; i++) {
+
+		elem = &array->value[i];
+
+		switch (elem->token) {
+		default:
+			/* non fatal */
+			dev_info(sdev->dev, "info: unexpected host token %d\n",
+				elem->token);
+			break;
+		}
+
+	}
+}
+
+static int sof_widget_pcm_get_data(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_host *host)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_private *private = &tw->priv;
+	struct snd_soc_tplg_vendor_array *array = private->array;
+	int size = private->size, asize;
+
+	/* private data can be made up of multiple arrays */
+	while (size) {
+
+		asize = array->size;
+
+		/* validate size */
+		size -= asize;
+		if (size < 0) {
+			dev_err(sdev->dev, "error: invalid host size 0x%x\n",
+				asize);
+			return -EINVAL;
+		} 
+
+		switch (array->type) {
+		case SND_SOC_TPLG_TUPLE_TYPE_WORD:
+			sof_pcm_get_words(scomp, swidget, tw, host, array);
+			break;
+		case SND_SOC_TPLG_TUPLE_TYPE_STRING:
+		case SND_SOC_TPLG_TUPLE_TYPE_BOOL:
+		case SND_SOC_TPLG_TUPLE_TYPE_BYTE:
+		case SND_SOC_TPLG_TUPLE_TYPE_SHORT:
+		case SND_SOC_TPLG_TUPLE_TYPE_UUID:
+		default:
+			/* non fatal - can be skipped */
+			dev_info(sdev->dev, "info: unsupported type %d found in host data\n",
+				array->type);
+			break;
+		}
+
+		/* next array */
+		array = (void*)array + asize;
+	}
+
+	return 0;
+}
+
+static int sof_widget_load_pcm(struct snd_soc_component *scomp, int index,
+	struct snd_sof_widget *swidget, enum sof_ipc_stream_direction dir,
+	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct sof_ipc_comp_host host;
+	int ret;
+
+	/* configure mixer IPC message */
+	memset(&host, 0, sizeof(host));
+	host.comp.hdr.size = sizeof(host);
+	host.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
+	host.comp.id = swidget->comp_id;
+	host.comp.type = SOF_COMP_HOST;
+	host.comp.pipeline_id = index;
+	host.direction = dir;
+
+	/* get the rest from private data i.e. tuples */
+	ret = sof_widget_pcm_get_data(scomp, swidget, tw, &host);
+	if (ret < 0) {
+		dev_err(sdev->dev, "error: failed to get host private data\n");
+		return ret;
+	}
+
+	return sof_ipc_tx_message_wait(sdev->ipc, 
+		host.comp.hdr.cmd, &host, sizeof(host), r, sizeof(*r));
 }
 
 
@@ -551,7 +651,7 @@ static int sof_widget_pipeline_get_data(struct snd_soc_component *scomp,
 }
 
 static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
-	struct snd_sof_widget *swidget,
+	int index, struct snd_sof_widget *swidget,
 	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
@@ -562,7 +662,7 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 	/* configure dai IPC message */
 	memset(&pipeline, 0, sizeof(pipeline));
 	pipeline.hdr.size = sizeof(pipeline);
-	pipeline.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_BUFFER_NEW;
+	pipeline.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_NEW;
 	pipeline.pipeline_id = swidget->comp_id;
 
 	/* component at start of pipeline is our stream id */
@@ -573,6 +673,9 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 		//return -EINVAL;
 	} else
 		pipeline.comp_id = comp_swidget->comp_id;
+
+	dev_dbg(sdev->dev, "tplg: pipeline index %d comp index %d\n",
+		pipeline.pipeline_id, pipeline.comp_id);
 
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_pipeline_get_data(scomp, swidget, tw, &pipeline);
@@ -654,7 +757,7 @@ static int sof_widget_mixer_get_data(struct snd_soc_component *scomp,
 	return 0;
 }
 
-static int sof_widget_load_mixer(struct snd_soc_component *scomp,
+static int sof_widget_load_mixer(struct snd_soc_component *scomp, int index,
 	struct snd_sof_widget *swidget,
 	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
 {
@@ -668,6 +771,7 @@ static int sof_widget_load_mixer(struct snd_soc_component *scomp,
 	mixer.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
 	mixer.comp.id = swidget->comp_id;
 	mixer.comp.type = SOF_COMP_MIXER;
+	mixer.comp.pipeline_id = index;
 
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_mixer_get_data(scomp, swidget, tw, &mixer);
@@ -760,7 +864,7 @@ static int sof_widget_pga_get_data(struct snd_soc_component *scomp,
 	return 0;
 }
 
-static int sof_widget_load_pga(struct snd_soc_component *scomp,
+static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 	struct snd_sof_widget *swidget,
 	struct snd_soc_tplg_dapm_widget *tw, struct sof_ipc_comp_reply *r)
 {
@@ -780,6 +884,7 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp,
 	volume.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
 	volume.comp.id = swidget->comp_id;
 	volume.comp.type = SOF_COMP_VOLUME;
+	volume.comp.pipeline_id = index;
 
 	/* get the rest from kcontrol (not widget) private data i.e. tuples */
 	ret = sof_widget_pga_get_data(scomp, swidget, tw, &volume);
@@ -793,7 +898,7 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp,
 }
 
 
-static int sof_widget_load(struct snd_soc_component *scomp,
+static int sof_widget_load(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dapm_widget *w,
 	struct snd_soc_tplg_dapm_widget *tw)
 {
@@ -801,7 +906,7 @@ static int sof_widget_load(struct snd_soc_component *scomp,
 }
 
 /* external widget init - used for any driver specific init */
-static int sof_widget_ready(struct snd_soc_component *scomp,
+static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dapm_widget *w,
 	struct snd_soc_tplg_dapm_widget *tw)
 {
@@ -810,9 +915,6 @@ static int sof_widget_ready(struct snd_soc_component *scomp,
 	struct sof_ipc_comp_reply reply;
 	int ret = 0;
 
-	dev_dbg(sdev->dev, "tplg: ready widget id %d type %d name : %s stream %s\n",
-		tw->shift, tw->id, tw->name, tw->sname ? tw->sname : "none");
-
 	swidget = kzalloc(sizeof(*swidget), GFP_KERNEL);
 	if (swidget == NULL)
 		return -ENOMEM;
@@ -820,40 +922,53 @@ static int sof_widget_ready(struct snd_soc_component *scomp,
 	swidget->sdev = sdev;
 	swidget->widget = w;
 	swidget->comp_id = sdev->next_comp_id++;
+	swidget->complete = 0;
+	swidget->id = w->id;
+	memset(&reply, 0, sizeof(reply));
+
+	dev_dbg(sdev->dev, "tplg: ready widget id %d index %d type %d name : %s stream %s\n",
+		tw->shift, swidget->comp_id, tw->id, tw->name,
+		tw->sname ? tw->sname : "none");
 
 	/* handle any special case widgets */
 	switch (w->id) {
 	case snd_soc_dapm_dai_in:
 	case snd_soc_dapm_dai_out:
-		ret = sof_widget_load_dai(scomp, swidget, tw, &reply);
+		ret = sof_widget_load_dai(scomp, index, swidget, tw, &reply);
 		if (ret == 0)
 			sof_connect_dai_widget(scomp, w, tw);
 		break;
-	case snd_soc_dapm_mux:
-	case snd_soc_dapm_demux:
-		break;
 	case snd_soc_dapm_mixer:
-		ret = sof_widget_load_mixer(scomp, swidget, tw, &reply);
+		ret = sof_widget_load_mixer(scomp, index, swidget, tw, &reply);
 		break;
 	case snd_soc_dapm_pga:
-		ret = sof_widget_load_pga(scomp, swidget, tw, &reply);
+		ret = sof_widget_load_pga(scomp, index, swidget, tw, &reply);
 		break;
-	case snd_soc_dapm_switch:
+	case snd_soc_dapm_buffer:
+		ret = sof_widget_load_buffer(scomp, index, swidget, tw, &reply);
+		break;
+	case snd_soc_dapm_scheduler:
+		ret = sof_widget_load_pipeline(scomp, index, swidget, tw,
+			&reply);
+		break;
 	case snd_soc_dapm_aif_in:
+		ret = sof_widget_load_pcm(scomp, index, swidget,
+			SOF_IPC_STREAM_CAPTURE, tw, &reply);
+		break;
 	case snd_soc_dapm_aif_out:
+		ret = sof_widget_load_pcm(scomp, index, swidget,
+			SOF_IPC_STREAM_PLAYBACK, tw, &reply);
+		break;
+	case snd_soc_dapm_mux:
+	case snd_soc_dapm_demux:
+	case snd_soc_dapm_switch:
 	case snd_soc_dapm_siggen:
 	case snd_soc_dapm_dai_link:
 	case snd_soc_dapm_kcontrol:
-		break;
-	case snd_soc_dapm_buffer:
-		ret = sof_widget_load_buffer(scomp, swidget, tw, &reply);
-		break;
 	case snd_soc_dapm_effect:
-		break;
-	case snd_soc_dapm_scheduler:
-		ret = sof_widget_load_pipeline(scomp, swidget, tw, &reply);
-		break;
 	default:
+		dev_warn(sdev->dev, "warning: widget type %d name %s not handled\n",
+			tw->id, tw->name);
 		break;
 	}
 
@@ -862,7 +977,7 @@ static int sof_widget_ready(struct snd_soc_component *scomp,
 		dev_err(sdev->dev, "error: failed to add widget id %d type %d name : %s stream %s\n",
 			tw->shift, tw->id, tw->name,
 			tw->sname ? tw->sname : "none");
-		return ret;
+		//return ret;
 	}
 
 	/* check IPC reply */
@@ -887,7 +1002,7 @@ static int sof_widget_unload(struct snd_soc_component *scomp,
 
 
 /* FE DAI - used for any driver specific init */
-static int sof_dai_load(struct snd_soc_component *scomp,
+static int sof_dai_load(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dai_driver *dai_drv,
 	struct snd_soc_tplg_pcm *pcm, struct snd_soc_dai *dai)
 {
@@ -902,15 +1017,16 @@ static int sof_dai_load(struct snd_soc_component *scomp,
 	if (spcm == NULL)
 		return -ENOMEM;
 
-	dev_dbg(sdev->dev, "tplg: load pcm %d %s to dai %d %s\n", 
-		pcm->pcm_id, pcm->pcm_name, pcm->dai_id, pcm->dai_name);
-
 	spcm->sdev = sdev;
 	spcm->pcm = *pcm;
 	spcm->comp_id = sdev->next_comp_id++;
 	dai_drv->dobj.private = spcm;
 	mutex_init(&spcm->mutex);
 	list_add(&spcm->list, &sdev->pcm_list);
+
+	dev_dbg(sdev->dev, "tplg: load pcm %d index %d %s to dai %d %s\n", 
+		pcm->pcm_id, spcm->comp_id, pcm->pcm_name, pcm->dai_id,
+		pcm->dai_name);
 		
 	return 0;
 }
@@ -927,7 +1043,7 @@ static int sof_dai_unload(struct snd_soc_component *scomp,
 }
 
 /* DAI link - used for any driver specific init */
-static int sof_link_load(struct snd_soc_component *scomp,
+static int sof_link_load(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dai_link *link)
 {
 	link->platform_name = "sof-audio";
@@ -940,14 +1056,113 @@ static int sof_link_unload(struct snd_soc_component *scomp,
 	return 0;
 }
 
+/* DAI link - used for any driver specific init */
+static int sof_route_load(struct snd_soc_component *scomp, int index,
+	struct snd_soc_dapm_route *route)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct sof_ipc_pipe_comp_connect connect;
+	struct snd_sof_widget *source_swidget, *sink_swidget;
+	struct sof_ipc_comp_reply reply;
+	int ret;
+
+	memset(&connect, 0, sizeof(connect));
+	connect.hdr.size = sizeof(connect);
+	connect.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_CONNECT;
+
+	dev_dbg(sdev->dev, "sink %s control %s source %s\n",
+		route->sink, route->control ? route->control : "none",
+		route->source);
+
+	/* source component */
+	source_swidget = find_swidget(sdev, (char*)route->source);
+	if (source_swidget == NULL) {
+		dev_err(sdev->dev, "error: source %s not found\n",
+			route->source);
+		//return -EINVAL;
+	} else
+		connect.source_id = source_swidget->comp_id;
+
+	/* sink component */
+	sink_swidget = find_swidget(sdev, (char*)route->sink);
+	if (sink_swidget == NULL) {
+		dev_err(sdev->dev, "error: sink %s not found\n",
+			route->sink);
+		//return -EINVAL;
+	} else
+		connect.sink_id = sink_swidget->comp_id;
+
+	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+		connect.hdr.cmd, &connect, sizeof(connect), &reply,
+		sizeof(reply));
+
+	/* check IPC return value */
+	if (ret < 0) {
+		dev_err(sdev->dev, "error: failed to add route sink %s control %s source %s\n",
+			route->sink, route->control ? route->control : "none",
+			route->source);
+		return ret;
+	}
+
+	/* check IPC reply */
+	if (reply.hdr.cmd & SOF_IPC_REPLY_ERROR) {
+		dev_err(sdev->dev, "error: DSP failed to add route sink %s control %s source %s result 0x%x\n",
+			route->sink, route->control ? route->control : "none",
+			route->source, reply.hdr.cmd);
+		//return ret; // TODO:
+	}
+
+	return ret;
+}
+
+static int sof_route_unload(struct snd_soc_component *scomp,
+	struct snd_soc_dobj *dobj)
+{
+	return 0;
+}
+
+static int sof_complete_pipeline(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct sof_ipc_pipe_ready ready;
+
+	dev_dbg(sdev->dev, "tplg: complete pipeline %d\n", swidget->comp_id);
+
+	memset(&ready, 0, sizeof(ready));
+	ready.hdr.size = sizeof(ready);
+	ready.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_COMPLETE;
+	ready.pipeline_id = swidget->comp_id;
+
+	return sof_ipc_tx_message_wait(sdev->ipc, 
+		ready.hdr.cmd, &ready, sizeof(ready), NULL, 0);
+}
+
 /* completion - called at completion of firmware loading */
 static void sof_complete(struct snd_soc_component *scomp)
 {
-	//dev_dbg(
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_sof_widget *swidget;
+
+	/* some widget types require completion notificattion */
+	list_for_each_entry(swidget, &sdev->widget_list, list) {
+
+		if (swidget->complete)
+			continue;
+
+		switch (swidget->id) {
+		case snd_soc_dapm_scheduler:
+			swidget->complete = sof_complete_pipeline(scomp,
+				swidget);
+			break;
+		default:
+			break;
+		}
+	}	
 }
 
 /* manifest - optional to inform component of manifest */
-static int sof_manifest(struct snd_soc_component *scomp,
+static int sof_manifest(struct snd_soc_component *scomp, int index,
 	struct snd_soc_tplg_manifest *man)
 {
 	return 0;
@@ -968,6 +1183,10 @@ static struct snd_soc_tplg_ops sof_tplg_ops = {
 	/* external kcontrol init - used for any driver specific init */
 	.control_load	= sof_control_load,
 	.control_unload	= sof_control_unload,
+
+	/* external kcontrol init - used for any driver specific init */
+	.dapm_route_load	= sof_route_load,
+	.dapm_route_unload	= sof_route_unload,
 
 	/* external widget init - used for any driver specific init */
 	.widget_load	= sof_widget_load,

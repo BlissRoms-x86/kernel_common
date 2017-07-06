@@ -433,6 +433,7 @@ struct sof_ipc_comp {
 	struct sof_ipc_hdr hdr;
 	uint32_t id;
 	enum sof_comp_type type;
+	uint32_t pipeline_id;
 } __attribute__((packed));
 
 /*
@@ -537,6 +538,18 @@ struct sof_ipc_comp_tone {
 	int32_t ramp_step;
 } __attribute__((packed));
 
+/* FIR equalizer component */
+struct sof_ipc_comp_eq_fir {
+       struct sof_ipc_comp comp;
+       struct sof_ipc_pcm_comp pcm;
+} __attribute__((packed));
+
+/* IIR equalizer component */
+struct sof_ipc_comp_eq_iir {
+       struct sof_ipc_comp comp;
+       struct sof_ipc_pcm_comp pcm;
+} __attribute__((packed));
+
 /* IPC to pass configuration blobs to equalizers and re-assign responses */
 struct sof_ipc_eq_fir_blob {
 	struct sof_ipc_comp comp;
@@ -606,20 +619,8 @@ struct sof_ipc_pipe_free {
 /* connect two components in pipeline - SOF_IPC_TPLG_COMP_CONNECT */
 struct sof_ipc_pipe_comp_connect {
 	struct sof_ipc_hdr hdr;
-	uint32_t pipeline_id;
 	uint32_t source_id;
-	uint32_t buffer_id;
 	uint32_t sink_id;
-}  __attribute__((packed));
-
-/* connect two components in pipeline - SOF_IPC_TPLG_PIPE_CONNECT */
-struct sof_ipc_pipe_pipe_connect {
-	struct sof_ipc_hdr hdr;
-	uint32_t pipeline_source_id;
-	uint32_t comp_source_id;
-	uint32_t buffer_id;
-	uint32_t pipeline_sink_id;
-	uint32_t comp_sink_id;
 }  __attribute__((packed));
 
 
