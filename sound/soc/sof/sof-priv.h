@@ -395,6 +395,13 @@ int sof_ipc_tx_message_wait(struct snd_sof_ipc *ipc, u32 header,
 	void *tx_data, size_t tx_bytes, void *rx_data, size_t rx_bytes);
 int sof_ipc_tx_message_nowait(struct snd_sof_ipc *ipc, u32 header,
 	void *tx_data, size_t tx_bytes);
+struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
+	char *name);
+struct snd_sof_pcm *snd_sof_find_spcm(struct snd_sof_dev *sdev,
+	struct snd_soc_pcm_runtime *rtd);
+struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
+	char *name);
+
 
 /*
  * Stream IPC

@@ -354,18 +354,6 @@ static struct snd_pcm_ops sof_pcm_ops = {
 	.page		= snd_pcm_sgbuf_ops_page,
 };
 
-static struct snd_sof_pcm *find_spcm(struct snd_sof_dev *sdev,
-	struct snd_soc_pcm_runtime *rtd)
-{
-	struct snd_sof_pcm *spcm = NULL;
-
-	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		if (spcm->pcm.dai_id == rtd->dai_link->id)
-			return spcm;
-	}
-
-	return NULL;
-}
 
 static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
@@ -375,7 +363,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	struct snd_pcm *pcm = rtd->pcm;
 	int ret = 0;
 
-	spcm = find_spcm(sdev, rtd);
+	spcm = snd_sof_find_spcm(sdev, rtd);
 
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",
@@ -470,7 +458,7 @@ static void sof_pcm_free(struct snd_pcm *pcm)
 #if 0
 	struct snd_sof_pcm *spcm;
 
-	spcm = find_spcm(sdev, rtd);
+	spcm = snd_sof_find_spcm(sdev, rtd);
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",
 			rtd->dai_link->id);

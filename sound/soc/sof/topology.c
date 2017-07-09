@@ -89,20 +89,6 @@ static void sof_process_ext_tokens(struct snd_soc_component *scomp, u32 id,
 	// TODO: support any extended tokens.
 }
 
-
-static struct snd_sof_widget *find_swidget(struct snd_sof_dev *sdev,
-	char *name)
-{
-	struct snd_sof_widget *swidget = NULL;
-
-	list_for_each_entry(swidget, &sdev->widget_list, list) {
-		if (strcmp(name, swidget->widget->name) == 0)
-			return swidget;
-	}
-
-	return NULL;
-}
-
 /*
  * Standard Kcontrols.
  */
@@ -666,7 +652,7 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 	pipeline.pipeline_id = swidget->comp_id;
 
 	/* component at start of pipeline is our stream id */
-	comp_swidget = find_swidget(sdev, tw->sname);
+	comp_swidget = snd_sof_find_swidget(sdev, tw->sname);
 	if (comp_swidget == NULL) {
 		dev_err(sdev->dev, "error: widget %s refers to non existant widget %s\n",
 			tw->name, tw->sname);
@@ -1019,7 +1005,6 @@ static int sof_dai_load(struct snd_soc_component *scomp, int index,
 
 	spcm->sdev = sdev;
 	spcm->pcm = *pcm;
-	spcm->comp_id = sdev->next_comp_id++;
 	dai_drv->dobj.private = spcm;
 	mutex_init(&spcm->mutex);
 	list_add(&spcm->list, &sdev->pcm_list);
@@ -1056,6 +1041,32 @@ static int sof_link_unload(struct snd_soc_component *scomp,
 	return 0;
 }
 
+/* bind PCM ID to host component ID */
+static int spcm_bind(struct snd_soc_component *scomp, struct snd_sof_pcm *spcm,
+	const char *host)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_sof_widget *host_widget;
+
+	host_widget = snd_sof_find_swidget(sdev, (char*)host);
+	if (host_widget == NULL) {
+		dev_err(sdev->dev, "error: cant find host component %s\n",
+			host);
+		return -ENODEV;
+	}
+
+	switch (host_widget->id) {
+	case snd_soc_dapm_aif_in:
+	case snd_soc_dapm_aif_out:
+		spcm->comp_id = host_widget->comp_id;
+		return 0;
+	default:
+		dev_err(sdev->dev, "error: host is wrong type %d\n",
+			host_widget->id);
+		return -EINVAL;
+	}
+}
+
 /* DAI link - used for any driver specific init */
 static int sof_route_load(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dapm_route *route)
@@ -1063,6 +1074,7 @@ static int sof_route_load(struct snd_soc_component *scomp, int index,
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct sof_ipc_pipe_comp_connect connect;
 	struct snd_sof_widget *source_swidget, *sink_swidget;
+	struct snd_sof_pcm *spcm;
 	struct sof_ipc_comp_reply reply;
 	int ret;
 
@@ -1075,8 +1087,14 @@ static int sof_route_load(struct snd_soc_component *scomp, int index,
 		route->source);
 
 	/* source component */
-	source_swidget = find_swidget(sdev, (char*)route->source);
+	source_swidget = snd_sof_find_swidget(sdev, (char*)route->source);
 	if (source_swidget == NULL) {
+
+		/* dont send any routes to DSP that include a driver PCM */
+		spcm = snd_sof_find_spcm_name(sdev, (char*)route->source);
+		if (spcm)
+			return spcm_bind(scomp, spcm, route->sink);
+
 		dev_err(sdev->dev, "error: source %s not found\n",
 			route->source);
 		//return -EINVAL;
@@ -1084,8 +1102,14 @@ static int sof_route_load(struct snd_soc_component *scomp, int index,
 		connect.source_id = source_swidget->comp_id;
 
 	/* sink component */
-	sink_swidget = find_swidget(sdev, (char*)route->sink);
+	sink_swidget = snd_sof_find_swidget(sdev, (char*)route->sink);
 	if (sink_swidget == NULL) {
+
+		/* dont send any routes to DSP that include a driver PCM */
+		spcm = snd_sof_find_spcm_name(sdev, (char*)route->sink);
+		if (spcm)
+			return spcm_bind(scomp, spcm, route->source);
+
 		dev_err(sdev->dev, "error: sink %s not found\n",
 			route->sink);
 		//return -EINVAL;
@@ -1134,8 +1158,11 @@ static int sof_complete_pipeline(struct snd_soc_component *scomp,
 	ready.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_COMPLETE;
 	ready.pipeline_id = swidget->comp_id;
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message_wait(sdev->ipc, 
 		ready.hdr.cmd, &ready, sizeof(ready), NULL, 0);
+	if (ret < 0)
+		return ret;
+	return 1;
 }
 
 /* completion - called at completion of firmware loading */
