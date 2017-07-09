@@ -649,7 +649,8 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 	memset(&pipeline, 0, sizeof(pipeline));
 	pipeline.hdr.size = sizeof(pipeline);
 	pipeline.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_NEW;
-	pipeline.pipeline_id = swidget->comp_id;
+	pipeline.pipeline_id = index;
+	pipeline.comp_id = swidget->comp_id;
 
 	/* component at start of pipeline is our stream id */
 	comp_swidget = snd_sof_find_swidget(sdev, tw->sname);
@@ -658,9 +659,9 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 			tw->name, tw->sname);
 		//return -EINVAL;
 	} else
-		pipeline.comp_id = comp_swidget->comp_id;
+		pipeline.sched_id = comp_swidget->comp_id;
 
-	dev_dbg(sdev->dev, "tplg: pipeline index %d comp index %d\n",
+	dev_dbg(sdev->dev, "tplg: pipeline id %d comp id %d\n",
 		pipeline.pipeline_id, pipeline.comp_id);
 
 	/* get the rest from private data i.e. tuples */
@@ -910,10 +911,11 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 	swidget->comp_id = sdev->next_comp_id++;
 	swidget->complete = 0;
 	swidget->id = w->id;
+	swidget->pipeline_id = index;
 	memset(&reply, 0, sizeof(reply));
 
-	dev_dbg(sdev->dev, "tplg: ready widget id %d index %d type %d name : %s stream %s\n",
-		tw->shift, swidget->comp_id, tw->id, tw->name,
+	dev_dbg(sdev->dev, "tplg: ready widget id %d type %d name : %s stream %s\n",
+		swidget->comp_id, tw->id, tw->name,
 		tw->sname ? tw->sname : "none");
 
 	/* handle any special case widgets */
@@ -1150,13 +1152,14 @@ static int sof_complete_pipeline(struct snd_soc_component *scomp,
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct sof_ipc_pipe_ready ready;
+	int ret;
 
 	dev_dbg(sdev->dev, "tplg: complete pipeline %d\n", swidget->comp_id);
 
 	memset(&ready, 0, sizeof(ready));
 	ready.hdr.size = sizeof(ready);
 	ready.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_COMPLETE;
-	ready.pipeline_id = swidget->comp_id;
+	ready.comp_id = swidget->comp_id;
 
 	ret = sof_ipc_tx_message_wait(sdev->ipc, 
 		ready.hdr.cmd, &ready, sizeof(ready), NULL, 0);

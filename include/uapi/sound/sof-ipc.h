@@ -596,8 +596,9 @@ struct sof_ipc_comp_reply {
 /* new pipeline - SOF_IPC_TPLG_PIPE_NEW */
 struct sof_ipc_pipe_new {
 	struct sof_ipc_hdr hdr;
-	uint32_t comp_id;	/* component at start of pipeline */ 
-	uint32_t pipeline_id;
+	uint32_t comp_id;	/* component id for pipeline */ 
+	uint32_t pipeline_id;	/* pipeline id */
+	uint32_t sched_id;	/* sheduling component id */
 	uint32_t core;		/* core we run on */
 	uint32_t deadline;	/* execution completion deadline in us*/
 	uint32_t priority;	/* priority level 0 (low) to 10 (max) */
@@ -607,13 +608,13 @@ struct sof_ipc_pipe_new {
 /* pipeline construction complete - SOF_IPC_TPLG_PIPE_COMPLETE */
 struct sof_ipc_pipe_ready {
 	struct sof_ipc_hdr hdr;
-	uint32_t pipeline_id;
+	uint32_t comp_id;
 }  __attribute__((packed));
 
 
 struct sof_ipc_pipe_free {
 	struct sof_ipc_hdr hdr;
-	uint32_t pipeline_id;
+	uint32_t comp_id;
 }  __attribute__((packed));
 
 /* connect two components in pipeline - SOF_IPC_TPLG_COMP_CONNECT */

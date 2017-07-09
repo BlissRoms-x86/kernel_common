@@ -194,6 +194,7 @@ struct snd_sof_control {
 struct snd_sof_widget {
 	struct snd_sof_dev *sdev;
 	int comp_id;
+	int pipeline_id;
 	int complete;
 	int id;
 
