@@ -783,7 +783,7 @@ config INTEL_INT0002_VGPIO
 
 config INTEL_CHT_INT33FE
 	tristate "Intel Cherry Trail ACPI INT33FE Driver"
-	depends on X86 && ACPI && I2C
+	depends on X86 && ACPI && I2C && REGULATOR
 	---help---
 	  This driver add support for the INT33FE ACPI device found on
 	  some Intel Cherry Trail devices.
@@ -793,6 +793,10 @@ config INTEL_CHT_INT33FE
 	  FUSB302 USB Type-C Controller and PI3USB30532 USB switch.
 	  This driver instantiates i2c-clients for these, so that standard
 	  i2c drivers for these chips can bind to the them.
+
+	  If you enable this driver it is advised to also select
+	  CONFIG_CHARGER_BQ24190=m, CONFIG_BATTERY_MAX17042=m and
+	  CONFIG_TYPEC_FUSB302=m (currently in drivers/staging).
 
 config INTEL_HID_EVENT
 	tristate "INTEL HID Event"
