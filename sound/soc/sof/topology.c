@@ -581,6 +581,9 @@ static void sof_pipeline_get_words(struct snd_soc_component *scomp,
 		case SOF_TKN_SCHED_CORE:
 			pipeline->core = elem->value;
 			break;
+		case SOF_TKN_SCHED_FRAMES:
+			pipeline->frames_per_sched = elem->value;
+			break;
 		default:
 			/* non fatal */
 			dev_info(sdev->dev, "info: unexpected pipeline token %d\n",
@@ -589,6 +592,9 @@ static void sof_pipeline_get_words(struct snd_soc_component *scomp,
 		}
 
 	}
+	dev_dbg(sdev->dev, "pipeline %s: deadline %d pri %d mips %d core %d frames %d\n",
+		swidget->widget->name, pipeline->deadline, pipeline->priority,
+		pipeline->mips, pipeline->core, pipeline->frames_per_sched);
 }
 
 static int sof_widget_pipeline_get_data(struct snd_soc_component *scomp,

@@ -89,6 +89,7 @@
 #define SOF_TKN_SCHED_PRIORITY 			201
 #define SOF_TKN_SCHED_MIPS 			202
 #define SOF_TKN_SCHED_CORE 			203
+#define SOF_TKN_SCHED_FRAMES 			204
 
 /* volume */
 #define SOF_TKN_VOLUME_RAMP_STEP_TYPE 		250
