@@ -96,6 +96,7 @@ struct dmi_dev_onboard {
 };
 
 extern struct kobject *dmi_kobj;
+extern bool dmi_system_id_match(const struct dmi_system_id *dmi);
 extern int dmi_check_system(const struct dmi_system_id *list);
 const struct dmi_system_id *dmi_first_match(const struct dmi_system_id *list);
 extern const char * dmi_get_system_info(int field);

@@ -777,10 +777,10 @@ void __init dmi_set_dump_stack_arch_desc(void)
 }
 
 /**
- *	dmi_matches - check if dmi_system_id structure matches system DMI data
+ *	dmi_system_id_match - check if dmi_system_id matches system DMI data
  *	@dmi: pointer to the dmi_system_id structure to check
  */
-static bool dmi_matches(const struct dmi_system_id *dmi)
+bool dmi_system_id_match(const struct dmi_system_id *dmi)
 {
 	int i;
 
@@ -804,6 +804,7 @@ static bool dmi_matches(const struct dmi_system_id *dmi)
 	}
 	return true;
 }
+EXPORT_SYMBOL(dmi_system_id_match);
 
 /**
  *	dmi_is_end_of_table - check for end-of-table marker
@@ -833,7 +834,7 @@ int dmi_check_system(const struct dmi_system_id *list)
 	const struct dmi_system_id *d;
 
 	for (d = list; !dmi_is_end_of_table(d); d++)
-		if (dmi_matches(d)) {
+		if (dmi_system_id_match(d)) {
 			count++;
 			if (d->callback && d->callback(d))
 				break;
@@ -860,7 +861,7 @@ const struct dmi_system_id *dmi_first_match(const struct dmi_system_id *list)
 	const struct dmi_system_id *d;
 
 	for (d = list; !dmi_is_end_of_table(d); d++)
-		if (dmi_matches(d))
+		if (dmi_system_id_match(d))
 			return d;
 
 	return NULL;
