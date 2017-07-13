@@ -160,16 +160,16 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 		num_routes = ARRAY_SIZE(byt_rt5651_intmic_dmic1_map);
 	}
 
-	ret = snd_soc_dapm_add_routes(&card->dapm, custom_map, num_routes);
-	if (ret)
-		return ret;
-
+	snd_soc_dapm_add_routes(&card->dapm, custom_map, num_routes);
+	//if (ret)
+	//	return ret;
+#if 0
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN) {
 		ret = rt5651_dmic_enable(codec, 0, 0);
 		if (ret)
 			return ret;
 	}
-
+#endif
 	snd_soc_dapm_ignore_suspend(&card->dapm, "Headphone");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "Speaker");
 
