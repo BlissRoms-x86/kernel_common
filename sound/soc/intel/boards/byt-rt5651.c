@@ -131,7 +131,7 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 {
 	int ret;
-	struct snd_soc_codec *codec = runtime->codec;
+	//struct snd_soc_codec *codec = runtime->codec;
 	struct snd_soc_card *card = runtime->card;
 	const struct snd_soc_dapm_route *custom_map;
 	int num_routes;
