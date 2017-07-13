@@ -2156,6 +2156,7 @@ static void soc_check_tplg_fes(struct snd_soc_card *card)
 			}
 
 			dai_link->platform_name = platform->component.name;
+			dai_link->cpu_dai_name = platform->component.name;
 		}
 
 	}
