@@ -2737,6 +2737,9 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 	struct brcmf_if *ifp = netdev_priv(ndev);
 
 	brcmf_dbg(TRACE, "Enter\n");
+    /* (*) */
+    enabled=false;
+    /* (*) */
 
 	/*
 	 * Powersave enable/disable request is coming from the
