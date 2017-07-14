@@ -659,7 +659,7 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 	if (stream->posbuf)
 		*stream->posbuf = 0;
 
-	/* reset BDl address */
+	/* reset BDL address */
 	snd_sof_dsp_write(sdev, APL_HDA_BAR, 
 		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_BDLPL, 0x0);
 	snd_sof_dsp_write(sdev, APL_HDA_BAR, 
@@ -1292,6 +1292,14 @@ static bool apl_is_dsp_busy(struct snd_sof_dev *sdev)
 
 static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
+	u32 cmd = msg->header;
+
+	/* send the message */
+	apl_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data,
+		 msg->msg_size);
+	snd_sof_dsp_write(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI,
+		cmd | APL_DSP_REG_HIPCI_BUSY);
+
 	return 0;
 }
 
