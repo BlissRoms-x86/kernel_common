@@ -155,9 +155,10 @@ config TOUCHSCREEN_CHIPONE_ICN8318
 	tristate "chipone icn8318 touchscreen controller"
 	depends on GPIOLIB || COMPILE_TEST
 	depends on I2C
-	depends on OF
+	depends on OF || ACPI
 	help
-	  Say Y here if you have a ChipOne icn8318 based I2C touchscreen.
+	  Say Y here if you have a ChipOne icn8318 or icn8505 based
+	  I2C touchscreen.
 
 	  If unsure, say N.
 
@@ -1113,6 +1114,17 @@ config TOUCHSCREEN_ST1232
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called st1232_ts.
+
+config TOUCHSCREEN_STMFTS
+	tristate "STMicroelectronics STMFTS touchscreen"
+	depends on I2C
+	depends on LEDS_CLASS
+	help
+	  Say Y here if you want support for STMicroelectronics
+	  STMFTS touchscreen.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called stmfts.
 
 config TOUCHSCREEN_STMPE
 	tristate "STMicroelectronics STMPE touchscreens"

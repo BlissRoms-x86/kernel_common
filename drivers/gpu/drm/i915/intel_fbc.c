@@ -735,7 +735,7 @@ static void intel_fbc_update_state_cache(struct intel_crtc *crtc,
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		cache->crtc.hsw_bdw_pixel_rate = crtc_state->pixel_rate;
 
-	cache->plane.rotation = plane_state->base.rotation;
+	cache->plane.rotation = intel_plane_get_rotation(plane_state);
 	/*
 	 * Src coordinates are already rotated by 270 degrees for
 	 * the 90/270 degree plane rotation cases (to match the
@@ -796,7 +796,7 @@ static bool intel_fbc_can_activate(struct intel_crtc *crtc)
 		return false;
 	}
 	if (INTEL_GEN(dev_priv) <= 4 && !IS_G4X(dev_priv) &&
-	    cache->plane.rotation != DRM_ROTATE_0) {
+	    cache->plane.rotation != DRM_MODE_ROTATE_0) {
 		fbc->no_fbc_reason = "rotation unsupported";
 		return false;
 	}
@@ -1307,14 +1307,12 @@ static int intel_sanitize_fbc_option(struct drm_i915_private *dev_priv)
 
 static bool need_fbc_vtd_wa(struct drm_i915_private *dev_priv)
 {
-#ifdef CONFIG_INTEL_IOMMU
 	/* WaFbcTurnOffFbcWhenHyperVisorIsUsed:skl,bxt */
-	if (intel_iommu_gfx_mapped &&
+	if (intel_vtd_active() &&
 	    (IS_SKYLAKE(dev_priv) || IS_BROXTON(dev_priv))) {
 		DRM_INFO("Disabling framebuffer compression (FBC) to prevent screen flicker with VT-d enabled\n");
 		return true;
 	}
-#endif
 
 	return false;
 }

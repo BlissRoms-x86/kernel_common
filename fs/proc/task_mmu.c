@@ -298,7 +298,6 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 	}
 
-	/* We don't show the stack guard page in /proc/maps */
 	start = vma->vm_start;
 	if (stack_guard_page_start(vma, start))
 		start += PAGE_SIZE;

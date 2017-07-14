@@ -40,7 +40,7 @@
 #include <linux/of.h>
 #include <linux/regulator/consumer.h>
 
-#include <linux/i2c/i2c-hid.h>
+#include <linux/platform_data/i2c-hid.h>
 
 #include "../hid-ids.h"
 
@@ -743,18 +743,12 @@ static int i2c_hid_open(struct hid_device *hid)
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	int ret = 0;
 
-	mutex_lock(&i2c_hid_open_mut);
-	if (!hid->open++) {
-		ret = pm_runtime_get_sync(&client->dev);
-		if (ret < 0) {
-			hid->open--;
-			goto done;
-		}
-		set_bit(I2C_HID_STARTED, &ihid->flags);
-	}
-done:
-	mutex_unlock(&i2c_hid_open_mut);
-	return ret < 0 ? ret : 0;
+	ret = pm_runtime_get_sync(&client->dev);
+	if (ret < 0)
+		return ret;
+
+	set_bit(I2C_HID_STARTED, &ihid->flags);
+	return 0;
 }
 
 static void i2c_hid_close(struct hid_device *hid)
@@ -762,18 +756,10 @@ static void i2c_hid_close(struct hid_device *hid)
 	struct i2c_client *client = hid->driver_data;
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 
-	/* protecting hid->open to make sure we don't restart
-	 * data acquistion due to a resumption we no longer
-	 * care about
-	 */
-	mutex_lock(&i2c_hid_open_mut);
-	if (!--hid->open) {
-		clear_bit(I2C_HID_STARTED, &ihid->flags);
+	clear_bit(I2C_HID_STARTED, &ihid->flags);
 
-		/* Save some power */
-		pm_runtime_put(&client->dev);
-	}
-	mutex_unlock(&i2c_hid_open_mut);
+	/* Save some power */
+	pm_runtime_put(&client->dev);
 }
 
 static int i2c_hid_power(struct hid_device *hid, int lvl)
@@ -872,10 +858,9 @@ static int i2c_hid_fetch_hid_descriptor(struct i2c_hid *ihid)
 static int i2c_hid_acpi_pdata(struct i2c_client *client,
 		struct i2c_hid_platform_data *pdata)
 {
-	static u8 i2c_hid_guid[] = {
-		0xF7, 0xF6, 0xDF, 0x3C, 0x67, 0x42, 0x55, 0x45,
-		0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE,
-	};
+	static guid_t i2c_hid_guid =
+		GUID_INIT(0x3CDFF6F7, 0x4267, 0x4555,
+			  0xAD, 0x05, 0xB3, 0x0A, 0x3D, 0x89, 0x38, 0xDE);
 	union acpi_object *obj;
 	struct acpi_device *adev;
 	acpi_handle handle;
@@ -884,7 +869,7 @@ static int i2c_hid_acpi_pdata(struct i2c_client *client,
 	if (!handle || acpi_bus_get_device(handle, &adev))
 		return -ENODEV;
 
-	obj = acpi_evaluate_dsm_typed(handle, i2c_hid_guid, 1, 1, NULL,
+	obj = acpi_evaluate_dsm_typed(handle, &i2c_hid_guid, 1, 1, NULL,
 				      ACPI_TYPE_INTEGER);
 	if (!obj) {
 		dev_err(&client->dev, "device _DSM execution failed\n");
@@ -906,6 +891,26 @@ static void i2c_hid_acpi_fix_up_power(struct device *dev)
 		acpi_device_fix_up_power(adev);
 }
 
+static const struct acpi_device_id i2c_hid_acpi_blacklist[] = {
+	/*
+	 * The CHPN0001 ACPI device has a _CID of PNP0C50 but is not HID
+	 * compatible, just probing it puts the device in an unusable state due
+	 * to it also have ACPI power management issues.
+	 */
+	{"CHPN0001", 0 },
+	{ },
+};
+
+static int i2c_hid_match(struct i2c_client *client)
+{
+	struct acpi_device *adev = ACPI_COMPANION(&client->dev);
+
+	if (adev && acpi_match_device_ids(adev, i2c_hid_acpi_blacklist) == 0)
+		return -ENODEV;
+
+	return 0;
+}
+
 static const struct acpi_device_id i2c_hid_acpi_match[] = {
 	{"ACPI0C50", 0 },
 	{"PNP0C50", 0 },
@@ -920,6 +925,7 @@ static inline int i2c_hid_acpi_pdata(struct i2c_client *client,
 }
 
 static inline void i2c_hid_acpi_fix_up_power(struct device *dev) {}
+static int i2c_hid_match(struct i2c_client *client) { return 0; }
 #endif
 
 #ifdef CONFIG_OF
@@ -1270,6 +1276,7 @@ static struct i2c_driver i2c_hid_driver = {
 		.of_match_table = of_match_ptr(i2c_hid_of_match),
 	},
 
+	.match		= i2c_hid_match,
 	.probe		= i2c_hid_probe,
 	.remove		= i2c_hid_remove,
 	.shutdown	= i2c_hid_shutdown,

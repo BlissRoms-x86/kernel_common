@@ -1039,8 +1039,8 @@ static int fusb302_pd_send_message(struct fusb302_chip *chip,
 	}
 	/* packsym tells the FUSB302 chip that the next X bytes are payload */
 	buf[pos++] = FUSB302_TKN_PACKSYM | (len & 0x1F);
-	buf[pos++] = msg->header & 0xFF;
-	buf[pos++] = (msg->header >> 8) & 0xFF;
+	memcpy(&buf[pos], &msg->header, sizeof(msg->header));
+	pos += sizeof(msg->header);
 
 	len -= 2;
 	memcpy(&buf[pos], msg->payload, len);
@@ -1719,9 +1719,13 @@ static int fusb302_probe(struct i2c_client *client,
 		goto destroy_workqueue;
 	}
 
-	ret = init_gpio(chip);
-	if (ret < 0)
-		goto destroy_workqueue;
+	if (client->irq) {
+		chip->gpio_int_n_irq = client->irq;
+	} else {
+		ret = init_gpio(chip);
+		if (ret < 0)
+			goto destroy_workqueue;
+	}
 
 	chip->tcpm_port = tcpm_register_port(&client->dev, &chip->tcpc_dev);
 	if (IS_ERR(chip->tcpm_port)) {
