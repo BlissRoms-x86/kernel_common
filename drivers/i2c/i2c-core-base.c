@@ -102,7 +102,7 @@ static int i2c_device_match(struct device *dev, struct device_driver *drv)
 	struct i2c_driver	*driver = to_i2c_driver(drv);
 	int ret;
 
-	if (driver->match(client)) {
+	if (driver->match) {
 		ret = driver->match(client);
 		if (ret < 0)
 			return 0;
