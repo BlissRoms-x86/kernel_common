@@ -269,6 +269,9 @@ static void sof_dai_get_words(struct snd_soc_component *scomp,
 		}
 
 	}
+
+	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d\n",
+		swidget->widget->name, dai->dmac_id, dai->dmac_chan);
 }
 
 static int sof_widget_dai_get_data(struct snd_soc_component *scomp,
@@ -471,6 +474,15 @@ static void sof_pcm_get_words(struct snd_soc_component *scomp,
 		elem = &array->value[i];
 
 		switch (elem->token) {
+		case SOF_TKN_PCM_DMAC:
+			host->dmac_id = elem->value;
+			break;
+		case SOF_TKN_PCM_DMAC_CHAN:
+			host->dmac_chan = elem->value;
+			break;
+		case SOF_TKN_PCM_DMAC_CONFIG:
+			host->dmac_config = elem->value;
+			break;
 		default:
 			/* non fatal */
 			dev_info(sdev->dev, "info: unexpected host token %d\n",
@@ -479,6 +491,9 @@ static void sof_pcm_get_words(struct snd_soc_component *scomp,
 		}
 
 	}
+
+	dev_dbg(sdev->dev, "host %s: dmac %d chan %d\n",
+		swidget->widget->name, host->dmac_id, host->dmac_chan);
 }
 
 static int sof_widget_pcm_get_data(struct snd_soc_component *scomp,
@@ -920,8 +935,8 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 	swidget->pipeline_id = index;
 	memset(&reply, 0, sizeof(reply));
 
-	dev_dbg(sdev->dev, "tplg: ready widget id %d type %d name : %s stream %s\n",
-		swidget->comp_id, tw->id, tw->name,
+	dev_dbg(sdev->dev, "tplg: ready widget id %d pipe %d type %d name : %s stream %s\n",
+		swidget->comp_id, index, tw->id, tw->name,
 		tw->sname ? tw->sname : "none");
 
 	/* handle any special case widgets */
@@ -1035,11 +1050,60 @@ static int sof_dai_unload(struct snd_soc_component *scomp,
 	return 0;
 }
 
+static int sof_link_ssp_load(struct snd_soc_component *scomp, int index,
+	struct snd_soc_dai_link *link,
+	struct snd_soc_tplg_hw_config *hw_config)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct sof_ipc_dai_ssp_params ssp;
+
+	memset(&ssp, 0, sizeof(ssp));
+	ssp.hdr.size = sizeof(ssp);
+	ssp.hdr.cmd = SOF_IPC_GLB_DAI_MSG | SOF_IPC_COMP_SSP_CONFIG;
+	ssp.ssp_id = hw_config->id;
+	ssp.format = hw_config->fmt;
+	ssp.mclk = hw_config->mclk_rate;
+	ssp.bclk = hw_config->bclk_rate;
+	ssp.fclk = hw_config->fsync_rate;
+	ssp.num_slots = hw_config->tdm_slots;
+	ssp.frame_width = hw_config->tdm_slot_width;
+	ssp.mclk_master = hw_config->mclk_direction;
+	ssp.bclk_master = hw_config->bclk_master;
+	ssp.fclk_master = hw_config->fsync_master;
+
+	dev_dbg(sdev->dev, "tplg: config SSP%d fmt 0x%x\n", ssp.ssp_id,
+		ssp.format);
+
+	return sof_ipc_tx_message_wait(sdev->ipc, 
+		ssp.hdr.cmd, &ssp, sizeof(ssp), NULL, 0);
+}
+
 /* DAI link - used for any driver specific init */
 static int sof_link_load(struct snd_soc_component *scomp, int index,
-	struct snd_soc_dai_link *link)
+	struct snd_soc_dai_link *link, struct snd_soc_tplg_link_config *cfg)
 {
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_hw_config *hw_config;
+	int i, ret = 0;
+
 	link->platform_name = "sof-audio";
+
+	/* send BE configurations to DSP */
+	if (!link->no_pcm)
+		return 0;
+
+	/* configure dai IPC message */
+	for (i = 0; i < cfg->num_hw_configs; i++) {
+		hw_config = &cfg->hw_config[i];
+
+		/* TODO: determine DAI type - hard coded to SSP atm */
+		ret = sof_link_ssp_load(scomp, index, link, hw_config);
+		if (ret < 0) {
+			dev_err(sdev->dev, "error: failed to load DAI config\n");
+			break;
+		}
+	}			
+
 	return 0;
 }
 
@@ -1160,7 +1224,8 @@ static int sof_complete_pipeline(struct snd_soc_component *scomp,
 	struct sof_ipc_pipe_ready ready;
 	int ret;
 
-	dev_dbg(sdev->dev, "tplg: complete pipeline %d\n", swidget->comp_id);
+	dev_dbg(sdev->dev, "tplg: complete pipeline %s id %d\n",
+		swidget->widget->name, swidget->comp_id);
 
 	memset(&ready, 0, sizeof(ready));
 	ready.hdr.size = sizeof(ready);

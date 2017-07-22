@@ -89,6 +89,7 @@
 #define SOF_IPC_GLB_COMP_MSG			SOF_GLB_TYPE(0x5)
 #define SOF_IPC_GLB_STREAM_MSG			SOF_GLB_TYPE(0x6)
 #define SOF_IPC_FW_READY			SOF_GLB_TYPE(0x7)
+#define SOF_IPC_GLB_DAI_MSG			SOF_GLB_TYPE(0x8)
 
 /*
  * DSP Command Message Types
@@ -126,10 +127,12 @@
 #define SOF_IPC_COMP_GET_MUX			SOF_CMD_TYPE(0x005)
 #define SOF_IPC_COMP_SET_SRC			SOF_CMD_TYPE(0x006)
 #define SOF_IPC_COMP_GET_SRC			SOF_CMD_TYPE(0x007)
-#define SOF_IPC_COMP_SSP_CONFIG			SOF_CMD_TYPE(0x008)
-#define SOF_IPC_COMP_HDA_CONFIG			SOF_CMD_TYPE(0x009)
-#define SOF_IPC_COMP_DMIC_CONFIG		SOF_CMD_TYPE(0x010)
-#define SOF_IPC_COMP_LOOPBACK			SOF_CMD_TYPE(0x011)
+
+/* DAI messages */
+#define SOF_IPC_COMP_SSP_CONFIG			SOF_CMD_TYPE(0x000)
+#define SOF_IPC_COMP_HDA_CONFIG			SOF_CMD_TYPE(0x001)
+#define SOF_IPC_COMP_DMIC_CONFIG		SOF_CMD_TYPE(0x002)
+#define SOF_IPC_COMP_LOOPBACK			SOF_CMD_TYPE(0x003)
 
 /* stream */
 #define SOF_IPC_STREAM_PCM_PARAMS		SOF_CMD_TYPE(0x001)
@@ -213,21 +216,24 @@ struct sof_ipc_compound_hdr {
 /* SSP Configuration Request - SOF_IPC_DAI_SSP_CONFIG */
 struct sof_ipc_dai_ssp_params {
 	struct sof_ipc_hdr hdr;
-	uint32_t comp_id;
 	uint32_t mclk;
 	uint32_t bclk;
+	uint32_t fclk;
 	uint16_t ssp_id;
 	uint16_t mode;
 	uint16_t num_slots;
 	uint16_t frame_width;
 	uint16_t clk_id;
 	uint16_t format;	/* SOF_DAI_FMT_ */
+	uint16_t mclk_master;
+	uint16_t bclk_master;
+	uint16_t fclk_master;
 } __attribute__((packed));
 
 /* HDA Configuration Request - SOF_IPC_DAI_HDA_CONFIG */
 struct sof_ipc_dai_hda_params {
 	struct sof_ipc_hdr hdr;
-	uint32_t comp_id;
+	uint32_t hda_id;
 	uint32_t mclk;
 	/* TODO */
 } __attribute__((packed));
@@ -235,7 +241,7 @@ struct sof_ipc_dai_hda_params {
 /* DMIC Configuration Request - SOF_IPC_DAI_DMIC_CONFIG */
 struct sof_ipc_dai_dmic_params {
 	struct sof_ipc_hdr hdr;
-	uint32_t comp_id;
+	uint32_t dmic_id;
 	uint32_t mclk;
 	/* TODO */
 } __attribute__((packed));

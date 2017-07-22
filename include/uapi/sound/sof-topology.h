@@ -99,4 +99,9 @@
 #define SOF_TKN_SRC_RATE_IN			300
 #define SOF_TKN_SRC_RATE_OUT			301
 
+/* PCM */
+#define SOF_TKN_PCM_DMAC 			351
+#define SOF_TKN_PCM_DMAC_CHAN 			352
+#define SOF_TKN_PCM_DMAC_CONFIG			353
+
 #endif
