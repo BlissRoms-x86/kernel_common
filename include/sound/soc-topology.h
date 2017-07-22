@@ -143,7 +143,8 @@ struct snd_soc_tplg_ops {
 
 	/* DAI link - used for any driver specific init */
 	int (*link_load)(struct snd_soc_component *, int index,
-		struct snd_soc_dai_link *link);
+		struct snd_soc_dai_link *link,
+		struct snd_soc_tplg_link_config *cfg);
 	int (*link_unload)(struct snd_soc_component *,
 		struct snd_soc_dobj *);
 
