@@ -112,9 +112,19 @@
  *
  *****************************************************************************/
 
-/* Version of ACPI supported */
-
+/*
+ * Version of ACPI supported. This is a sad story. Windows reports a _REV of
+ * 2 regardless of the spec version implemented. Some vendors are using _REV
+ * as a way to distinguish between Windows and Linux, and are breaking systems
+ * in the process. We can't guarantee that they'll call _OSI before checking
+ * _REV, so hardcode this to 2 on x86 systems right now and leave it at the
+ * appropriate spec value for everybody else.
+ */
+#ifdef CONFIG_X86
+#define ACPI_CA_SUPPORT_LEVEL           2
+#else
 #define ACPI_CA_SUPPORT_LEVEL           5
+#endif
 
 /* Maximum count for a semaphore object */
 
