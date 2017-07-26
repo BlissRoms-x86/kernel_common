@@ -150,9 +150,11 @@
 
 /*  HIPCI */
 #define APL_DSP_REG_HIPCI_BUSY		BIT(31)
+#define APL_DSP_REG_HIPCI_MSG_MASK	0x7FFFFFFF
 
 /* HIPCIE */
 #define APL_DSP_REG_HIPCIE_DONE	BIT(30)
+#define APL_DSP_REG_HIPCIE_MSG_MASK	0x3FFFFFFF
 
 /* HIPCCTL */
 #define APL_DSP_REG_HIPCCTL_DONE	BIT(1)
@@ -871,7 +873,7 @@ out:
 static irqreturn_t apl_irq_thread(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
-	u32 hipcie, hipct, hipcte, msg = 0, msg_ext = 0;
+	u32 hipci, hipcie, hipct, hipcte, msg = 0, msg_ext = 0;
 	irqreturn_t ret = IRQ_NONE;
 
 	/* here we handle IPC interrupts only */
@@ -879,16 +881,23 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		return ret;
 
 	hipcie = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCIE);
-
 	hipct = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCT);
-
-	hipcte = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCTE);
 
 	/* reply message from DSP */
 	if (hipcie & APL_DSP_REG_HIPCIE_DONE) {
+
+		hipci = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI);
+		msg = hipci & APL_DSP_REG_HIPCI_MSG_MASK;
+		msg_ext = hipcie & APL_DSP_REG_HIPCIE_MSG_MASK;
+		dev_dbg(sdev->dev, "ipc: firmware response, msg:0x%x, msg_ext:0x%x\n",
+			msg, msg_ext);
+
 		/* mask Done interrupt */
 		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR,
 			APL_DSP_REG_HIPCCTL, APL_DSP_REG_HIPCCTL_DONE, 0);
+
+		/* handle immediate reply from DSP core */
+		snd_sof_ipc_process_reply(sdev, msg);
 
 		/* clear DONE bit - tell DSP we have completed the operation */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
@@ -911,16 +920,10 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		msg = hipct & APL_DSP_REG_HIPCT_MSG_MASK;
 		msg_ext = hipcte & APL_DSP_REG_HIPCTE_MSG_MASK;
 
-		dev_dbg(sdev->dev, "ipc: firmware response, msg:0x%x, msg_ext:0x%x\n",
+		dev_dbg(sdev->dev, "ipc: firmware initiated, msg:0x%x, msg_ext:0x%x\n",
 			msg, msg_ext);
 
-		if ((msg & SOF_GLB_TYPE_MASK) == SOF_IPC_GLB_REPLY) {
-			/* handle immediate reply from DSP core */
-			snd_sof_ipc_process_reply(sdev, msg);
-		} else {
-			dev_dbg(sdev->dev, "ipc: firmware notification\n");
-			snd_sof_ipc_process_notification(sdev, msg);
-		}
+		snd_sof_ipc_process_notification(sdev, msg);
 
 		/* clear busy interrupt */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
@@ -1867,6 +1870,8 @@ static int apl_probe(struct snd_sof_dev *sdev)
 		SOF_HDA_INT_CTRL_EN | SOF_HDA_INT_GLOBAL_EN,
 		SOF_HDA_INT_CTRL_EN | SOF_HDA_INT_GLOBAL_EN);
 
+	dev_dbg(sdev->dev, "using PCI IRQ %d\n", sdev->pci->irq);
+
 	/* register our IRQ */
 	ret = request_threaded_irq(sdev->pci->irq, skl_interrupt,
 		skl_threaded_handler, IRQF_SHARED, "AudioHDA", sdev);
@@ -1878,7 +1883,7 @@ static int apl_probe(struct snd_sof_dev *sdev)
 	sdev->hda.irq = pci->irq;
 	
 	sdev->ipc_irq = pci->irq;
-	dev_dbg(sdev->dev, "using PCI IRQ %d\n", sdev->ipc_irq);
+	dev_dbg(sdev->dev, "using IPC IRQ %d\n", sdev->ipc_irq);
 	ret = request_threaded_irq(sdev->ipc_irq, apl_irq_handler,
 		apl_irq_thread, IRQF_SHARED, "AudioDSP", sdev);
 	if (ret < 0) {
