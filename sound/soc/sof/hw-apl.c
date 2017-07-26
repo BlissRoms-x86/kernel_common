@@ -468,7 +468,8 @@ static int apl_trigger(struct snd_sof_dev *sdev,
 			SOF_HDA_ADSP_REG_CL_SD_STS, SOF_HDA_CL_DMA_SD_INT_MASK); 
 
 		stream->running = false; 
-		snd_sof_dsp_write(sdev, APL_HDA_BAR, SOF_HDA_INTCTL, 0x0);
+		snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, SOF_HDA_INTCTL,
+			1 << stream->index, 0x0);
 		break;
 	default:
 		dev_err(sdev->dev, "error: unknown command: %d\n", cmd);
