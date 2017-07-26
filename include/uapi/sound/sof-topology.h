@@ -83,6 +83,8 @@
 #define SOF_TKN_DAI_DMAC 			151
 #define	SOF_TKN_DAI_DMAC_CHAN 			152
 #define	SOF_TKN_DAI_DMAC_CONFIG			153
+#define SOF_TKN_DAI_TYPE			154
+#define SOF_TKN_DAI_INDEX			155
 
 /* scheduling */
 #define SOF_TKN_SCHED_DEADLINE 			200

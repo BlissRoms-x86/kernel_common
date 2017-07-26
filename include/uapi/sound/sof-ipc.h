@@ -226,8 +226,6 @@ struct sof_ipc_dai_ssp_params {
 	uint16_t clk_id;
 	uint16_t format;	/* SOF_DAI_FMT_ */
 	uint16_t mclk_master;
-	uint16_t bclk_master;
-	uint16_t fclk_master;
 } __attribute__((packed));
 
 /* HDA Configuration Request - SOF_IPC_DAI_HDA_CONFIG */
@@ -455,7 +453,8 @@ struct sof_ipc_buffer {
 
 /* types of DAI */
 enum sof_ipc_dai_type {
-	SOF_DAI_INTEL_SSP = 0,
+	SOF_DAI_INTEL_NONE = 0,
+	SOF_DAI_INTEL_SSP,
 	SOF_DAI_INTEL_DMIC,
 	SOF_DAI_INTEL_HDA,
 };

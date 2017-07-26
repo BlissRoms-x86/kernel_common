@@ -261,6 +261,9 @@ static void sof_dai_get_words(struct snd_soc_component *scomp,
 		case SOF_TKN_DAI_DMAC_CONFIG:
 			dai->dmac_config = elem->value;
 			break;
+		case SOF_TKN_DAI_INDEX:
+			dai->index = elem->value;
+			break;
 		default:
 			/* non fatal */
 			dev_info(sdev->dev, "info: unexpected DAI token %d\n",
@@ -272,6 +275,55 @@ static void sof_dai_get_words(struct snd_soc_component *scomp,
 
 	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d\n",
 		swidget->widget->name, dai->dmac_id, dai->dmac_chan);
+}
+
+struct sof_dai_types {
+	const char *name;
+	enum sof_ipc_dai_type type;
+};
+
+static const struct sof_dai_types sof_dais[] = {
+	{"SSP", SOF_DAI_INTEL_SSP},
+	{"HDA", SOF_DAI_INTEL_HDA},
+	{"DMIC", SOF_DAI_INTEL_DMIC},
+};
+
+static enum sof_ipc_dai_type find_dai(const char *name)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(sof_dais); i++) {
+		if (strcmp(name, sof_dais[i].name) == 0)
+			return sof_dais[i].type;
+	}
+
+	return SOF_DAI_INTEL_NONE;
+}
+
+static void sof_dai_get_strings(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_dai *dai, struct snd_soc_tplg_vendor_array *array)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_vendor_string_elem *elem;
+	int i;
+
+	for (i = 0; i < array->num_elems; i++) {
+
+		elem = &array->string[i];
+
+		switch (elem->token) {
+		case SOF_TKN_DAI_TYPE:
+			dai->type = find_dai(elem->string);
+			break;
+		default:
+			/* non fatal */
+			dev_info(sdev->dev, "info: unexpected DAI token %d\n",
+				elem->token);
+			break;
+		}
+
+	}
 }
 
 static int sof_widget_dai_get_data(struct snd_soc_component *scomp,
@@ -301,6 +353,8 @@ static int sof_widget_dai_get_data(struct snd_soc_component *scomp,
 			sof_dai_get_words(scomp, swidget, tw, dai, array);
 			break;
 		case SND_SOC_TPLG_TUPLE_TYPE_STRING:
+			sof_dai_get_strings(scomp, swidget, tw, dai, array);
+			break;
 		case SND_SOC_TPLG_TUPLE_TYPE_BOOL:
 		case SND_SOC_TPLG_TUPLE_TYPE_BYTE:
 		case SND_SOC_TPLG_TUPLE_TYPE_SHORT:
@@ -1051,7 +1105,7 @@ static int sof_dai_unload(struct snd_soc_component *scomp,
 }
 
 static int sof_link_ssp_load(struct snd_soc_component *scomp, int index,
-	struct snd_soc_dai_link *link,
+	struct snd_soc_dai_link *link, struct snd_soc_tplg_link_config *cfg,
 	struct snd_soc_tplg_hw_config *hw_config)
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
@@ -1068,11 +1122,38 @@ static int sof_link_ssp_load(struct snd_soc_component *scomp, int index,
 	ssp.num_slots = hw_config->tdm_slots;
 	ssp.frame_width = hw_config->tdm_slot_width;
 	ssp.mclk_master = hw_config->mclk_direction;
-	ssp.bclk_master = hw_config->bclk_master;
-	ssp.fclk_master = hw_config->fsync_master;
 
-	dev_dbg(sdev->dev, "tplg: config SSP%d fmt 0x%x\n", ssp.ssp_id,
-		ssp.format);
+	/* clock directions wrt codec */
+	if (hw_config->bclk_master) {
+		/* codec is bclk master */
+		if (hw_config->fsync_master)
+			ssp.format |= SOF_DAI_FMT_CBM_CFM;
+		else
+			ssp.format |= SOF_DAI_FMT_CBM_CFS;
+	} else {
+		/* codec is bclk slave */
+		if (hw_config->fsync_master)
+			ssp.format |= SOF_DAI_FMT_CBS_CFM;
+		else
+			ssp.format |= SOF_DAI_FMT_CBS_CFS;
+	}
+
+	/* inverted clocks ? */
+	if (hw_config->invert_bclk) {
+		if (hw_config->invert_fsync)
+			ssp.format |= SOF_DAI_FMT_IB_IF;
+		else
+			ssp.format |= SOF_DAI_FMT_IB_NF;
+	} else {
+		if (hw_config->invert_fsync)
+			ssp.format |= SOF_DAI_FMT_NB_IF;
+		else
+			ssp.format |= SOF_DAI_FMT_NB_NF;
+	}
+
+	dev_dbg(sdev->dev, "tplg: config SSP%d fmt 0x%x mclk %d bclk %d fclk %d width %d slots %d\n", 
+		ssp.ssp_id, ssp.format, ssp.mclk, ssp.bclk, ssp.fclk,
+		ssp.frame_width, ssp.num_slots);
 
 	return sof_ipc_tx_message_wait(sdev->ipc, 
 		ssp.hdr.cmd, &ssp, sizeof(ssp), NULL, 0);
@@ -1097,7 +1178,7 @@ static int sof_link_load(struct snd_soc_component *scomp, int index,
 		hw_config = &cfg->hw_config[i];
 
 		/* TODO: determine DAI type - hard coded to SSP atm */
-		ret = sof_link_ssp_load(scomp, index, link, hw_config);
+		ret = sof_link_ssp_load(scomp, index, link, cfg, hw_config);
 		if (ret < 0) {
 			dev_err(sdev->dev, "error: failed to load DAI config\n");
 			break;
