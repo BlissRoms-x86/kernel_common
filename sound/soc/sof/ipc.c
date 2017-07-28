@@ -127,7 +127,6 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 	if (ret == 0) {
 		dev_err(sdev->dev, "error: ipc timed out for 0x%x size 0x%x\n",
 			hdr->cmd, hdr->size);
-		list_del(&msg->list);
 		snd_sof_dsp_dbg_dump(ipc->sdev, SOF_DBG_REGS | SOF_DBG_MBOX);
 		ret = -ETIMEDOUT;
 	} else {
@@ -138,7 +137,7 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 	}
 
 	/* return message body to empty list */
-	list_add_tail(&msg->list, &ipc->empty_list);
+	list_move(&msg->list, &ipc->empty_list);
 
 	spin_unlock_irqrestore(&sdev->spinlock, flags);
 	return ret;
@@ -227,12 +226,12 @@ EXPORT_SYMBOL(sof_ipc_reply_find_msg);
 void sof_ipc_tx_msg_reply_complete(struct snd_sof_ipc *ipc,
 	struct snd_sof_ipc_msg *msg)
 {
+	msg->complete = true;
+
 	if (!msg->wait)
-		list_add_tail(&msg->list, &ipc->empty_list);
-	else {
-		msg->complete = true;
+		list_move(&msg->list, &ipc->empty_list);
+	else
 		wake_up(&msg->waitq);
-	}
 }
 
 void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
@@ -294,7 +293,6 @@ void snd_sof_ipc_process_reply(struct snd_sof_dev *sdev, u32 msg_id)
 	}
 
 	/* wake up and return the error if we have waiters on this message ? */
-	list_del(&msg->list);
 	sof_ipc_tx_msg_reply_complete(sdev->ipc, msg);
 }
 EXPORT_SYMBOL(snd_sof_ipc_process_reply);
