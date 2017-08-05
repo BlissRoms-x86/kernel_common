@@ -106,4 +106,9 @@
 #define SOF_TKN_PCM_DMAC_CHAN 			352
 #define SOF_TKN_PCM_DMAC_CONFIG			353
 
+/* Generic components */
+#define SOF_TKN_COMP_PERIOD_SINK_COUNT		400
+#define SOF_TKN_COMP_PERIOD_SOURCE_COUNT	401
+#define SOF_TKN_COMP_FORMAT			402
+
 #endif

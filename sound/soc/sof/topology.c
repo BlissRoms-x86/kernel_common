@@ -73,25 +73,59 @@
 #include <uapi/sound/sof-topology.h>
 #include "sof-priv.h"
 
+struct sof_dai_types {
+	const char *name;
+	enum sof_ipc_dai_type type;
+};
 
-/* 
- * Extended Tokens.
- *
- * Extended tokens are optional attributes for firmware objects and are parsed
- * after the firmware object has been created. The tokens are then classified
- * and then sent to the firmware object using the IPC ABI for that data.  
- */
+static const struct sof_dai_types sof_dais[] = {
+	{"SSP", SOF_DAI_INTEL_SSP},
+	{"HDA", SOF_DAI_INTEL_HDA},
+	{"DMIC", SOF_DAI_INTEL_DMIC},
+};
 
-static void sof_process_ext_tokens(struct snd_soc_component *scomp, u32 id,
-	struct snd_soc_tplg_private *private)
+static enum sof_ipc_dai_type find_dai(const char *name)
 {
-	/* process all extended token types */
-	// TODO: support any extended tokens.
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(sof_dais); i++) {
+		if (strcmp(name, sof_dais[i].name) == 0)
+			return sof_dais[i].type;
+	}
+
+	return SOF_DAI_INTEL_NONE;
 }
+
+struct sof_frame_types {
+	const char *name;
+	enum sof_ipc_frame frame;
+};
+
+static const struct sof_frame_types sof_frames[] = {
+	{"s16le", SOF_IPC_FRAME_S16_LE},
+	{"s24_4le", SOF_IPC_FRAME_S24_4LE},
+	{"s32le", SOF_IPC_FRAME_S32_LE},
+	{"float", SOF_IPC_FRAME_FLOAT},
+};
+
+static enum sof_ipc_dai_type find_format(const char *name)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(sof_frames); i++) {
+		if (strcmp(name, sof_frames[i].name) == 0)
+			return sof_frames[i].frame;
+	}
+
+	/* use s32le if nothing is specified */
+	return SOF_IPC_FRAME_S32_LE;
+}
+
 
 /*
  * Standard Kcontrols.
  */
+
 static int sof_control_load_volume(struct snd_soc_component *scomp,
 	struct snd_sof_control *scontrol, struct snd_kcontrol_new *kc,
 	struct snd_soc_tplg_ctl_hdr *hdr, struct sof_ipc_comp_reply *r)
@@ -100,7 +134,7 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	struct snd_soc_tplg_mixer_control *mc =
 		(struct snd_soc_tplg_mixer_control *)hdr;
 	struct sof_ipc_comp_volume v;
-	int i;
+	//int i;
 
 	/* validate topology data */
 	if (mc->num_channels >= SND_SOC_TPLG_MAX_CHAN)
@@ -112,9 +146,6 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	v.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
 	v.comp.id = scontrol->comp_id = sdev->next_comp_id++;
 	v.comp.type = SOF_COMP_VOLUME;
-	v.pcm.format = 0;
-	v.pcm.frames = 0;
-	v.pcm.channels = 0;
 	v.channels = scontrol->num_channels = mc->num_channels;
 	v.min_value = mc->min;
 	v.max_value = mc->max;
@@ -124,9 +155,9 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	dev_dbg(sdev->dev, "tplg: load kcontrol index %d\n", scontrol->comp_id);
 
 	/* configure channel IDs */
-	for (i = 0; i < mc->num_channels; i++) {
-		v.pcm.chmap[i] = mc->channel[i].id;
-	}
+	//for (i = 0; i < mc->num_channels; i++) {
+	//	v.pcm.chmap[i] = mc->channel[i].id;
+	//}
 
 	/* send IPC to the DSP */
  	return sof_ipc_tx_message_wait(sdev->ipc, 
@@ -208,6 +239,121 @@ static int sof_control_unload(struct snd_soc_component *scomp,
 		fcomp.hdr.cmd, &fcomp, sizeof(fcomp), NULL, 0);
 }
 
+/*
+ * Generic component Topology
+ */
+
+static void sof_comp_get_strings(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_config *comp, struct snd_soc_tplg_vendor_array *array)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_vendor_string_elem *elem;
+	int i;
+
+	for (i = 0; i < array->num_elems; i++) {
+
+		elem = &array->string[i];
+
+		switch (elem->token) {
+		case SOF_TKN_COMP_FORMAT:
+			comp->frame_fmt = find_format(elem->string);
+			break;
+		default:
+			/* non fatal */
+			//dev_info(sdev->dev, "info: unexpected comp token %d\n",
+			//	elem->token);
+			break;
+		}
+	}
+	dev_dbg(sdev->dev, "comp %s: format %d\n",
+		swidget->widget->name, comp->frame_fmt);
+}
+
+static void sof_comp_get_words(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_config *comp, struct snd_soc_tplg_vendor_array *array)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_vendor_value_elem *elem;
+	int i;
+
+	for (i = 0; i < array->num_elems; i++) {
+
+		elem = &array->value[i];
+
+		switch (elem->token) {
+		case SOF_TKN_COMP_PERIOD_SINK_COUNT:
+			comp->periods_sink = elem->value;
+			break;
+		case SOF_TKN_COMP_PERIOD_SOURCE_COUNT:
+			comp->periods_source = elem->value;
+			break;
+		default:
+			/* non fatal */
+			//dev_info(sdev->dev, "info: unexpected comp token %d\n",
+			//	elem->token);
+			break;
+		}
+	}
+
+	dev_dbg(sdev->dev, "comp %s: periods source %d sink %d\n",
+		swidget->widget->name, comp->periods_source,
+		comp->periods_sink);
+}
+
+
+static int sof_widget_comp_get_data(struct snd_soc_component *scomp,
+	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
+	struct sof_ipc_comp_config *comp)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+	struct snd_soc_tplg_private *private = &tw->priv;
+	struct snd_soc_tplg_vendor_array *array = private->array;
+	int size = private->size, asize;
+
+	/* private data can be made up of multiple arrays */
+	while (size) {
+
+		asize = array->size;
+
+		/* validate size */
+		size -= asize;
+		if (size < 0) {
+			dev_err(sdev->dev, "error: invalid comp size 0x%x\n",
+				asize);
+			return -EINVAL;
+		} 
+
+		switch (array->type) {
+		case SND_SOC_TPLG_TUPLE_TYPE_WORD:
+			sof_comp_get_words(scomp, swidget, tw, comp, array);
+			break;
+		case SND_SOC_TPLG_TUPLE_TYPE_STRING:
+			sof_comp_get_strings(scomp, swidget, tw, comp, array);
+			break;
+		case SND_SOC_TPLG_TUPLE_TYPE_BOOL:
+		case SND_SOC_TPLG_TUPLE_TYPE_BYTE:
+		case SND_SOC_TPLG_TUPLE_TYPE_SHORT:
+		case SND_SOC_TPLG_TUPLE_TYPE_UUID:
+		default:
+			/* non fatal - can be skipped */
+			dev_info(sdev->dev, "info: unsupported type %d found in comp data\n",
+				array->type);
+			break;
+		}
+
+		/* next array */
+		array = (void*)array + asize;
+	}
+
+	return 0;
+}
+
+/*
+ * DAI Topology
+ */
+
 static int sof_connect_dai_widget(struct snd_soc_component *scomp,
 	struct snd_soc_dapm_widget *w,
 	struct snd_soc_tplg_dapm_widget *tw)
@@ -275,29 +421,6 @@ static void sof_dai_get_words(struct snd_soc_component *scomp,
 
 	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d\n",
 		swidget->widget->name, dai->dmac_id, dai->dmac_chan);
-}
-
-struct sof_dai_types {
-	const char *name;
-	enum sof_ipc_dai_type type;
-};
-
-static const struct sof_dai_types sof_dais[] = {
-	{"SSP", SOF_DAI_INTEL_SSP},
-	{"HDA", SOF_DAI_INTEL_HDA},
-	{"DMIC", SOF_DAI_INTEL_DMIC},
-};
-
-static enum sof_ipc_dai_type find_dai(const char *name)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sof_dais); i++) {
-		if (strcmp(name, sof_dais[i].name) == 0)
-			return sof_dais[i].type;
-	}
-
-	return SOF_DAI_INTEL_NONE;
 }
 
 static void sof_dai_get_strings(struct snd_soc_component *scomp,
@@ -391,6 +514,14 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 	dai.comp.type = SOF_COMP_DAI;
 	dai.comp.pipeline_id = index;
 
+	/* get generic widget component data */
+	ret = sof_widget_comp_get_data(scomp, swidget, tw, &dai.config);
+	if (ret < 0) {
+		dev_err(sdev->dev, "error; failed to get component %s data\n",
+			swidget->widget->name);
+		return ret;
+	}
+
 	/* get the rest from private data i.e. tuples */
 	ext_tokens = sof_widget_dai_get_data(scomp, swidget, tw, &dai);
 	if (ext_tokens < 0) {
@@ -398,19 +529,13 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 		return ret;
 	}
 
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message_wait(sdev->ipc, 
 		dai.comp.hdr.cmd, &dai, sizeof(dai), r, sizeof(*r));
-	if (ret < 0) {
-
-	}
-
-	if (ext_tokens == 0)
-		return ret;
-
-	/* process any optional extended data for this component */
-	sof_process_ext_tokens(scomp, swidget->comp_id, &tw->priv);
-	return ret;
 }
+
+/*
+ * Buffer topology
+ */
 
 static void sof_buffer_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
@@ -440,6 +565,10 @@ static void sof_buffer_get_words(struct snd_soc_component *scomp,
 			break;
 		}
 	}
+
+	dev_dbg(sdev->dev, "buffer %s: size %d preload %d\n",
+		swidget->widget->name, buffer->size, buffer->preload_count);
+
 }
 
 static int sof_widget_buffer_get_data(struct snd_soc_component *scomp,
@@ -513,6 +642,10 @@ static int sof_widget_load_buffer(struct snd_soc_component *scomp, int index,
 	return sof_ipc_tx_message_wait(sdev->ipc, 
 		buffer.comp.hdr.cmd, &buffer, sizeof(buffer), r, sizeof(*r));
 }
+
+/*
+ * PCM Topology
+ */
 
 static void sof_pcm_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
@@ -612,6 +745,14 @@ static int sof_widget_load_pcm(struct snd_soc_component *scomp, int index,
 	host.comp.pipeline_id = index;
 	host.direction = dir;
 
+	/* get generic widget component data */
+	ret = sof_widget_comp_get_data(scomp, swidget, tw, &host.config);
+	if (ret < 0) {
+		dev_err(sdev->dev, "error; failed to get component %s data\n",
+			swidget->widget->name);
+		return ret;
+	}
+
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_pcm_get_data(scomp, swidget, tw, &host);
 	if (ret < 0) {
@@ -623,6 +764,9 @@ static int sof_widget_load_pcm(struct snd_soc_component *scomp, int index,
 		host.comp.hdr.cmd, &host, sizeof(host), r, sizeof(*r));
 }
 
+/*
+ * Pipeline Topology
+ */
 
 static void sof_pipeline_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
@@ -750,6 +894,9 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 		pipeline.hdr.cmd, &pipeline, sizeof(pipeline), r, sizeof(*r));
 }
 
+/*
+ * Mixer topology
+ */
 static void sof_mixer_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
 	struct sof_ipc_comp_mixer *mixer,
@@ -766,7 +913,7 @@ static void sof_mixer_get_words(struct snd_soc_component *scomp,
 		switch (elem->token) {
 		default:
 			/* non fatal */
-			dev_info(sdev->dev, "info: unexpected buffer token %d\n",
+			dev_info(sdev->dev, "info: unexpected mixer token %d\n",
 				elem->token);
 			break;
 		}
@@ -791,7 +938,7 @@ static int sof_widget_mixer_get_data(struct snd_soc_component *scomp,
 		/* validate size */
 		size -= asize;
 		if (size < 0) {
-			dev_err(sdev->dev, "error: invalid buffer size 0x%x\n",
+			dev_err(sdev->dev, "error: invalid mixer size 0x%x\n",
 				asize);
 			return -EINVAL;
 		} 
@@ -807,7 +954,7 @@ static int sof_widget_mixer_get_data(struct snd_soc_component *scomp,
 		case SND_SOC_TPLG_TUPLE_TYPE_UUID:
 		default:
 			/* non fatal - can be skipped */
-			dev_info(sdev->dev, "info: unsupported type %d found in buffer data\n",
+			dev_info(sdev->dev, "info: unsupported type %d found in mixer data\n",
 				array->type);
 			break;
 		}
@@ -835,6 +982,14 @@ static int sof_widget_load_mixer(struct snd_soc_component *scomp, int index,
 	mixer.comp.type = SOF_COMP_MIXER;
 	mixer.comp.pipeline_id = index;
 
+	/* get generic widget component data */
+	ret = sof_widget_comp_get_data(scomp, swidget, tw, &mixer.config);
+	if (ret < 0) {
+		dev_err(sdev->dev, "error; failed to get component %s data\n",
+			swidget->widget->name);
+		return ret;
+	}
+
 	/* get the rest from private data i.e. tuples */
 	ret = sof_widget_mixer_get_data(scomp, swidget, tw, &mixer);
 	if (ret < 0) {
@@ -845,6 +1000,10 @@ static int sof_widget_load_mixer(struct snd_soc_component *scomp, int index,
 	return sof_ipc_tx_message_wait(sdev->ipc, 
 		mixer.comp.hdr.cmd, &mixer, sizeof(mixer), r, sizeof(*r));
 }
+
+/*
+ * PGA Topology
+ */
 
 static void sof_pga_get_words(struct snd_soc_component *scomp,
 	struct snd_sof_widget *swidget, struct snd_soc_tplg_dapm_widget *tw,
@@ -948,6 +1107,14 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 	volume.comp.type = SOF_COMP_VOLUME;
 	volume.comp.pipeline_id = index;
 
+	/* get generic widget component data */
+	ret = sof_widget_comp_get_data(scomp, swidget, tw, &volume.config);
+	if (ret < 0) {
+		dev_err(sdev->dev, "error; failed to get component %s data\n",
+			swidget->widget->name);
+		return ret;
+	}
+
 	/* get the rest from kcontrol (not widget) private data i.e. tuples */
 	ret = sof_widget_pga_get_data(scomp, swidget, tw, &volume);
 	if (ret < 0) {
@@ -959,6 +1126,9 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 		volume.comp.hdr.cmd, &volume, sizeof(volume), r, sizeof(*r));
 }
 
+/*
+ * Generic widgte loader.
+ */
 
 static int sof_widget_load(struct snd_soc_component *scomp, int index,
 	struct snd_soc_dapm_widget *w,

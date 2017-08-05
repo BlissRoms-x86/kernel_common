@@ -313,6 +313,7 @@ enum sof_ipc_frame {
 	SOF_IPC_FRAME_S16_LE = 0,
 	SOF_IPC_FRAME_S24_4LE,
 	SOF_IPC_FRAME_S32_LE,
+	SOF_IPC_FRAME_FLOAT,
 	/* other formats here */
 };
 
@@ -337,20 +338,23 @@ struct sof_ipc_host_buffer {
 	uint32_t offset;
 } __attribute__((packed));
 
-
-/* PCM params info - SOF_IPC_STREAM_PCM_PARAMS */
-struct sof_ipc_pcm_params {
-	struct sof_ipc_hdr hdr;
-	uint32_t comp_id;
+struct sof_ipc_stream_params {
 	struct sof_ipc_host_buffer buffer;
 	enum sof_ipc_stream_direction direction;
 	enum sof_ipc_frame frame_fmt;
 	enum sof_ipc_buffer_format buffer_fmt;
 	uint32_t rate;
 	uint32_t channels;
-	uint32_t frame_size;
-	uint32_t period_bytes;	/* 0 means variable */
-	uint32_t period_count;	/* 0 means variable */
+	uint32_t sample_size;
+	/* for notifying host period has completed - 0 means no period IRQ */
+	uint32_t host_period_bytes;
+} __attribute__((packed));
+
+/* PCM params info - SOF_IPC_STREAM_PCM_PARAMS */
+struct sof_ipc_pcm_params {
+	struct sof_ipc_hdr hdr;
+	uint32_t comp_id;
+	struct sof_ipc_stream_params params;
 	enum sof_ipc_chmap channel_map[];
 }  __attribute__((packed));
 
@@ -365,10 +369,7 @@ struct sof_ipc_pcm_params_reply {
 struct sof_ipc_vorbis_params {
 	struct sof_ipc_hdr hdr;
 	uint32_t comp_id;
-	struct sof_ipc_host_buffer buffer;
-	enum sof_ipc_stream_direction direction;
-	enum sof_ipc_frame frame_fmt;
-	enum sof_ipc_buffer_format buffer_fmt;
+	struct sof_ipc_stream_params params;
 	/* TODO */
 }  __attribute__((packed));
 
@@ -459,18 +460,22 @@ enum sof_ipc_dai_type {
 	SOF_DAI_INTEL_HDA,
 };
 
-/* generic PCM component data */
-struct sof_ipc_pcm_comp {
+/* generic component config data */
+struct sof_ipc_comp_config {
 	uint32_t format;	/* data format */
-	uint32_t frames;	/* number of frames to process */
-	uint32_t channels;	/* number of channels */
+	uint32_t frames;	/* number of frames to process, 0 is variable */
+	uint32_t channels;	/* max number of channels */
+	uint32_t frame_size;	/* sample size in bytes */
+	uint32_t periods_sink;	/* 0 means variable */
+	uint32_t periods_source;	/* 0 means variable */
+	enum sof_ipc_frame frame_fmt;
 	enum sof_ipc_chmap chmap[SOF_IPC_MAX_CHANNELS];	/* channel map */
 } __attribute__((packed));
 
 /* generic host component */
 struct sof_ipc_comp_host {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 	enum sof_ipc_stream_direction direction;
 	uint32_t no_irq;	/* dont send periodic IRQ to host/DSP */
 	uint32_t dmac_id;
@@ -481,7 +486,7 @@ struct sof_ipc_comp_host {
 /* generic DAI component */
 struct sof_ipc_comp_dai {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 	enum sof_ipc_stream_direction direction;
 	uint32_t index;
 	enum sof_ipc_dai_type type;
@@ -493,7 +498,7 @@ struct sof_ipc_comp_dai {
 /* generic mixer component */
 struct sof_ipc_comp_mixer {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 }  __attribute__((packed));
 
 /* volume ramping types */
@@ -507,7 +512,7 @@ enum sof_volume_ramp {
 /* generic volume component */
 struct sof_ipc_comp_volume {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 	uint32_t channels;
 	int32_t min_value;
 	int32_t max_value;
@@ -518,21 +523,23 @@ struct sof_ipc_comp_volume {
 /* generic SRC component */
 struct sof_ipc_comp_src {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
-	uint32_t in_mask;	/* SOF_RATE_ supported input rates */
-	uint32_t out_mask;	/* SOF_RATE_ supported output rates */
+	struct sof_ipc_comp_config config;
+	/* either source or sink rate must be non zero */
+	uint32_t source_rate;	/* source rate or 0 for variable */
+	uint32_t sink_rate;	/* sink rate or 0 for variable */
+	uint32_t rate_mask;	/* SOF_RATE_ supported rates */
 } __attribute__((packed));
 
 /* generic MUX component */
 struct sof_ipc_comp_mux {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 } __attribute__((packed));
 
 /* generic tone generator component */
 struct sof_ipc_comp_tone {
 	struct sof_ipc_comp comp;
-	struct sof_ipc_pcm_comp pcm;
+	struct sof_ipc_comp_config config;
 	int32_t frequency;
 	int32_t amplitude;
 	int32_t freq_mult;
@@ -546,13 +553,13 @@ struct sof_ipc_comp_tone {
 /* FIR equalizer component */
 struct sof_ipc_comp_eq_fir {
        struct sof_ipc_comp comp;
-       struct sof_ipc_pcm_comp pcm;
+       struct sof_ipc_comp_config config;
 } __attribute__((packed));
 
 /* IIR equalizer component */
 struct sof_ipc_comp_eq_iir {
        struct sof_ipc_comp comp;
-       struct sof_ipc_pcm_comp pcm;
+       struct sof_ipc_comp_config config;
 } __attribute__((packed));
 
 /* IPC to pass configuration blobs to equalizers and re-assign responses */
