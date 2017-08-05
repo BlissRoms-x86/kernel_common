@@ -25,13 +25,6 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 
-#if 0
-static const struct snd_soc_dapm_route sof_nocodec_map[] = {
-	{"codec_in1", NULL, "ssp2 Rx" },
-	{"ssp2 Rx", NULL, "HiFi Capture"},
-};
-#endif
-
 static int sof_nocodec_codec_fixup(struct snd_soc_pcm_runtime *rtd,
                            struct snd_pcm_hw_params *params)
 {
@@ -76,8 +69,6 @@ static struct snd_soc_card sof_nocodec_card = {
 	.name = "sof-nocodec",
 	.dai_link = sof_nocodec_dais,
 	.num_links = ARRAY_SIZE(sof_nocodec_dais),
-//	.dapm_routes = sof_nocodec_map,
-//	.num_dapm_routes = ARRAY_SIZE(sof_nocodec_map),
 };
 
 static int sof_nocodec_probe(struct platform_device *pdev)
