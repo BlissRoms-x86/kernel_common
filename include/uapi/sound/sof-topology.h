@@ -77,7 +77,6 @@
 
 /* buffers */
 #define SOF_TKN_BUF_SIZE	 		100
-#define SOF_TKN_BUF_PRELOAD	 		101
 
 /* DAI */
 #define SOF_TKN_DAI_DMAC 			151
@@ -110,5 +109,6 @@
 #define SOF_TKN_COMP_PERIOD_SINK_COUNT		400
 #define SOF_TKN_COMP_PERIOD_SOURCE_COUNT	401
 #define SOF_TKN_COMP_FORMAT			402
+#define SOF_TKN_COMP_PRELOAD_COUNT 		403
 
 #endif

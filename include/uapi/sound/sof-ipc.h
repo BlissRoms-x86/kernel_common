@@ -449,7 +449,6 @@ struct sof_ipc_comp {
 struct sof_ipc_buffer {
 	struct sof_ipc_comp comp;
 	uint32_t size;		/* buffer size in bytes */
-	uint32_t preload_count;	/* how many periods to preload */
 } __attribute__((packed));
 
 /* types of DAI */
@@ -468,6 +467,7 @@ struct sof_ipc_comp_config {
 	uint32_t frame_size;	/* sample size in bytes */
 	uint32_t periods_sink;	/* 0 means variable */
 	uint32_t periods_source;	/* 0 means variable */
+	uint32_t preload_count;	/* how many periods to preload */
 	enum sof_ipc_frame frame_fmt;
 	enum sof_ipc_chmap chmap[SOF_IPC_MAX_CHANNELS];	/* channel map */
 } __attribute__((packed));

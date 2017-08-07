@@ -289,6 +289,9 @@ static void sof_comp_get_words(struct snd_soc_component *scomp,
 		case SOF_TKN_COMP_PERIOD_SOURCE_COUNT:
 			comp->periods_source = elem->value;
 			break;
+		case SOF_TKN_COMP_PRELOAD_COUNT:
+			comp->preload_count = elem->value;
+			break;
 		default:
 			/* non fatal */
 			//dev_info(sdev->dev, "info: unexpected comp token %d\n",
@@ -297,9 +300,9 @@ static void sof_comp_get_words(struct snd_soc_component *scomp,
 		}
 	}
 
-	dev_dbg(sdev->dev, "comp %s: periods source %d sink %d\n",
+	dev_dbg(sdev->dev, "comp %s: periods source %d sink %d preload %d\n",
 		swidget->widget->name, comp->periods_source,
-		comp->periods_sink);
+		comp->periods_sink, comp->preload_count);
 }
 
 
@@ -554,9 +557,6 @@ static void sof_buffer_get_words(struct snd_soc_component *scomp,
 		case SOF_TKN_BUF_SIZE:
 			buffer->size = elem->value;
 			break;
-		case SOF_TKN_BUF_PRELOAD:
-			buffer->preload_count = elem->value;
-			break;
 		// TODO buffer type, i.e. LP/HP etc
 		default:
 			/* non fatal */
@@ -566,8 +566,8 @@ static void sof_buffer_get_words(struct snd_soc_component *scomp,
 		}
 	}
 
-	dev_dbg(sdev->dev, "buffer %s: size %d preload %d\n",
-		swidget->widget->name, buffer->size, buffer->preload_count);
+	dev_dbg(sdev->dev, "buffer %s: size %d\n",
+		swidget->widget->name, buffer->size);
 
 }
 
