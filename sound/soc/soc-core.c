@@ -2150,13 +2150,20 @@ static void soc_check_tplg_fes(struct snd_soc_card *card)
 
 			dai_link = &card->dai_link[i];
 
+			/* ignore this FE */
 			if (dai_link->dynamic) {
 				dai_link->ignore = true;
 				continue;
 			}
 
+			/* overide platform */
 			dai_link->platform_name = platform->component.name;
 			dai_link->cpu_dai_name = platform->component.name;
+
+			/* convert non BE into BE */
+			dai_link->no_pcm = 1;
+			dai_link->dpcm_playback = 1;
+			dai_link->dpcm_capture = 1;
 		}
 
 	}
