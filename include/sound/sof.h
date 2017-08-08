@@ -62,6 +62,7 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/pci.h>
+#include <sound/soc-acpi.h>
 #include <uapi/sound/sof-ipc.h>
 
 struct snd_sof_dsp_ops;
@@ -85,34 +86,7 @@ struct snd_sof_pdata {
 
 	/* machine */
 	struct platform_device *pdev_mach;
-	const struct snd_sof_machine *machine;
-};
-
-
-/* 
- * Descriptor for ASoC machine driver.
- * This data is used to determine the correct machine driver to use depending
- * on DSP ID and codec ID. TODO: also include DMI name for matching
- */
-struct snd_sof_machine {
-	/* ACPI ID for the codec */
-	const u8 codec_id[ACPI_ID_LEN];
-	/* machine driver name */
-	const char *drv_name;
-	/* firmware file name */
-	const char *fw_filename;
-	/* default topology */
-	const char *tplg_filename;
-	/* ASoC platform name - used for binding machine drivers if non NULL */
-	const char *asoc_plat_name;
-	/* machine specific ops */
-	const struct snd_sof_dsp_ops *ops;
-	/* machine driver private data fixup */
-	struct platform_device * (*new_mach_data)
-		(struct snd_sof_pdata *sof_pdata);
-	/* machine detection helper */
-	int (*confirm_mach)(struct device *dev,
-		const struct sof_dev_desc **desc);
+	const struct snd_soc_acpi_mach *machine;
 };
 
 /* 
@@ -121,7 +95,7 @@ struct snd_sof_machine {
  */
 struct sof_dev_desc {
 	/* list of machines using this configuration */
-	const struct snd_sof_machine *machines;
+	struct snd_soc_acpi_mach *machines;
 
 	/* Platform resource indexes in BAR / ACPI resources. */ 
 	/* Must set to -1 if not used - add new items to end */

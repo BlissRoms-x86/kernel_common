@@ -68,46 +68,70 @@
 #include <linux/acpi.h>
 #include "sof-priv.h"
 
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
+static struct snd_soc_acpi_mach sof_bxt_machines[] = {
+	{
+		.id = "INT343A",
+		.drv_name = "bxt_alc298s_i2s",
+		.sof_fw_filename = "intel/reef-bxt.ri",
+		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.asoc_plat_name = "0000:00:0e.0",
+	},
+	{
+		.id = "DLGS7219",
+		.drv_name = "bxt_da7219_max98357a_i2s",
+		.sof_fw_filename = "intel/reef-bxt.ri",
+		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.asoc_plat_name = "0000:00:0e.0",
+	},
+};
+
+static struct sof_dev_desc bxt_desc = {
+	.machines		= sof_bxt_machines,
+	.resindex_lpe_base	= 0,
+	.resindex_pcicfg_base	= -1,
+	.resindex_imr_base	= -1,
+	.irqindex_host_ipc	= -1,
+	.resindex_dma_base	= -1,
+	.nocodec_fw_filename = "intel/reef-bxt.ri",
+	.nocodec_tplg_filename = "intel/reef-bxt.tplg"
+};
+#endif
+
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
+static struct snd_soc_acpi_mach sof_byt_machines[] = {
+	{
+		.id = "INT343A",
+		.drv_name = "edison",
+		.sof_fw_filename = "intel/reef-byt.ri",
+		.sof_tplg_filename = "intel/reef-byt.tplg",
+		.asoc_plat_name = "baytrail-pcm-audio",
+	},
+	{}
+};
+
+static const struct sof_dev_desc byt_desc = {
+	.machines		= sof_byt_machines,
+	.resindex_lpe_base	= 3,	/* IRAM, but subtract IRAM offset */
+	.resindex_pcicfg_base	= -1,
+	.resindex_imr_base	= 0,
+	.irqindex_host_ipc	= -1,
+	.resindex_dma_base	= -1,
+	.nocodec_fw_filename = "intel/reef-byt.ri",
+	.nocodec_tplg_filename = "intel/reef-byt.tplg"
+};
+#endif
+
 struct sof_pci_priv {
 	struct snd_sof_pdata *sof_pdata;
 	struct platform_device *pdev_pcm;
 };
 
-static acpi_status mach_match(acpi_handle handle, u32 level,
-				       void *context, void **ret)
-{
-	unsigned long long sta;
-	acpi_status status;
-
-	*(bool *)context = true;
-	status = acpi_evaluate_integer(handle, "_STA", NULL, &sta);
-	if (ACPI_FAILURE(status) || !(sta & ACPI_STA_DEVICE_PRESENT))
-		*(bool *)context = false;
-
-	return AE_OK;
-}
-
-static const struct snd_sof_machine *
-	find_machine(const struct snd_sof_machine *machines)
-{
-	const struct snd_sof_machine *mach;
-	bool found = false;
-
-	for (mach = machines; mach->codec_id[0]; mach++) {
-		if (ACPI_SUCCESS(acpi_get_devices(mach->codec_id,
-						  mach_match,
-						  &found, NULL)) && found)
-			return mach;
-	}
-
-	return NULL;
-}
-
 static void sof_pci_fw_cb(const struct firmware *fw, void *context)
 {
 	struct sof_pci_priv *priv = context;
 	struct snd_sof_pdata *sof_pdata = priv->sof_pdata;
-	const struct snd_sof_machine *mach = sof_pdata->machine;
+	const struct snd_soc_acpi_mach *mach = sof_pdata->machine;
 	struct device *dev = sof_pdata->dev;
 
 	sof_pdata->fw = fw;
@@ -140,9 +164,10 @@ static int sof_pci_probe(struct pci_dev *pci,
 	struct device *dev = &pci->dev;
 	const struct sof_dev_desc *desc =
 		(const struct sof_dev_desc*)pci_id->driver_data;
-	const struct snd_sof_machine *mach;
+	struct snd_soc_acpi_mach *mach;
 	struct snd_sof_pdata *sof_pdata;
 	struct sof_pci_priv *priv;
+        struct snd_sof_dsp_ops *ops;
 	int ret = 0;
 
 	dev_dbg(&pci->dev, "PCI DSP detected");
@@ -163,12 +188,25 @@ static int sof_pci_probe(struct pci_dev *pci,
 	if (ret < 0)
 		return ret;
 
+	if (0) ;
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
+	else if (desc == &bxt_desc) {
+		ops = &snd_sof_bxt_ops;
+	}
+#endif
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
+	else if (desc == &byt_desc) {
+		ops = &snd_sof_byt_ops;
+	}
+#endif
+	else return -ENODEV;
+
 	/* TODO: read NHLT */
 
 	/* find machine */
-	mach = find_machine(desc->machines);
+	mach = snd_soc_acpi_find_machine(desc->machines);
 	if (mach == NULL) {
-		struct snd_sof_machine *m;
+		struct snd_soc_acpi_mach *m;
 
 		dev_err(dev, "No matching ASoC machine driver found - using nocodec\n");
 		sof_pdata->drv_name = "sof-nocodec";
@@ -177,12 +215,13 @@ static int sof_pci_probe(struct pci_dev *pci,
 			return -ENOMEM;
 
 		m->drv_name = "sof-nocodec";
-		m->fw_filename = desc->nocodec_fw_filename;
-		m->tplg_filename = desc->nocodec_tplg_filename;
-		m->ops = desc->machines[0].ops;
+		m->sof_fw_filename = desc->nocodec_fw_filename;
+		m->sof_tplg_filename = desc->nocodec_tplg_filename;
 		m->asoc_plat_name = "sof-platform";
 		mach = m;
 	}
+
+	mach->pdata = ops;
 
 	sof_pdata->id = pci_id->device;
 	sof_pdata->name = pci_name(pci);
@@ -227,59 +266,6 @@ static void sof_pci_remove(struct pci_dev *pci)
 	pci_release_regions(pci);
 }
 
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
-static const struct snd_soc_acpi_mach sof_bxt_machines[] = {
-	{
-		.id = "INT343A",
-		.drv_name = "bxt_alc298s_i2s",
-		.sof_fw_filename = "intel/reef-bxt.ri",
-		.sof_tplg_filename = "intel/reef-bxt.tplg",
-		.asoc_plat_name = "0000:00:0e.0",
-	},
-	{
-		.id = "DLGS7219",
-		.drv_name = "bxt_da7219_max98357a_i2s",
-		.sof_fw_filename = "intel/reef-bxt.ri",
-		.sof_tplg_filename = "intel/reef-bxt.tplg",
-		.asoc_plat_name = "0000:00:0e.0",
-	},
-};
-
-static const struct sof_dev_desc bxt_desc = {
-	.machines		= sof_bxt_machines,
-	.resindex_lpe_base	= 0,
-	.resindex_pcicfg_base	= -1,
-	.resindex_imr_base	= -1,
-	.irqindex_host_ipc	= -1,
-	.resindex_dma_base	= -1,
-	.nocodec_fw_filename = "intel/reef-bxt.ri",
-	.nocodec_tplg_filename = "intel/reef-bxt.tplg"
-};
-#endif
-
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
-static const struct snd_soc_acpi_mach sof_byt_machines[] = {
-	{
-		.id = "INT343A",
-		.drv_name = "edison",
-		.sof_fw_filename = "intel/reef-byt.ri",
-		.sof_tplg_filename = "intel/reef-byt.tplg",
-		.asoc_plat_name = "baytrail-pcm-audio",
-	},
-	{}
-};
-
-static const struct sof_dev_desc byt_desc = {
-	.machines		= sof_byt_machines,
-	.resindex_lpe_base	= 3,	/* IRAM, but subtract IRAM offset */
-	.resindex_pcicfg_base	= -1,
-	.resindex_imr_base	= 0,
-	.irqindex_host_ipc	= -1,
-	.resindex_dma_base	= -1,
-	.nocodec_fw_filename = "intel/reef-byt.ri",
-	.nocodec_tplg_filename = "intel/reef-byt.tplg"
-};
-#endif
 
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {

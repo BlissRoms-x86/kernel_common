@@ -144,7 +144,7 @@ static int sof_probe(struct platform_device *pdev)
 		sdev->parent = &plat_data->pdev->dev;
 	} else
 		sdev->parent = plat_data->dev;
-	sdev->ops = plat_data->machine->ops;
+	sdev->ops = plat_data->machine->pdata;
 
 	sdev->pdata = plat_data;
 	INIT_LIST_HEAD(&sdev->pcm_list);
