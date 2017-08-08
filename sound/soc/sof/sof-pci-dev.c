@@ -228,11 +228,21 @@ static void sof_pci_remove(struct pci_dev *pci)
 }
 
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
-static const struct snd_sof_machine sof_bxt_machines[] = {
-	{ "INT343A", "bxt_alc298s_i2s", "intel/reef-bxt.ri",
-		"intel/reef-bxt.tplg", "0000:00:0e.0", &snd_sof_bxt_ops },
-	{ "DLGS7219", "bxt_da7219_max98357a_i2s", "intel/reef-bxt.ri",
-		"intel/reef-bxt.tplg", "0000:00:0e.0", &snd_sof_bxt_ops },
+static const struct snd_soc_acpi_mach sof_bxt_machines[] = {
+	{
+		.id = "INT343A",
+		.drv_name = "bxt_alc298s_i2s",
+		.sof_fw_filename = "intel/reef-bxt.ri",
+		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.asoc_plat_name = "0000:00:0e.0",
+	},
+	{
+		.id = "DLGS7219",
+		.drv_name = "bxt_da7219_max98357a_i2s",
+		.sof_fw_filename = "intel/reef-bxt.ri",
+		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.asoc_plat_name = "0000:00:0e.0",
+	},
 };
 
 static const struct sof_dev_desc bxt_desc = {
@@ -248,9 +258,15 @@ static const struct sof_dev_desc bxt_desc = {
 #endif
 
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
-static const struct snd_sof_machine sof_byt_machines[] = {
-	{ "INT343A", "edison", "intel/reef-byt.ri",
-		"intel/reef-byt.tplg", "baytrail-pcm-audio", &snd_sof_byt_ops },
+static const struct snd_soc_acpi_mach sof_byt_machines[] = {
+	{
+		.id = "INT343A",
+		.drv_name = "edison",
+		.sof_fw_filename = "intel/reef-byt.ri",
+		.sof_tplg_filename = "intel/reef-byt.tplg",
+		.asoc_plat_name = "baytrail-pcm-audio",
+	},
+	{}
 };
 
 static const struct sof_dev_desc byt_desc = {
