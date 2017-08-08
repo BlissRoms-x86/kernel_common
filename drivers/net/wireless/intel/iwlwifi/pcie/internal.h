@@ -279,7 +279,7 @@ struct iwl_txq {
 	bool frozen;
 	u8 active;
 	bool ampdu;
-	int block;
+	bool block;
 	unsigned long wd_timeout;
 	struct sk_buff_head overflow_q;
 

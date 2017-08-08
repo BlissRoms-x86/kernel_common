@@ -214,10 +214,6 @@ static int iwl_fill_paging_mem(struct iwl_mvm *mvm, const struct fw_img *image)
 	memcpy(page_address(mvm->fw_paging_db[0].fw_paging_block),
 	       image->sec[sec_idx].data,
 	       mvm->fw_paging_db[0].fw_paging_size);
-	dma_sync_single_for_device(mvm->trans->dev,
-				   mvm->fw_paging_db[0].fw_paging_phys,
-				   mvm->fw_paging_db[0].fw_paging_size,
-				   DMA_BIDIRECTIONAL);
 
 	IWL_DEBUG_FW(mvm,
 		     "Paging: copied %d CSS bytes to first block\n",
@@ -232,16 +228,9 @@ static int iwl_fill_paging_mem(struct iwl_mvm *mvm, const struct fw_img *image)
 	 * loop stop at num_of_paging_blk since that last block is not full.
 	 */
 	for (idx = 1; idx < mvm->num_of_paging_blk; idx++) {
-		struct iwl_fw_paging *block = &mvm->fw_paging_db[idx];
-
-		memcpy(page_address(block->fw_paging_block),
+		memcpy(page_address(mvm->fw_paging_db[idx].fw_paging_block),
 		       image->sec[sec_idx].data + offset,
-		       block->fw_paging_size);
-		dma_sync_single_for_device(mvm->trans->dev,
-					   block->fw_paging_phys,
-					   block->fw_paging_size,
-					   DMA_BIDIRECTIONAL);
-
+		       mvm->fw_paging_db[idx].fw_paging_size);
 
 		IWL_DEBUG_FW(mvm,
 			     "Paging: copied %d paging bytes to block %d\n",
@@ -253,15 +242,9 @@ static int iwl_fill_paging_mem(struct iwl_mvm *mvm, const struct fw_img *image)
 
 	/* copy the last paging block */
 	if (mvm->num_of_pages_in_last_blk > 0) {
-		struct iwl_fw_paging *block = &mvm->fw_paging_db[idx];
-
-		memcpy(page_address(block->fw_paging_block),
+		memcpy(page_address(mvm->fw_paging_db[idx].fw_paging_block),
 		       image->sec[sec_idx].data + offset,
 		       FW_PAGING_SIZE * mvm->num_of_pages_in_last_blk);
-		dma_sync_single_for_device(mvm->trans->dev,
-					   block->fw_paging_phys,
-					   block->fw_paging_size,
-					   DMA_BIDIRECTIONAL);
 
 		IWL_DEBUG_FW(mvm,
 			     "Paging: copied %d pages in the last block %d\n",

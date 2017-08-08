@@ -26,19 +26,15 @@
 #include <linux/gpio_keys.h>
 #include <linux/workqueue.h>
 #include <linux/gpio.h>
-#include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/spinlock.h>
 
-#define WAKE_DEBOUNCE msecs_to_jiffies(1000)
-
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
 	struct input_dev *input;
-	struct gpio_desc *gpiod;
 
 	struct timer_list release_timer;
 	unsigned int release_delay;	/* in msecs, for IRQ-only buttons */
@@ -46,14 +42,10 @@ struct gpio_button_data {
 	struct delayed_work work;
 	unsigned int software_debounce;	/* in msecs, for GPIO-driven buttons */
 
-	unsigned long resume_time;	/* in jiffies, for wakeup buttons */
-
 	unsigned int irq;
 	spinlock_t lock;
 	bool disabled;
 	bool key_pressed;
-	bool suspended;
-	bool resume_time_valid;
 };
 
 struct gpio_keys_drvdata {
@@ -148,7 +140,7 @@ static void gpio_keys_disable_button(struct gpio_button_data *bdata)
 		 */
 		disable_irq(bdata->irq);
 
-		if (bdata->gpiod)
+		if (gpio_is_valid(bdata->button->gpio))
 			cancel_delayed_work_sync(&bdata->work);
 		else
 			del_timer_sync(&bdata->release_timer);
@@ -361,49 +353,24 @@ static struct attribute_group gpio_keys_attr_group = {
 	.attrs = gpio_keys_attrs,
 };
 
-static bool gpio_keys_ignore_wakeup_button_press(struct gpio_button_data *bdata)
-{
-	unsigned long flags;
-	bool ret = false;
-
-	if (!bdata->button->wakeup)
-		return ret;
-
-	spin_lock_irqsave(&bdata->lock, flags);
-
-	if (bdata->suspended)
-		ret = true; /* Our resume method did not run yet */
-	else if (bdata->resume_time_valid &&
-		 time_before(jiffies, bdata->resume_time + WAKE_DEBOUNCE))
-		ret = true; /* Assume this is a wakeup press and ignore */
-
-	spin_unlock_irqrestore(&bdata->lock, flags);
-
-	return ret;
-}
-
 static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 {
 	const struct gpio_keys_button *button = bdata->button;
 	struct input_dev *input = bdata->input;
 	unsigned int type = button->type ?: EV_KEY;
-	int state;
+	int state = gpio_get_value_cansleep(button->gpio);
 
-	state = gpiod_get_value_cansleep(bdata->gpiod);
 	if (state < 0) {
-		dev_err(input->dev.parent,
-			"failed to get gpio state: %d\n", state);
+		dev_err(input->dev.parent, "failed to get gpio state\n");
 		return;
 	}
 
-	if (state && gpio_keys_ignore_wakeup_button_press(bdata))
-		return;
-
+	state = (state ? 1 : 0) ^ button->active_low;
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
 	} else {
-		input_event(input, type, button->code, state);
+		input_event(input, type, button->code, !!state);
 	}
 	input_sync(input);
 }
@@ -459,9 +426,6 @@ static irqreturn_t gpio_keys_irq_isr(int irq, void *dev_id)
 
 	BUG_ON(irq != bdata->irq);
 
-	if (gpio_keys_ignore_wakeup_button_press(bdata))
-		return IRQ_HANDLED;
-
 	spin_lock_irqsave(&bdata->lock, flags);
 
 	if (!bdata->key_pressed) {
@@ -492,7 +456,7 @@ static void gpio_keys_quiesce_key(void *data)
 {
 	struct gpio_button_data *bdata = data;
 
-	if (bdata->gpiod)
+	if (gpio_is_valid(bdata->button->gpio))
 		cancel_delayed_work_sync(&bdata->work);
 	else
 		del_timer_sync(&bdata->release_timer);
@@ -514,30 +478,18 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	bdata->button = button;
 	spin_lock_init(&bdata->lock);
 
-	/*
-	 * Legacy GPIO number, so request the GPIO here and
-	 * convert it to descriptor.
-	 */
 	if (gpio_is_valid(button->gpio)) {
-		unsigned flags = GPIOF_IN;
 
-		if (button->active_low)
-			flags |= GPIOF_ACTIVE_LOW;
-
-		error = devm_gpio_request_one(&pdev->dev, button->gpio, flags,
-					      desc);
+		error = devm_gpio_request_one(&pdev->dev, button->gpio,
+					      GPIOF_IN, desc);
 		if (error < 0) {
 			dev_err(dev, "Failed to request GPIO %d, error %d\n",
 				button->gpio, error);
 			return error;
 		}
 
-		bdata->gpiod = gpio_to_desc(button->gpio);
-		if (!bdata->gpiod)
-			return -EINVAL;
-
 		if (button->debounce_interval) {
-			error = gpiod_set_debounce(bdata->gpiod,
+			error = gpio_set_debounce(button->gpio,
 					button->debounce_interval * 1000);
 			/* use timer if gpiolib doesn't provide debounce */
 			if (error < 0)
@@ -548,7 +500,7 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 		if (button->irq) {
 			bdata->irq = button->irq;
 		} else {
-			irq = gpiod_to_irq(bdata->gpiod);
+			irq = gpio_to_irq(button->gpio);
 			if (irq < 0) {
 				error = irq;
 				dev_err(dev,
@@ -623,7 +575,7 @@ static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
 
 	for (i = 0; i < ddata->pdata->nbuttons; i++) {
 		struct gpio_button_data *bdata = &ddata->data[i];
-		if (bdata->gpiod)
+		if (gpio_is_valid(bdata->button->gpio))
 			gpio_keys_gpio_report_event(bdata);
 	}
 	input_sync(input);
@@ -867,18 +819,13 @@ static int gpio_keys_suspend(struct device *dev)
 {
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
 	struct input_dev *input = ddata->input;
-	unsigned long flags;
 	int i;
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
-			if (bdata->button->wakeup) {
-				spin_lock_irqsave(&bdata->lock, flags);
-				bdata->suspended = true;
-				spin_unlock_irqrestore(&bdata->lock, flags);
+			if (bdata->button->wakeup)
 				enable_irq_wake(bdata->irq);
-			}
 		}
 	} else {
 		mutex_lock(&input->mutex);
@@ -894,21 +841,14 @@ static int gpio_keys_resume(struct device *dev)
 {
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
 	struct input_dev *input = ddata->input;
-	unsigned long flags;
 	int error = 0;
 	int i;
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
-			if (bdata->button->wakeup) {
+			if (bdata->button->wakeup)
 				disable_irq_wake(bdata->irq);
-				spin_lock_irqsave(&bdata->lock, flags);
-				bdata->resume_time = jiffies;
-				bdata->resume_time_valid = true;
-				bdata->suspended = false;
-				spin_unlock_irqrestore(&bdata->lock, flags);
-			}
 		}
 	} else {
 		mutex_lock(&input->mutex);

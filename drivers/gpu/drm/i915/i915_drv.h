@@ -584,7 +584,6 @@ struct intel_uncore_funcs {
 struct intel_uncore {
 	spinlock_t lock; /** lock is also taken in irq contexts. */
 
-	struct notifier_block pmic_bus_access_nb;
 	struct intel_uncore_funcs funcs;
 
 	unsigned fifo_count;
@@ -1226,7 +1225,7 @@ struct intel_gen6_power_mgmt {
 	unsigned boosts;
 
 	/* manual wa residency calculations */
-	struct intel_rps_ei ei;
+	struct intel_rps_ei up_ei, down_ei;
 
 	/*
 	 * Protects RPS/RC6 register access and PCU communication.
@@ -1751,6 +1750,8 @@ struct drm_i915_private {
 	struct kmem_cache *requests;
 
 	const struct intel_device_info info;
+
+	int relative_constants_mode;
 
 	void __iomem *regs;
 
@@ -2944,12 +2945,14 @@ int intel_irq_install(struct drm_i915_private *dev_priv);
 void intel_irq_uninstall(struct drm_i915_private *dev_priv);
 
 extern void intel_uncore_sanitize(struct drm_i915_private *dev_priv);
+extern void intel_uncore_early_sanitize(struct drm_i915_private *dev_priv,
+					bool restore_forcewake);
 extern void intel_uncore_init(struct drm_i915_private *dev_priv);
 extern bool intel_uncore_unclaimed_mmio(struct drm_i915_private *dev_priv);
 extern bool intel_uncore_arm_unclaimed_mmio_detection(struct drm_i915_private *dev_priv);
 extern void intel_uncore_fini(struct drm_i915_private *dev_priv);
-extern void intel_uncore_suspend(struct drm_i915_private *dev_priv);
-extern void intel_uncore_resume_early(struct drm_i915_private *dev_priv);
+extern void intel_uncore_forcewake_reset(struct drm_i915_private *dev_priv,
+					 bool restore);
 const char *intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id);
 void intel_uncore_forcewake_get(struct drm_i915_private *dev_priv,
 				enum forcewake_domains domains);
@@ -3412,6 +3415,8 @@ struct drm_i915_gem_object *
 i915_gem_alloc_context_obj(struct drm_device *dev, size_t size);
 struct i915_gem_context *
 i915_gem_context_create_gvt(struct drm_device *dev);
+struct i915_gem_context *
+i915_gem_context_create_ipts(struct drm_device *dev);
 
 static inline struct i915_gem_context *
 i915_gem_context_lookup(struct drm_i915_file_private *file_priv, u32 id)
@@ -3601,7 +3606,7 @@ static inline bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter)
 extern void intel_i2c_reset(struct drm_device *dev);
 
 /* intel_bios.c */
-int intel_bios_init(struct drm_i915_private *dev_priv);
+void intel_bios_init(struct drm_i915_private *dev_priv);
 bool intel_bios_is_valid_vbt(const void *buf, size_t size);
 bool intel_bios_is_tv_present(struct drm_i915_private *dev_priv);
 bool intel_bios_is_lvds_present(struct drm_i915_private *dev_priv, u8 *i2c_pin);

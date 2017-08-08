@@ -2253,6 +2253,9 @@ void intel_unpin_fb_obj(struct drm_framebuffer *fb, unsigned int rotation)
 	intel_fill_fb_ggtt_view(&view, fb, rotation);
 	vma = i915_gem_object_to_ggtt(obj, &view);
 
+	if (WARN_ON_ONCE(!vma))
+		return;
+
 	i915_vma_unpin_fence(vma);
 	i915_gem_object_unpin_from_display_plane(vma);
 }
@@ -3696,6 +3699,10 @@ static void intel_update_pipe_config(struct intel_crtc *crtc,
 	/* drm_atomic_helper_update_legacy_modeset_state might not be called. */
 	crtc->base.mode = crtc->base.state->mode;
 
+	DRM_DEBUG_KMS("Updating pipe size %ix%i -> %ix%i\n",
+		      old_crtc_state->pipe_src_w, old_crtc_state->pipe_src_h,
+		      pipe_config->pipe_src_w, pipe_config->pipe_src_h);
+
 	/*
 	 * Update pipe size and adjust fitter if needed: the reason for this is
 	 * that in compute_mode_changes we check the native mode (not the pfit
@@ -4828,17 +4835,23 @@ static void skylake_pfit_enable(struct intel_crtc *crtc)
 	struct intel_crtc_scaler_state *scaler_state =
 		&crtc->config->scaler_state;
 
+	DRM_DEBUG_KMS("for crtc_state = %p\n", crtc->config);
+
 	if (crtc->config->pch_pfit.enabled) {
 		int id;
 
-		if (WARN_ON(crtc->config->scaler_state.scaler_id < 0))
+		if (WARN_ON(crtc->config->scaler_state.scaler_id < 0)) {
+			DRM_ERROR("Requesting pfit without getting a scaler first\n");
 			return;
+		}
 
 		id = scaler_state->scaler_id;
 		I915_WRITE(SKL_PS_CTRL(pipe, id), PS_SCALER_EN |
 			PS_FILTER_MEDIUM | scaler_state->scalers[id].mode);
 		I915_WRITE(SKL_PS_WIN_POS(pipe, id), crtc->config->pch_pfit.pos);
 		I915_WRITE(SKL_PS_WIN_SZ(pipe, id), crtc->config->pch_pfit.size);
+
+		DRM_DEBUG_KMS("for crtc_state = %p scaler_id = %d\n", crtc->config, id);
 	}
 }
 
@@ -13767,10 +13780,12 @@ static void update_scanline_offset(struct intel_crtc *crtc)
 	 *
 	 * On VLV/CHV DSI the scanline counter would appear to increment
 	 * approx. 1/3 of a scanline before start of vblank. Unfortunately
-	 * that we can't tell whether we're in vblank or not while we're
-	 * on that particular line. We must set scanline_offset to 1 so
-	 * that the vblank timestamps come out correct when we query
-	 * the scanline counter from the vblank interrupt handler.
+	 * that means we can't tell whether we're in vblank or not while
+	 * we're on that particular line. We must still set scanline_offset
+	 * to 1 so that the vblank timestamps come out correct when we query
+	 * the scanline counter from within the vblank interrupt handler.
+	 * However if queried just before the start of vblank we'll get an
+	 * answer that's slightly in the future.
 	 */
 	if (IS_GEN2(dev)) {
 		const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;

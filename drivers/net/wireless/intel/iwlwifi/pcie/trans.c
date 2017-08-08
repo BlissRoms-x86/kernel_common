@@ -868,13 +868,17 @@ static int iwl_pcie_load_cpu_sections(struct iwl_trans *trans,
 				      int cpu,
 				      int *first_ucode_section)
 {
+	int shift_param;
 	int i, ret = 0;
 	u32 last_read_idx = 0;
 
-	if (cpu == 1)
+	if (cpu == 1) {
+		shift_param = 0;
 		*first_ucode_section = 0;
-	else
+	} else {
+		shift_param = 16;
 		(*first_ucode_section)++;
+	}
 
 	for (i = *first_ucode_section; i < IWL_UCODE_SECTION_MAX; i++) {
 		last_read_idx = i;
@@ -2929,12 +2933,16 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 				       PCIE_LINK_STATE_CLKPM);
 	}
 
-	if (cfg->use_tfh) {
+	if (cfg->mq_rx_supported)
 		addr_size = 64;
+	else
+		addr_size = 36;
+
+	if (cfg->use_tfh) {
 		trans_pcie->max_tbs = IWL_TFH_NUM_TBS;
 		trans_pcie->tfd_size = sizeof(struct iwl_tfh_tfd);
+
 	} else {
-		addr_size = 36;
 		trans_pcie->max_tbs = IWL_NUM_OF_TBS;
 		trans_pcie->tfd_size = sizeof(struct iwl_tfd);
 	}

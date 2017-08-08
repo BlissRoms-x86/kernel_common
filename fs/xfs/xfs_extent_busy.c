@@ -45,7 +45,18 @@ xfs_extent_busy_insert(
 	struct rb_node		**rbp;
 	struct rb_node		*parent = NULL;
 
-	new = kmem_zalloc(sizeof(struct xfs_extent_busy), KM_SLEEP);
+	new = kmem_zalloc(sizeof(struct xfs_extent_busy), KM_MAYFAIL);
+	if (!new) {
+		/*
+		 * No Memory!  Since it is now not possible to track the free
+		 * block, make this a synchronous transaction to insure that
+		 * the block is not reused before this transaction commits.
+		 */
+		trace_xfs_extent_busy_enomem(tp->t_mountp, agno, bno, len);
+		xfs_trans_set_sync(tp);
+		return;
+	}
+
 	new->agno = agno;
 	new->bno = bno;
 	new->length = len;

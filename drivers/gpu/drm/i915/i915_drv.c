@@ -49,6 +49,7 @@
 #include "i915_trace.h"
 #include "i915_vgpu.h"
 #include "intel_drv.h"
+#include "intel_ipts.h"
 
 static struct drm_driver driver;
 
@@ -240,7 +241,6 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_IRQ_ACTIVE:
 	case I915_PARAM_ALLOW_BATCHBUFFER:
 	case I915_PARAM_LAST_DISPATCH:
-	case I915_PARAM_HAS_EXEC_CONSTANTS:
 		/* Reject all old ums/dri params. */
 		return -ENODEV;
 	case I915_PARAM_CHIPSET_ID:
@@ -266,6 +266,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 		break;
 	case I915_PARAM_HAS_BSD2:
 		value = intel_engine_initialized(&dev_priv->engine[VCS2]);
+		break;
+	case I915_PARAM_HAS_EXEC_CONSTANTS:
+		value = INTEL_GEN(dev_priv) >= 4;
 		break;
 	case I915_PARAM_HAS_LLC:
 		value = HAS_LLC(dev_priv);
@@ -573,9 +576,7 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	if (i915_inject_load_failure())
 		return -ENODEV;
 
-	ret = intel_bios_init(dev_priv);
-	if (ret)
-		DRM_INFO("failed to find VBIOS tables\n");
+	intel_bios_init(dev_priv);
 
 	/* If we have > 1 VGA cards, then we need to arbitrate access
 	 * to the common VGA resources.
@@ -630,6 +631,10 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	intel_hpd_init(dev_priv);
 
 	drm_kms_helper_poll_init(dev);
+
+pr_info(">> let init ipts\n");
+	if (INTEL_GEN(dev) >= 9 && i915.enable_guc_submission)
+                intel_ipts_init(dev);
 
 	return 0;
 
@@ -1205,6 +1210,15 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_free_priv;
 
 	pci_set_drvdata(pdev, &dev_priv->drm);
+	/*
+	 * Disable the system suspend direct complete optimization, which can
+	 * leave the device suspended skipping the driver's suspend handlers
+	 * if the device was already runtime suspended. This is needed due to
+	 * the difference in our runtime and system suspend sequence and
+	 * becaue the HDA driver may require us to enable the audio power
+	 * domain during system suspend.
+	 */
+	pdev->dev_flags |= PCI_DEV_FLAGS_NEEDS_RESUME;
 
 	ret = i915_driver_init_early(dev_priv, ent);
 	if (ret < 0)
@@ -1270,6 +1284,9 @@ void i915_driver_unload(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
+
+	if (INTEL_GEN(dev) >= 9 && i915.enable_guc_submission)
+		intel_ipts_cleanup(dev);
 
 	intel_fbdev_fini(dev);
 
@@ -1442,7 +1459,7 @@ static int i915_drm_suspend(struct drm_device *dev)
 	opregion_target_state = suspend_to_idle(dev_priv) ? PCI_D1 : PCI_D3cold;
 	intel_opregion_notify_adapter(dev_priv, opregion_target_state);
 
-	intel_uncore_suspend(dev_priv);
+	intel_uncore_forcewake_reset(dev_priv, false);
 	intel_opregion_unregister(dev_priv);
 
 	intel_fbdev_set_suspend(dev, FBINFO_STATE_SUSPENDED, true);
@@ -1685,7 +1702,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 		DRM_ERROR("Resume prepare failed: %d, continuing anyway\n",
 			  ret);
 
-	intel_uncore_resume_early(dev_priv);
+	intel_uncore_early_sanitize(dev_priv, true);
 
 	if (IS_BROXTON(dev_priv)) {
 		if (!dev_priv->suspended_to_idle)
@@ -2339,7 +2356,7 @@ static int intel_runtime_suspend(struct device *kdev)
 		return ret;
 	}
 
-	intel_uncore_suspend(dev_priv);
+	intel_uncore_forcewake_reset(dev_priv, false);
 
 	enable_rpm_wakeref_asserts(dev_priv);
 	WARN_ON_ONCE(atomic_read(&dev_priv->pm.wakeref_count));

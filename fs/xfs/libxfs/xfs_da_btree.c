@@ -2633,7 +2633,7 @@ out_free:
 /*
  * Readahead the dir/attr block.
  */
-int
+xfs_daddr_t
 xfs_da_reada_buf(
 	struct xfs_inode	*dp,
 	xfs_dablk_t		bno,
@@ -2664,5 +2664,7 @@ out_free:
 	if (mapp != &map)
 		kmem_free(mapp);
 
-	return error;
+	if (error)
+		return -1;
+	return mappedbno;
 }

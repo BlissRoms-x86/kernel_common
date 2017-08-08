@@ -1516,9 +1516,7 @@ int ib_attach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->attach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD ||
-	    lid < be16_to_cpu(IB_MULTICAST_LID_BASE) ||
-	    lid == be16_to_cpu(IB_LID_PERMISSIVE))
+	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
 		return -EINVAL;
 
 	ret = qp->device->attach_mcast(qp, gid, lid);
@@ -1534,9 +1532,7 @@ int ib_detach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->detach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD ||
-	    lid < be16_to_cpu(IB_MULTICAST_LID_BASE) ||
-	    lid == be16_to_cpu(IB_LID_PERMISSIVE))
+	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
 		return -EINVAL;
 
 	ret = qp->device->detach_mcast(qp, gid, lid);

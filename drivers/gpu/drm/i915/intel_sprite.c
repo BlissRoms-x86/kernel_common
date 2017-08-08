@@ -81,13 +81,10 @@ int intel_usecs_to_scanlines(const struct drm_display_mode *adjusted_mode,
  */
 void intel_pipe_update_start(struct intel_crtc *crtc)
 {
-	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	const struct drm_display_mode *adjusted_mode = &crtc->config->base.adjusted_mode;
 	long timeout = msecs_to_jiffies_timeout(1);
 	int scanline, min, max, vblank_start;
 	wait_queue_head_t *wq = drm_crtc_vblank_waitqueue(&crtc->base);
-	bool need_vlv_dsi_wa = (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) &&
-		intel_crtc_has_type(crtc->config, INTEL_OUTPUT_DSI);
 	DEFINE_WAIT(wait);
 
 	vblank_start = adjusted_mode->crtc_vblank_start;
@@ -146,12 +143,11 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
 	 * This means we must not write any registers on the first
 	 * line of vblank (since not the whole line is actually in
 	 * vblank). And unfortunately we can't use the interrupt to
-	 * wait here since it may have already fired before we check
-	 * the scanline. We could use the frame start interrupt instead
-	 * since it will fire after the critical scanline, but that would
-	 * require more changes in the interrupt code. So for now we'll
-	 * just do the nasty thing and poll for the bad scanline to
-	 * pass us by.
+	 * wait here since it will fire too soon. We could use the
+	 * frame start interrupt instead since it will fire after the
+	 * critical scanline, but that would require more changes
+	 * in the interrupt code. So for now we'll just do the nasty
+	 * thing and poll for the bad scanline to pass us by.
 	 *
 	 * FIXME figure out if BXT+ DSI suffers from this as well
 	 */

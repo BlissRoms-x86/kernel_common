@@ -433,6 +433,8 @@ nv50_disp_dptmds_war(struct nvkm_device *device)
 	case 0x94:
 	case 0x96:
 	case 0x98:
+	case 0xaa:
+	case 0xac:
 		return true;
 	default:
 		break;

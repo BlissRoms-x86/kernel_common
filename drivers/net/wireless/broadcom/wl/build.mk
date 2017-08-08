@@ -9,9 +9,8 @@ $(WL_SRC):
 
 $(WL_LIB): $(WL_SRC) $(wildcard $(WL_PATH)/*.patch)
 	$(hide) tar zxf $< -C $(@D) --overwrite -m && \
-		rm -rf $@ && mv $(@D)/lib $@ && touch $@ && \
+		rm -rf $@ && mv $(@D)/lib $@ && \
 		patch -p1 -d $(@D) -i wl.patch && \
-		patch -p1 -d $(@D) -i linux-recent.patch && \
-		patch -p1 -d $(@D) -i linux-48.patch
+		patch -p1 -d $(@D) -i linux-recent.patch
 
 $(INSTALLED_KERNEL_TARGET): $(if $(WL_ENABLED),$(WL_LIB))

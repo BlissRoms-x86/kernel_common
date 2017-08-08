@@ -97,6 +97,4 @@
 
 #define SO_CNX_ADVICE		53
 
-#define SO_COOKIE		57
-
 #endif /* _UAPI_ASM_SOCKET_H */

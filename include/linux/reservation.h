@@ -177,14 +177,17 @@ static inline struct fence *
 reservation_object_get_excl_rcu(struct reservation_object *obj)
 {
 	struct fence *fence;
-
-	if (!rcu_access_pointer(obj->fence_excl))
-		return NULL;
-
+	unsigned seq;
+retry:
+	seq = read_seqcount_begin(&obj->seq);
 	rcu_read_lock();
-	fence = fence_get_rcu_safe(&obj->fence_excl);
+	fence = rcu_dereference(obj->fence_excl);
+	if (read_seqcount_retry(&obj->seq, seq)) {
+		rcu_read_unlock();
+		goto retry;
+	}
+	fence = fence_get(fence);
 	rcu_read_unlock();
-
 	return fence;
 }
 

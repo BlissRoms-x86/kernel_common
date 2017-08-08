@@ -68,7 +68,6 @@ MODULE_LICENSE("GPL");
 #define MT_QUIRK_HOVERING		(1 << 11)
 #define MT_QUIRK_CONTACT_CNT_ACCURATE	(1 << 12)
 #define MT_QUIRK_FORCE_GET_FEATURE	(1 << 13)
-#define MT_QUIRK_INVALID_CONTACTID_FFFF	(1 << 14)
 
 #define MT_INPUTMODE_TOUCHSCREEN	0x02
 #define MT_INPUTMODE_TOUCHPAD		0x03
@@ -159,8 +158,6 @@ static void mt_post_parse(struct mt_device *td);
 #define MT_CLS_GENERALTOUCH_TWOFINGERS		0x0108
 #define MT_CLS_GENERALTOUCH_PWT_TENFINGERS	0x0109
 #define MT_CLS_VTL				0x0110
-#define MT_CLS_NTRIG				0x0111
-#define MT_CLS_UIWORKS				0x0105
 
 #define MT_DEFAULT_MAXCONTACT	10
 #define MT_MAX_MAXCONTACT	250
@@ -212,7 +209,8 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_IGNORE_DUPLICATES |
 			MT_QUIRK_HOVERING |
-			MT_QUIRK_CONTACT_CNT_ACCURATE },
+			MT_QUIRK_CONTACT_CNT_ACCURATE |
+			MT_QUIRK_NOT_SEEN_MEANS_UP },
 	{ .name = MT_CLS_EXPORT_ALL_INPUTS,
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_CONTACT_CNT_ACCURATE,
@@ -240,9 +238,6 @@ static struct mt_class mt_classes[] = {
 			MT_QUIRK_ALWAYS_VALID,
 		.sn_move = 4096,
 		.sn_pressure = 32,
-	},
-	{ .name = MT_CLS_UIWORKS,
-		.quirks =  MT_QUIRK_ALWAYS_VALID,
 	},
 	{ .name = MT_CLS_TOPSEED,
 		.quirks = MT_QUIRK_ALWAYS_VALID,
@@ -273,10 +268,6 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_CONTACT_CNT_ACCURATE |
 			MT_QUIRK_FORCE_GET_FEATURE,
-	},
-	{ .name = MT_CLS_NTRIG,
-		.quirks = MT_QUIRK_ALWAYS_VALID |
-			MT_QUIRK_INVALID_CONTACTID_FFFF,
 	},
 	{ }
 };
@@ -558,8 +549,12 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			if (field->index >= field->report->maxfield ||
 			    usage->usage_index >= field->report_count)
 				return 1;
-			td->cc_index = field->index;
-			td->cc_value_index = usage->usage_index;
+
+			if (td->cc_index < 0) {
+				td->cc_index = field->index;
+				td->cc_value_index = usage->usage_index;
+			}
+
 			return 1;
 		case HID_DG_CONTACTMAX:
 			/* we don't set td->last_slot_field as contactcount and
@@ -621,10 +616,6 @@ static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
 	if (quirks & MT_QUIRK_SLOT_IS_CONTACTID_MINUS_ONE)
 		return td->curdata.contactid - 1;
 
-	if (quirks & MT_QUIRK_INVALID_CONTACTID_FFFF &&
-	    td->curdata.contactid == 0xffff)
-		return -1;
-
 	return input_mt_get_slot_by_key(input, td->curdata.contactid);
 }
 
@@ -637,6 +628,10 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 	if ((td->mtclass.quirks & MT_QUIRK_CONTACT_CNT_ACCURATE) &&
 	    td->num_received >= td->num_expected)
 		return;
+
+	if (td->curdata.x == 0xffff && td->curdata.x == td->curdata.y &&
+	    td->curdata.w == 0xffff && td->curdata.w == td->curdata.h)
+		goto inc_num_received;
 
 	if (td->curvalid || (td->mtclass.quirks & MT_QUIRK_ALWAYS_VALID)) {
 		int active;
@@ -681,6 +676,7 @@ static void mt_complete_slot(struct mt_device *td, struct input_dev *input)
 		}
 	}
 
+inc_num_received:
 	td->num_received++;
 }
 
@@ -864,7 +860,9 @@ static int mt_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	    field->application != HID_DG_PEN &&
 	    field->application != HID_DG_TOUCHPAD &&
 	    field->application != HID_GD_KEYBOARD &&
-	    field->application != HID_CP_CONSUMER_CONTROL)
+	    field->application != HID_CP_CONSUMER_CONTROL &&
+	    field->application != HID_GD_MOUSE &&
+	    field->logical != HID_DG_TOUCHSCREEN)
 		return -1;
 
 	/*
@@ -1045,6 +1043,10 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 		suffix = "Pen";
 		/* force BTN_STYLUS to allow tablet matching in udev */
 		__set_bit(BTN_STYLUS, hi->input->keybit);
+	} else if (hi->report->field[0]->logical == HID_DG_TOUCHSCREEN) {
+		suffix = "SingleTouch";
+		/* force BTN_STYLUS to allow tablet matching in udev */
+		__set_bit(BTN_STYLUS, hi->input->keybit);
 	} else {
 		switch (field->application) {
 		case HID_GD_KEYBOARD:
@@ -1125,7 +1127,8 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return -ENOMEM;
 	}
 
-	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID)
+	if (id->vendor == HID_ANY_ID && id->product == HID_ANY_ID &&
+		id->group != HID_GROUP_MULTITOUCH_WIN_8)
 		td->serial_maybe = true;
 
 	/*
@@ -1415,6 +1418,108 @@ static const struct hid_device_id mt_devices[] = {
 		MT_USB_DEVICE(USB_VENDOR_ID_ILITEK,
 			USB_DEVICE_ID_ILITEK_MULTITOUCH) },
 
+	/* Microsoft Type Cover 3 */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_2) },
+
+	/* Microsoft Type Cover 3 */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4_2) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
+	/* Microsoft Type Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_1) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4_1) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
+	/* Microsoft Type Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_1) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4_1) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
+	/* Microsoft Type Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_1) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_4_1) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
 	/* MosArt panels */
 	{ .driver_data = MT_CLS_CONFIDENCE_MINUS_ONE,
 		MT_USB_DEVICE(USB_VENDOR_ID_ASUS,
@@ -1425,12 +1530,6 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_CONFIDENCE_MINUS_ONE,
 		MT_USB_DEVICE(USB_VENDOR_ID_TURBOX,
 			USB_DEVICE_ID_TURBOX_TOUCHSCREEN_MOSART) },
-
-	/* N-trig */
-	{ .driver_data = MT_CLS_NTRIG,
-		HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8,
-			USB_VENDOR_ID_NTRIG,
-			I2C_DEVICE_ID_NTRIG_TOUCH_SCREEN) },
 
 	/* Panasonic panels */
 	{ .driver_data = MT_CLS_PANASONIC,
@@ -1485,16 +1584,6 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_NSMU,
 		MT_USB_DEVICE(USB_VENDOR_ID_TOUCH_INTL,
 			USB_DEVICE_ID_TOUCH_INTL_MULTI_TOUCH) },
-
-	/* Uiworks */
-	{ .driver_data = MT_CLS_UIWORKS,
-		HID_USB_DEVICE(0x23FF, 0x1600) },
-	{ .driver_data = MT_CLS_UIWORKS,
-		HID_USB_DEVICE(0x23FF, 0x1601) },
-	{ .driver_data = MT_CLS_UIWORKS,
-		HID_USB_DEVICE(0x23FF, 0x1602) },
-	{ .driver_data = MT_CLS_UIWORKS,
-		HID_USB_DEVICE(0x23FF, 0x1603) },
 
 	/* Unitec panels */
 	{ .driver_data = MT_CLS_NSMU,

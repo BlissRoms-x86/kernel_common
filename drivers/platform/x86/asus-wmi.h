@@ -53,7 +53,6 @@ struct quirk_entry {
 	 * and let the ACPI interrupt to send out the key event.
 	 */
 	int no_display_toggle;
-	u32 xusb2pr;
 
 	bool (*i8042_filter)(unsigned char data, unsigned char str,
 			     struct serio *serio);

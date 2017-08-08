@@ -208,11 +208,9 @@ static inline void omap_gpio_dbck_disable(struct gpio_bank *bank)
  * OMAP's debounce time is in 31us steps
  *   <debounce time> = (GPIO_DEBOUNCINGTIME[7:0].DEBOUNCETIME + 1) x 31
  * so we need to convert and round up to the closest unit.
- *
- * Return: 0 on success, negative error otherwise.
  */
-static int omap2_set_gpio_debounce(struct gpio_bank *bank, unsigned offset,
-				   unsigned debounce)
+static void omap2_set_gpio_debounce(struct gpio_bank *bank, unsigned offset,
+				    unsigned debounce)
 {
 	void __iomem		*reg;
 	u32			val;
@@ -220,12 +218,11 @@ static int omap2_set_gpio_debounce(struct gpio_bank *bank, unsigned offset,
 	bool			enable = !!debounce;
 
 	if (!bank->dbck_flag)
-		return -ENOTSUPP;
+		return;
 
 	if (enable) {
 		debounce = DIV_ROUND_UP(debounce, 31) - 1;
-		if ((debounce & OMAP4_GPIO_DEBOUNCINGTIME_MASK) != debounce)
-			return -EINVAL;
+		debounce &= OMAP4_GPIO_DEBOUNCINGTIME_MASK;
 	}
 
 	l = BIT(offset);
@@ -258,8 +255,6 @@ static int omap2_set_gpio_debounce(struct gpio_bank *bank, unsigned offset,
 		bank->context.debounce = debounce;
 		bank->context.debounce_en = val;
 	}
-
-	return 0;
 }
 
 /**
@@ -969,20 +964,14 @@ static int omap_gpio_debounce(struct gpio_chip *chip, unsigned offset,
 {
 	struct gpio_bank *bank;
 	unsigned long flags;
-	int ret;
 
 	bank = gpiochip_get_data(chip);
 
 	raw_spin_lock_irqsave(&bank->lock, flags);
-	ret = omap2_set_gpio_debounce(bank, offset, debounce);
+	omap2_set_gpio_debounce(bank, offset, debounce);
 	raw_spin_unlock_irqrestore(&bank->lock, flags);
 
-	if (ret)
-		dev_info(chip->parent,
-			 "Could not set line %u debounce to %u microseconds (%d)",
-			 offset, debounce, ret);
-
-	return ret;
+	return 0;
 }
 
 static void omap_gpio_set(struct gpio_chip *chip, unsigned offset, int value)

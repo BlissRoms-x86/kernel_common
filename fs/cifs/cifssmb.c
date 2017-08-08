@@ -717,9 +717,6 @@ CIFSSMBEcho(struct TCP_Server_Info *server)
 	if (rc)
 		return rc;
 
-	if (server->capabilities & CAP_UNICODE)
-		smb->hdr.Flags2 |= SMBFLG2_UNICODE;
-
 	/* set up echo request */
 	smb->hdr.Tid = 0xffff;
 	smb->hdr.WordCount = 1;
@@ -1426,8 +1423,6 @@ cifs_readv_discard(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 
 	length = discard_remaining_data(server);
 	dequeue_mid(mid, rdata->result);
-	mid->resp_buf = server->smallbuf;
-	server->smallbuf = NULL;
 	return length;
 }
 
@@ -1539,8 +1534,6 @@ cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 		return cifs_readv_discard(server, mid);
 
 	dequeue_mid(mid, false);
-	mid->resp_buf = server->smallbuf;
-	server->smallbuf = NULL;
 	return length;
 }
 

@@ -121,6 +121,7 @@ struct nvme_ctrl {
 
 	u32 page_size;
 	u32 max_hw_sectors;
+	u32 stripe_size;
 	u16 oncs;
 	u16 vid;
 	atomic_t abort_limit;

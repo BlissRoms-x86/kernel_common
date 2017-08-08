@@ -113,7 +113,7 @@ struct alua_queue_data {
 #define ALUA_POLICY_SWITCH_ALL		1
 
 static void alua_rtpg_work(struct work_struct *work);
-static bool alua_rtpg_queue(struct alua_port_group *pg,
+static void alua_rtpg_queue(struct alua_port_group *pg,
 			    struct scsi_device *sdev,
 			    struct alua_queue_data *qdata, bool force);
 static void alua_check(struct scsi_device *sdev, bool force);
@@ -862,13 +862,7 @@ static void alua_rtpg_work(struct work_struct *work)
 	kref_put(&pg->kref, release_port_group);
 }
 
-/**
- * alua_rtpg_queue() - cause RTPG to be submitted asynchronously
- *
- * Returns true if and only if alua_rtpg_work() will be called asynchronously.
- * That function is responsible for calling @qdata->fn().
- */
-static bool alua_rtpg_queue(struct alua_port_group *pg,
+static void alua_rtpg_queue(struct alua_port_group *pg,
 			    struct scsi_device *sdev,
 			    struct alua_queue_data *qdata, bool force)
 {
@@ -876,8 +870,8 @@ static bool alua_rtpg_queue(struct alua_port_group *pg,
 	unsigned long flags;
 	struct workqueue_struct *alua_wq = kaluad_wq;
 
-	if (!pg || scsi_device_get(sdev))
-		return false;
+	if (!pg)
+		return;
 
 	spin_lock_irqsave(&pg->lock, flags);
 	if (qdata) {
@@ -890,12 +884,14 @@ static bool alua_rtpg_queue(struct alua_port_group *pg,
 		pg->flags |= ALUA_PG_RUN_RTPG;
 		kref_get(&pg->kref);
 		pg->rtpg_sdev = sdev;
+		scsi_device_get(sdev);
 		start_queue = 1;
 	} else if (!(pg->flags & ALUA_PG_RUN_RTPG) && force) {
 		pg->flags |= ALUA_PG_RUN_RTPG;
 		/* Do not queue if the worker is already running */
 		if (!(pg->flags & ALUA_PG_RUNNING)) {
 			kref_get(&pg->kref);
+			sdev = NULL;
 			start_queue = 1;
 		}
 	}
@@ -904,17 +900,13 @@ static bool alua_rtpg_queue(struct alua_port_group *pg,
 		alua_wq = kaluad_sync_wq;
 	spin_unlock_irqrestore(&pg->lock, flags);
 
-	if (start_queue) {
-		if (queue_delayed_work(alua_wq, &pg->rtpg_work,
-				msecs_to_jiffies(ALUA_RTPG_DELAY_MSECS)))
-			sdev = NULL;
-		else
-			kref_put(&pg->kref, release_port_group);
+	if (start_queue &&
+	    !queue_delayed_work(alua_wq, &pg->rtpg_work,
+				msecs_to_jiffies(ALUA_RTPG_DELAY_MSECS))) {
+		if (sdev)
+			scsi_device_put(sdev);
+		kref_put(&pg->kref, release_port_group);
 	}
-	if (sdev)
-		scsi_device_put(sdev);
-
-	return true;
 }
 
 /*
@@ -1015,13 +1007,11 @@ static int alua_activate(struct scsi_device *sdev,
 		mutex_unlock(&h->init_mutex);
 		goto out;
 	}
+	fn = NULL;
 	rcu_read_unlock();
 	mutex_unlock(&h->init_mutex);
 
-	if (alua_rtpg_queue(pg, sdev, qdata, true))
-		fn = NULL;
-	else
-		err = SCSI_DH_DEV_OFFLINED;
+	alua_rtpg_queue(pg, sdev, qdata, true);
 	kref_put(&pg->kref, release_port_group);
 out:
 	if (fn)

@@ -16,7 +16,6 @@
 #include <linux/percpu-refcount.h>
 #include <linux/percpu-rwsem.h>
 #include <linux/workqueue.h>
-#include <linux/bpf-cgroup.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -47,6 +46,7 @@ enum {
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
 	CSS_VISIBLE	= (1 << 3), /* css is visible to userland */
+	CSS_DYING	= (1 << 4), /* css is dying */
 };
 
 /* bits in struct cgroup flags field */
@@ -300,9 +300,6 @@ struct cgroup {
 
 	/* used to schedule release agent */
 	struct work_struct release_agent_work;
-
-	/* used to store eBPF programs */
-	struct cgroup_bpf bpf;
 
 	/* ids of the ancestors at each level including self */
 	int ancestor_ids[];

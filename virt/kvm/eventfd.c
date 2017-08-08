@@ -870,8 +870,7 @@ kvm_deassign_ioeventfd_idx(struct kvm *kvm, enum kvm_bus bus_idx,
 			continue;
 
 		kvm_io_bus_unregister_dev(kvm, bus_idx, &p->dev);
-		if (kvm->buses[bus_idx])
-			kvm->buses[bus_idx]->ioeventfd_count--;
+		kvm->buses[bus_idx]->ioeventfd_count--;
 		ioeventfd_release(p);
 		ret = 0;
 		break;

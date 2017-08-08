@@ -89,6 +89,4 @@
 
 #define SO_CNX_ADVICE		0x402E
 
-#define SO_COOKIE		0x4032
-
 #endif /* _UAPI_ASM_SOCKET_H */

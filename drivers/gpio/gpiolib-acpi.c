@@ -268,9 +268,6 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 		goto fail_free_event;
 	}
 
-	if (agpio->wake_capable == ACPI_WAKE_CAPABLE)
-		enable_irq_wake(irq);
-
 	list_add_tail(&event->node, &acpi_gpio->events);
 
 	/*
@@ -352,9 +349,6 @@ void acpi_gpiochip_free_interrupts(struct gpio_chip *chip)
 
 	list_for_each_entry_safe_reverse(event, ep, &acpi_gpio->events, node) {
 		struct gpio_desc *desc;
-
-		if (irqd_is_wakeup_set(irq_get_irq_data(event->irq)))
-			disable_irq_wake(event->irq);
 
 		free_irq(event->irq, event);
 		desc = event->desc;
@@ -588,10 +582,8 @@ struct gpio_desc *acpi_find_gpio(struct device *dev,
 		}
 
 		desc = acpi_get_gpiod_by_index(adev, propname, idx, &info);
-		if (!IS_ERR(desc))
+		if (!IS_ERR(desc) || (PTR_ERR(desc) == -EPROBE_DEFER))
 			break;
-		if (PTR_ERR(desc) == -EPROBE_DEFER)
-			return ERR_CAST(desc);
 	}
 
 	/* Then from plain _CRS GPIOs */
@@ -672,24 +664,20 @@ int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 {
 	int idx, i;
 	unsigned int irq_flags;
+	int ret = -ENOENT;
 
 	for (i = 0, idx = 0; idx <= index; i++) {
 		struct acpi_gpio_info info;
 		struct gpio_desc *desc;
 
 		desc = acpi_get_gpiod_by_index(adev, NULL, i, &info);
-
-		/* Ignore -EPROBE_DEFER, it only matters if idx matches */
-		if (IS_ERR(desc) && PTR_ERR(desc) != -EPROBE_DEFER)
-			return PTR_ERR(desc);
-
+		if (IS_ERR(desc)) {
+			ret = PTR_ERR(desc);
+			break;
+		}
 		if (info.gpioint && idx++ == index) {
-			int irq;
+			int irq = gpiod_to_irq(desc);
 
-			if (IS_ERR(desc))
-				return PTR_ERR(desc);
-
-			irq = gpiod_to_irq(desc);
 			if (irq < 0)
 				return irq;
 
@@ -705,7 +693,7 @@ int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 		}
 
 	}
-	return -ENOENT;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(acpi_dev_gpio_irq_get);
 

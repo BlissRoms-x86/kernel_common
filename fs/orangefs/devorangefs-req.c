@@ -208,19 +208,14 @@ restart:
 				continue;
 			/*
 			 * Skip ops whose filesystem we don't know about unless
-			 * it is being mounted or unmounted.  It is possible for
-			 * a filesystem we don't know about to be unmounted if
-			 * it fails to mount in the kernel after userspace has
-			 * been sent the mount request.
+			 * it is being mounted.
 			 */
 			/* XXX: is there a better way to detect this? */
 			} else if (ret == -1 &&
 				   !(op->upcall.type ==
 					ORANGEFS_VFS_OP_FS_MOUNT ||
 				     op->upcall.type ==
-					ORANGEFS_VFS_OP_GETATTR ||
-				     op->upcall.type ==
-					ORANGEFS_VFS_OP_FS_UMOUNT)) {
+					ORANGEFS_VFS_OP_GETATTR)) {
 				gossip_debug(GOSSIP_DEV_DEBUG,
 				    "orangefs: skipping op tag %llu %s\n",
 				    llu(op->tag), get_opname_string(op));
@@ -407,9 +402,8 @@ static ssize_t orangefs_devreq_write_iter(struct kiocb *iocb,
 	/* remove the op from the in progress hash table */
 	op = orangefs_devreq_remove_op(head.tag);
 	if (!op) {
-		gossip_debug(GOSSIP_DEV_DEBUG,
-			     "%s: No one's waiting for tag %llu\n",
-			     __func__, llu(head.tag));
+		gossip_err("WARNING: No one's waiting for tag %llu\n",
+			   llu(head.tag));
 		return ret;
 	}
 

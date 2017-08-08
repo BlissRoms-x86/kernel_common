@@ -96,16 +96,12 @@ static inline void
 xfs_buf_ioacct_inc(
 	struct xfs_buf	*bp)
 {
-	if (bp->b_flags & XBF_NO_IOACCT)
+	if (bp->b_flags & (XBF_NO_IOACCT|_XBF_IN_FLIGHT))
 		return;
 
 	ASSERT(bp->b_flags & XBF_ASYNC);
-	spin_lock(&bp->b_lock);
-	if (!(bp->b_state & XFS_BSTATE_IN_FLIGHT)) {
-		bp->b_state |= XFS_BSTATE_IN_FLIGHT;
-		percpu_counter_inc(&bp->b_target->bt_io_count);
-	}
-	spin_unlock(&bp->b_lock);
+	bp->b_flags |= _XBF_IN_FLIGHT;
+	percpu_counter_inc(&bp->b_target->bt_io_count);
 }
 
 /*
@@ -113,24 +109,14 @@ xfs_buf_ioacct_inc(
  * freed and unaccount from the buftarg.
  */
 static inline void
-__xfs_buf_ioacct_dec(
-	struct xfs_buf	*bp)
-{
-	ASSERT(spin_is_locked(&bp->b_lock));
-
-	if (bp->b_state & XFS_BSTATE_IN_FLIGHT) {
-		bp->b_state &= ~XFS_BSTATE_IN_FLIGHT;
-		percpu_counter_dec(&bp->b_target->bt_io_count);
-	}
-}
-
-static inline void
 xfs_buf_ioacct_dec(
 	struct xfs_buf	*bp)
 {
-	spin_lock(&bp->b_lock);
-	__xfs_buf_ioacct_dec(bp);
-	spin_unlock(&bp->b_lock);
+	if (!(bp->b_flags & _XBF_IN_FLIGHT))
+		return;
+
+	bp->b_flags &= ~_XBF_IN_FLIGHT;
+	percpu_counter_dec(&bp->b_target->bt_io_count);
 }
 
 /*
@@ -162,9 +148,9 @@ xfs_buf_stale(
 	 * unaccounted (released to LRU) before that occurs. Drop in-flight
 	 * status now to preserve accounting consistency.
 	 */
-	spin_lock(&bp->b_lock);
-	__xfs_buf_ioacct_dec(bp);
+	xfs_buf_ioacct_dec(bp);
 
+	spin_lock(&bp->b_lock);
 	atomic_set(&bp->b_lru_ref, 0);
 	if (!(bp->b_state & XFS_BSTATE_DISPOSE) &&
 	    (list_lru_del(&bp->b_target->bt_lru, &bp->b_lru)))
@@ -967,12 +953,12 @@ xfs_buf_rele(
 		 * ensures the decrement occurs only once per-buf.
 		 */
 		if ((atomic_read(&bp->b_hold) == 1) && !list_empty(&bp->b_lru))
-			__xfs_buf_ioacct_dec(bp);
+			xfs_buf_ioacct_dec(bp);
 		goto out_unlock;
 	}
 
 	/* the last reference has been dropped ... */
-	__xfs_buf_ioacct_dec(bp);
+	xfs_buf_ioacct_dec(bp);
 	if (!(bp->b_flags & XBF_STALE) && atomic_read(&bp->b_lru_ref)) {
 		/*
 		 * If the buffer is added to the LRU take a new reference to the
@@ -1066,8 +1052,6 @@ void
 xfs_buf_unlock(
 	struct xfs_buf		*bp)
 {
-	ASSERT(xfs_buf_islocked(bp));
-
 	XB_CLEAR_OWNER(bp);
 	up(&bp->b_sema);
 
@@ -1803,28 +1787,6 @@ xfs_alloc_buftarg(
 error:
 	kmem_free(btp);
 	return NULL;
-}
-
-/*
- * Cancel a delayed write list.
- *
- * Remove each buffer from the list, clear the delwri queue flag and drop the
- * associated buffer reference.
- */
-void
-xfs_buf_delwri_cancel(
-	struct list_head	*list)
-{
-	struct xfs_buf		*bp;
-
-	while (!list_empty(list)) {
-		bp = list_first_entry(list, struct xfs_buf, b_list);
-
-		xfs_buf_lock(bp);
-		bp->b_flags &= ~_XBF_DELWRI_Q;
-		list_del_init(&bp->b_list);
-		xfs_buf_relse(bp);
-	}
 }
 
 /*

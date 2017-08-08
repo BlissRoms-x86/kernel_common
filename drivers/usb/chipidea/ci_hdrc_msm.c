@@ -24,6 +24,7 @@ static void ci_hdrc_msm_notify_event(struct ci_hdrc *ci, unsigned event)
 	switch (event) {
 	case CI_HDRC_CONTROLLER_RESET_EVENT:
 		dev_dbg(dev, "CI_HDRC_CONTROLLER_RESET_EVENT received\n");
+		writel(0, USB_AHBBURST);
 		/* use AHB transactor, allow posted data writes */
 		writel(0x8, USB_AHBMODE);
 		usb_phy_init(ci->usb_phy);
@@ -46,8 +47,7 @@ static struct ci_hdrc_platform_data ci_hdrc_msm_platdata = {
 	.name			= "ci_hdrc_msm",
 	.capoffset		= DEF_CAPOFFSET,
 	.flags			= CI_HDRC_REGS_SHARED |
-				  CI_HDRC_DISABLE_STREAMING |
-				  CI_HDRC_OVERRIDE_AHB_BURST,
+				  CI_HDRC_DISABLE_STREAMING,
 
 	.notify_event		= ci_hdrc_msm_notify_event,
 };

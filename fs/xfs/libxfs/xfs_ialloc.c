@@ -51,7 +51,8 @@ xfs_ialloc_cluster_alignment(
 	struct xfs_mount	*mp)
 {
 	if (xfs_sb_version_hasalign(&mp->m_sb) &&
-	    mp->m_sb.sb_inoalignmt >= xfs_icluster_size_fsb(mp))
+	    mp->m_sb.sb_inoalignmt >=
+			XFS_B_TO_FSBT(mp, mp->m_inode_cluster_size))
 		return mp->m_sb.sb_inoalignmt;
 	return 1;
 }

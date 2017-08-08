@@ -94,10 +94,7 @@ static void dw_i2c_acpi_params(struct platform_device *pdev, char method[],
 static int dw_i2c_acpi_configure(struct platform_device *pdev)
 {
 	struct dw_i2c_dev *dev = platform_get_drvdata(pdev);
-	acpi_handle handle = ACPI_HANDLE(&pdev->dev);
 	const struct acpi_device_id *id;
-	struct acpi_device *adev;
-	const char *uid;
 
 	dev->adapter.nr = -1;
 	dev->tx_fifo_depth = 32;
@@ -115,19 +112,7 @@ static int dw_i2c_acpi_configure(struct platform_device *pdev)
 
 	id = acpi_match_device(pdev->dev.driver->acpi_match_table, &pdev->dev);
 	if (id && id->driver_data)
-		dev->flags |= (u32)id->driver_data;
-
-	if (acpi_bus_get_device(handle, &adev))
-		return -ENODEV;
-
-	/*
-	 * Cherrytrail I2C7 gets used for the PMIC which gets accessed
-	 * through ACPI opregions during late suspend / early resume
-	 * disable pm for it.
-	 */
-	uid = adev->pnp.unique_id;
-	if ((dev->flags & MODEL_CHERRYTRAIL) && !strcmp(uid, "7"))
-		dev->pm_disabled = true;
+		dev->accessor_flags |= (u32)id->driver_data;
 
 	return 0;
 }
@@ -138,7 +123,7 @@ static const struct acpi_device_id dw_i2c_acpi_match[] = {
 	{ "INT3432", 0 },
 	{ "INT3433", 0 },
 	{ "80860F41", 0 },
-	{ "808622C1", MODEL_CHERRYTRAIL },
+	{ "808622C1", 0 },
 	{ "AMD0010", ACCESS_INTR_MASK },
 	{ "AMDI0010", ACCESS_INTR_MASK },
 	{ "AMDI0510", 0 },
@@ -163,29 +148,6 @@ static int i2c_dw_plat_prepare_clk(struct dw_i2c_dev *i_dev, bool prepare)
 
 	clk_disable_unprepare(i_dev->clk);
 	return 0;
-}
-
-static void dw_i2c_set_fifo_size(struct dw_i2c_dev *dev, int id)
-{
-	u32 param, tx_fifo_depth, rx_fifo_depth;
-
-	/*
-	 * Try to detect the FIFO depth if not set by interface driver,
-	 * the depth could be from 2 to 256 from HW spec.
-	 */
-	param = i2c_dw_read_comp_param(dev);
-	tx_fifo_depth = ((param >> 16) & 0xff) + 1;
-	rx_fifo_depth = ((param >> 8)  & 0xff) + 1;
-	if (!dev->tx_fifo_depth) {
-		dev->tx_fifo_depth = tx_fifo_depth;
-		dev->rx_fifo_depth = rx_fifo_depth;
-		dev->adapter.nr = id;
-	} else if (tx_fifo_depth >= 2) {
-		dev->tx_fifo_depth = min_t(u32, dev->tx_fifo_depth,
-				tx_fifo_depth);
-		dev->rx_fifo_depth = min_t(u32, dev->rx_fifo_depth,
-				rx_fifo_depth);
-	}
 }
 
 static int dw_i2c_plat_probe(struct platform_device *pdev)
@@ -214,6 +176,9 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	dev->irq = irq;
 	platform_set_drvdata(pdev, dev);
 
+	/* fast mode by default because of legacy reasons */
+	dev->clk_freq = 400000;
+
 	if (pdata) {
 		dev->clk_freq = pdata->i2c_scl_freq;
 	} else {
@@ -228,16 +193,8 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	}
 
 	acpi_speed = i2c_acpi_find_bus_speed(&pdev->dev);
-	/*
-	 * Find bus speed from the "clock-frequency" device property, ACPI
-	 * or by using fast mode if neither is set.
-	 */
-	if (acpi_speed && dev->clk_freq)
-		dev->clk_freq = min(dev->clk_freq, acpi_speed);
-	else if (acpi_speed || dev->clk_freq)
-		dev->clk_freq = max(dev->clk_freq, acpi_speed);
-	else
-		dev->clk_freq = 400000;
+	if (acpi_speed)
+		dev->clk_freq = acpi_speed;
 
 	if (has_acpi_companion(&pdev->dev))
 		dw_i2c_acpi_configure(pdev);
@@ -253,11 +210,17 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	r = i2c_dw_probe_lock_support(dev);
+	r = i2c_dw_eval_lock_support(dev);
 	if (r)
 		return r;
 
-	dev->functionality = I2C_FUNC_10BIT_ADDR | DW_IC_DEFAULT_FUNCTIONALITY;
+	dev->functionality =
+		I2C_FUNC_I2C |
+		I2C_FUNC_10BIT_ADDR |
+		I2C_FUNC_SMBUS_BYTE |
+		I2C_FUNC_SMBUS_BYTE_DATA |
+		I2C_FUNC_SMBUS_WORD_DATA |
+		I2C_FUNC_SMBUS_I2C_BLOCK;
 
 	dev->master_cfg = DW_IC_CON_MASTER | DW_IC_CON_SLAVE_DISABLE |
 			  DW_IC_CON_RESTART_EN;
@@ -283,7 +246,13 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 				1000000);
 	}
 
-	dw_i2c_set_fifo_size(dev, pdev->id);
+	if (!dev->tx_fifo_depth) {
+		u32 param1 = i2c_dw_read_comp_param(dev);
+
+		dev->tx_fifo_depth = ((param1 >> 16) & 0xff) + 1;
+		dev->rx_fifo_depth = ((param1 >> 8)  & 0xff) + 1;
+		dev->adapter.nr = pdev->id;
+	}
 
 	adap = &dev->adapter;
 	adap->owner = THIS_MODULE;
@@ -291,7 +260,7 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	ACPI_COMPANION_SET(&adap->dev, ACPI_COMPANION(&pdev->dev));
 	adap->dev.of_node = pdev->dev.of_node;
 
-	if (dev->pm_disabled) {
+	if (dev->pm_runtime_disabled) {
 		pm_runtime_forbid(&pdev->dev);
 	} else {
 		pm_runtime_set_autosuspend_delay(&pdev->dev, 1000);
@@ -301,7 +270,7 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	}
 
 	r = i2c_dw_probe(dev);
-	if (r && !dev->pm_disabled)
+	if (r && !dev->pm_runtime_disabled)
 		pm_runtime_disable(&pdev->dev);
 
 	return r;
@@ -319,10 +288,8 @@ static int dw_i2c_plat_remove(struct platform_device *pdev)
 
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	pm_runtime_put_sync(&pdev->dev);
-	if (!dev->pm_disabled)
+	if (!dev->pm_runtime_disabled)
 		pm_runtime_disable(&pdev->dev);
-
-	i2c_dw_remove_lock_support(dev);
 
 	return 0;
 }
@@ -352,7 +319,7 @@ static void dw_i2c_plat_complete(struct device *dev)
 #endif
 
 #ifdef CONFIG_PM
-static int dw_i2c_plat_suspend(struct device *dev)
+static int dw_i2c_plat_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct dw_i2c_dev *i_dev = platform_get_drvdata(pdev);
@@ -369,16 +336,28 @@ static int dw_i2c_plat_resume(struct device *dev)
 	struct dw_i2c_dev *i_dev = platform_get_drvdata(pdev);
 
 	i2c_dw_plat_prepare_clk(i_dev, true);
-	i2c_dw_init(i_dev);
+
+	if (!i_dev->pm_runtime_disabled)
+		i2c_dw_init(i_dev);
 
 	return 0;
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int dw_i2c_plat_suspend(struct device *dev)
+{
+	pm_runtime_resume(dev);
+	return dw_i2c_plat_runtime_suspend(dev);
+}
+#endif
 
 static const struct dev_pm_ops dw_i2c_dev_pm_ops = {
 	.prepare = dw_i2c_plat_prepare,
 	.complete = dw_i2c_plat_complete,
 	SET_SYSTEM_SLEEP_PM_OPS(dw_i2c_plat_suspend, dw_i2c_plat_resume)
-	SET_RUNTIME_PM_OPS(dw_i2c_plat_suspend, dw_i2c_plat_resume, NULL)
+	SET_RUNTIME_PM_OPS(dw_i2c_plat_runtime_suspend,
+			   dw_i2c_plat_resume,
+			   NULL)
 };
 
 #define DW_I2C_DEV_PMOPS (&dw_i2c_dev_pm_ops)

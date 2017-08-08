@@ -249,7 +249,6 @@ struct orangefs_sb_info_s {
 	char devname[ORANGEFS_MAX_SERVER_ADDR_LEN];
 	struct super_block *sb;
 	int mount_pending;
-	int no_list;
 	struct list_head list;
 };
 

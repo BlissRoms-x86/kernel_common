@@ -223,7 +223,8 @@ int orangefs_setattr(struct dentry *dentry, struct iattr *iattr)
 	if (ret)
 		goto out;
 
-	if (iattr->ia_valid & ATTR_SIZE) {
+	if ((iattr->ia_valid & ATTR_SIZE) &&
+	    iattr->ia_size != i_size_read(inode)) {
 		ret = orangefs_setattr_size(inode, iattr);
 		if (ret)
 			goto out;

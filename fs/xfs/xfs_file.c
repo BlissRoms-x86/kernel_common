@@ -554,15 +554,6 @@ xfs_file_dio_aio_write(
 	if ((iocb->ki_pos & mp->m_blockmask) ||
 	    ((iocb->ki_pos + count) & mp->m_blockmask)) {
 		unaligned_io = 1;
-
-		/*
-		 * We can't properly handle unaligned direct I/O to reflink
-		 * files yet, as we can't unshare a partial block.
-		 */
-		if (xfs_is_reflink_inode(ip)) {
-			trace_xfs_reflink_bounce_dio_write(ip, iocb->ki_pos, count);
-			return -EREMCHG;
-		}
 		iolock = XFS_IOLOCK_EXCL;
 	} else {
 		iolock = XFS_IOLOCK_SHARED;
@@ -684,10 +675,8 @@ xfs_file_buffered_aio_write(
 	struct xfs_inode	*ip = XFS_I(inode);
 	ssize_t			ret;
 	int			enospc = 0;
-	int			iolock;
+	int			iolock = XFS_IOLOCK_EXCL;
 
-write_retry:
-	iolock = XFS_IOLOCK_EXCL;
 	xfs_rw_ilock(ip, iolock);
 
 	ret = xfs_file_aio_write_checks(iocb, from, &iolock);
@@ -697,6 +686,7 @@ write_retry:
 	/* We can write back this queue in page reclaim */
 	current->backing_dev_info = inode_to_bdi(inode);
 
+write_retry:
 	trace_xfs_file_buffered_write(ip, iov_iter_count(from), iocb->ki_pos);
 	ret = iomap_file_buffered_write(iocb, from, &xfs_iomap_ops);
 	if (likely(ret >= 0))
@@ -712,21 +702,18 @@ write_retry:
 	 * running at the same time.
 	 */
 	if (ret == -EDQUOT && !enospc) {
-		xfs_rw_iunlock(ip, iolock);
 		enospc = xfs_inode_free_quota_eofblocks(ip);
 		if (enospc)
 			goto write_retry;
 		enospc = xfs_inode_free_quota_cowblocks(ip);
 		if (enospc)
 			goto write_retry;
-		iolock = 0;
 	} else if (ret == -ENOSPC && !enospc) {
 		struct xfs_eofblocks eofb = {0};
 
 		enospc = 1;
 		xfs_flush_inodes(ip->i_mount);
-
-		xfs_rw_iunlock(ip, iolock);
+		eofb.eof_scan_owner = ip->i_ino; /* for locking */
 		eofb.eof_flags = XFS_EOF_FLAGS_SYNC;
 		xfs_icache_free_eofblocks(ip->i_mount, &eofb);
 		goto write_retry;
@@ -734,8 +721,7 @@ write_retry:
 
 	current->backing_dev_info = NULL;
 out:
-	if (iolock)
-		xfs_rw_iunlock(ip, iolock);
+	xfs_rw_iunlock(ip, iolock);
 	return ret;
 }
 
@@ -823,7 +809,7 @@ xfs_file_fallocate(
 		if (error)
 			goto out_unlock;
 	} else if (mode & FALLOC_FL_COLLAPSE_RANGE) {
-		unsigned blksize_mask = (1 << inode->i_blkbits) - 1;
+		unsigned int blksize_mask = i_blocksize(inode) - 1;
 
 		if (offset & blksize_mask || len & blksize_mask) {
 			error = -EINVAL;
@@ -845,7 +831,7 @@ xfs_file_fallocate(
 		if (error)
 			goto out_unlock;
 	} else if (mode & FALLOC_FL_INSERT_RANGE) {
-		unsigned blksize_mask = (1 << inode->i_blkbits) - 1;
+		unsigned int blksize_mask = i_blocksize(inode) - 1;
 
 		new_size = i_size_read(inode) + len;
 		if (offset & blksize_mask || len & blksize_mask) {
@@ -1001,9 +987,9 @@ xfs_dir_open(
 	 */
 	mode = xfs_ilock_data_map_shared(ip);
 	if (ip->i_d.di_nextents > 0)
-		error = xfs_dir3_data_readahead(ip, 0, -1);
+		xfs_dir3_data_readahead(ip, 0, -1);
 	xfs_iunlock(ip, mode);
-	return error;
+	return 0;
 }
 
 STATIC int
@@ -1130,13 +1116,13 @@ xfs_find_get_desired_pgoff(
 
 	index = startoff >> PAGE_SHIFT;
 	endoff = XFS_FSB_TO_B(mp, map->br_startoff + map->br_blockcount);
-	end = (endoff - 1) >> PAGE_SHIFT;
+	end = endoff >> PAGE_SHIFT;
 	do {
 		int		want;
 		unsigned	nr_pages;
 		unsigned int	i;
 
-		want = min_t(pgoff_t, end - index, PAGEVEC_SIZE - 1) + 1;
+		want = min_t(pgoff_t, end - index, PAGEVEC_SIZE);
 		nr_pages = pagevec_lookup(&pvec, inode->i_mapping, index,
 					  want);
 		/*
@@ -1163,6 +1149,17 @@ xfs_find_get_desired_pgoff(
 			break;
 		}
 
+		/*
+		 * At lease we found one page.  If this is the first time we
+		 * step into the loop, and if the first page index offset is
+		 * greater than the given search offset, a hole was found.
+		 */
+		if (type == HOLE_OFF && lastoff == startoff &&
+		    lastoff < page_offset(pvec.pages[0])) {
+			found = true;
+			break;
+		}
+
 		for (i = 0; i < nr_pages; i++) {
 			struct page	*page = pvec.pages[i];
 			loff_t		b_offset;
@@ -1174,18 +1171,18 @@ xfs_find_get_desired_pgoff(
 			 * file mapping. However, page->index will not change
 			 * because we have a reference on the page.
 			 *
-			 * If current page offset is beyond where we've ended,
-			 * we've found a hole.
+			 * Searching done if the page index is out of range.
+			 * If the current offset is not reaches the end of
+			 * the specified search range, there should be a hole
+			 * between them.
 			 */
-			if (type == HOLE_OFF && lastoff < endoff &&
-			    lastoff < page_offset(pvec.pages[i])) {
-				found = true;
-				*offset = lastoff;
+			if (page->index > end) {
+				if (type == HOLE_OFF && lastoff < endoff) {
+					*offset = lastoff;
+					found = true;
+				}
 				goto out;
 			}
-			/* Searching done if the page index is out of range. */
-			if (page->index > end)
-				goto out;
 
 			lock_page(page);
 			/*

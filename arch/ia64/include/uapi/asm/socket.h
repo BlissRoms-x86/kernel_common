@@ -99,6 +99,4 @@
 
 #define SO_CNX_ADVICE		53
 
-#define SO_COOKIE		57
-
 #endif /* _ASM_IA64_SOCKET_H */
