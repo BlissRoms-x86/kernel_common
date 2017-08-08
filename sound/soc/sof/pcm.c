@@ -386,7 +386,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 
 	ret = snd_pcm_lib_preallocate_pages(
 		pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream,
-		SNDRV_DMA_TYPE_DEV_SG, &sdev->pci->dev,
+		SNDRV_DMA_TYPE_DEV_SG, sdev->parent,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_min,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_max);
 	if (ret) {
@@ -398,7 +398,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	}
 
 	/* allocate playback page table buffer */
-	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, &sdev->pci->dev,
+	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
 		PAGE_SIZE, &spcm->page_table[SNDRV_PCM_STREAM_PLAYBACK]);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: cant alloc page table for %s %d\n",
@@ -419,7 +419,7 @@ capture:
 
 	ret = snd_pcm_lib_preallocate_pages(
 		pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream,
-		SNDRV_DMA_TYPE_DEV_SG, &sdev->pci->dev,
+		SNDRV_DMA_TYPE_DEV_SG, sdev->parent,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_min,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_max);
 	if (ret) {
@@ -432,7 +432,7 @@ capture:
 	}
 
 	/* allocate capture page table buffer */
-	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, &sdev->pci->dev,
+	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
 		PAGE_SIZE, &spcm->page_table[SNDRV_PCM_STREAM_CAPTURE]);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: cant alloc page table for %s %d\n",
