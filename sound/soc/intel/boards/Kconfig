@@ -1,6 +1,6 @@
 menuconfig SND_SOC_INTEL_MACH
 	bool "Intel Machine drivers"
-	depends on SND_SOC_INTEL_SST_TOPLEVEL
+	depends on SND_SOC_INTEL_SST_TOPLEVEL || SND_SOC_SOF_INTEL
 	help
          Intel ASoC Machine Drivers. If you have a Intel machine that
          has an audio controller with a DSP and I2S or DMIC port, then
@@ -26,7 +26,7 @@ config SND_MFLD_MACHINE
 
 endif ## SND_SST_ATOM_HIFI2_PLATFORM_PCI
 
-if SND_SOC_INTEL_HASWELL
+if SND_SOC_INTEL_HASWELL || SND_SOC_SOF_HASWELL
 
 config SND_SOC_INTEL_HASWELL_MACH
 	tristate "Haswell Lynxpoint"
@@ -59,7 +59,7 @@ config SND_SOC_INTEL_BROADWELL_MACH
 	  If unsure select "N".
 endif ## SND_SOC_INTEL_HASWELL
 
-if SND_SOC_INTEL_BAYTRAIL
+if SND_SOC_INTEL_BAYTRAIL || SND_SOC_SOF_BAYTRAIL
 
 config SND_SOC_INTEL_BYT_MAX98090_MACH
 	tristate "Baytrail with MAX98090 codec"
@@ -82,7 +82,7 @@ config SND_SOC_INTEL_BYT_RT5640_MACH
 
 endif ## SND_SOC_INTEL_BAYTRAIL
 
-if SND_SST_ATOM_HIFI2_PLATFORM
+if SND_SST_ATOM_HIFI2_PLATFORM || SND_SOC_SOF_BAYTRAIL
 
 config SND_SOC_INTEL_BYTCR_RT5640_MACH
 	tristate "Baytrail and Baytrail-CR with RT5640 codec"

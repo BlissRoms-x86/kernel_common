@@ -25,6 +25,8 @@ config SND_SOC_SOF
 config SND_SOC_SOF_INTEL
 	tristate "SOF support for Intel audio DSPs"
 	depends on SND_SOC_SOF
+	select SND_SOC_INTEL_COMMON
+	select SND_SOC_INTEL_MACH
 	help
           This adds support for Sound Open Firmware for Intel(R) platforms.
           Say Y if you have such a device.
