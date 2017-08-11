@@ -321,6 +321,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	// TODO: this could depend on pipeline.
 	//runtime->hw.fifo_size = hw->fifo_size;
 
+	spcm->substream = substream;
 	mutex_unlock(&spcm->mutex);
 	return 0;
 }
@@ -363,7 +364,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	struct snd_pcm *pcm = rtd->pcm;
 	int ret = 0;
 
-	spcm = snd_sof_find_spcm(sdev, rtd);
+	spcm = snd_sof_find_spcm_dai(sdev, rtd);
 
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",

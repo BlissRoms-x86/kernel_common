@@ -286,7 +286,8 @@ static int byt_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 static void byt_mailbox_write(struct snd_sof_dev *sdev, u32 offset,
 	void *message, size_t bytes)
 {
-	void __iomem *dest = sdev->bar[sdev->mailbox_bar] + offset;
+	void __iomem *dest = sdev->bar[sdev->mailbox_bar] + sdev->outbox.offset
+		+ offset;
 
 	memcpy_toio(dest, message, bytes);
 }
@@ -294,7 +295,8 @@ static void byt_mailbox_write(struct snd_sof_dev *sdev, u32 offset,
 static void byt_mailbox_read(struct snd_sof_dev *sdev, u32 offset,
 	void *message, size_t bytes)
 {
-	void __iomem *src = sdev->bar[sdev->mailbox_bar] + offset;
+	void __iomem *src = sdev->bar[sdev->mailbox_bar] + sdev->inbox.offset
+		+ offset;
 
 	memcpy_fromio(message, src, bytes);
 }
@@ -348,7 +350,7 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 	if (ipcx & SHIM_BYT_IPCX_DONE) {
 
 		/* Handle Immediate reply from DSP Core */
-		snd_sof_ipc_process_reply(sdev, ipcx);
+		snd_sof_ipc_reply(sdev, ipcx);
 
 		/* clear DONE bit - tell DSP we have completed */
 		snd_sof_dsp_update_bits64_unlocked(sdev, BYT_DSP_BAR, SHIM_IPCX,
@@ -362,8 +364,8 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 	/* new message from DSP */
 	if (ipcd & SHIM_BYT_IPCD_BUSY) {
 
-		/* Handle Notification and Delayed reply from DSP Core */
-		snd_sof_ipc_process_notification(sdev, ipcd);
+		/* Handle messages from DSP Core */
+		snd_sof_ipc_msgs_rx(sdev, ipcd);
 
 		/* clear BUSY bit and set DONE bit - accept new messages */
 		snd_sof_dsp_update_bits64_unlocked(sdev, BYT_DSP_BAR, SHIM_IPCD,
@@ -378,41 +380,32 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 	spin_unlock_irqrestore(&sdev->spinlock, flags);
 
 	/* continue to send any remaining messages... */
-	snd_sof_ipc_process_msgs(sdev);
+	snd_sof_ipc_msgs_tx(sdev);
 
 	return IRQ_HANDLED;
 }
-
-#if 0
-static void byt_notify(struct snd_sof_dev *dsp)
-{
-	snd_sof_dsp_update_bits64(dsp, SHIM_IPCD,
-		SHIM_BYT_IPCD_BUSY | SHIM_BYT_IPCD_DONE,
-		SHIM_BYT_IPCD_DONE);
-}
-
-
-static bool byt_is_dsp_busy(struct snd_sof_dev *sdev)
-{
-	u64 ipcx;
-
-	ipcx = snd_sof_dsp_read64(sdev, BYT_DSP_BAR, SHIM_IPCX);
-	return (ipcx & (SHIM_BYT_IPCX_BUSY | SHIM_BYT_IPCX_DONE));
-}
-#endif
 
 static int byt_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	u64 cmd = msg->header;
 
 	/* send the message */
-	byt_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data,
-		 msg->msg_size);
+	byt_mailbox_write(sdev, 0, msg->msg_data, msg->msg_size);
 	snd_sof_dsp_write64(sdev, BYT_DSP_BAR, SHIM_IPCX,
 		cmd | SHIM_BYT_IPCX_BUSY);
 
 	return 0;
 }
+
+static int byt_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+{
+	/* send the message */
+	byt_mailbox_read(sdev, 0, msg->msg_data, msg->msg_size);
+
+	return msg->msg_size;
+}
+
+
 
 /*
  * DSP control.
@@ -735,8 +728,8 @@ struct snd_sof_dsp_ops snd_sof_byt_ops = {
 
 	/* ipc */
 	.tx_msg		= byt_tx_msg,
+	.rx_msg		= byt_rx_msg,
 	.fw_ready	= byt_fw_ready,
-	//int (*rx_msg)(struct snd_sof_dev *sof_dev, struct sof_ipc_msg *msg);
 
 	/* debug */
 	.debug_map	= byt_debugfs,
@@ -782,8 +775,8 @@ struct snd_sof_dsp_ops snd_sof_cht_ops = {
 
 	/* ipc */
 	.tx_msg		= byt_tx_msg,
+	.rx_msg		= byt_rx_msg,
 	.fw_ready	= byt_fw_ready,
-	//int (*rx_msg)(struct snd_sof_dev *sof_dev, struct sof_ipc_msg *msg);
 
 	/* debug */
 	.debug_map	= cht_debugfs,

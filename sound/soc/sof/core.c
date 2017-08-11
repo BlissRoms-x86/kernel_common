@@ -71,7 +71,7 @@
 #define TIMEOUT_IPC	5
 #define TIMEOUT_BOOT	100
 
-struct snd_sof_pcm *snd_sof_find_spcm(struct snd_sof_dev *sdev,
+struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,
 	struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_sof_pcm *spcm = NULL;
@@ -91,6 +91,19 @@ struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
 
 	list_for_each_entry(spcm, &sdev->pcm_list, list) {
 		if (strcmp(spcm->pcm.dai_name, name) == 0)
+			return spcm;
+	}
+
+	return NULL;
+}
+
+struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
+	unsigned int comp_id)
+{
+	struct snd_sof_pcm *spcm = NULL;
+
+	list_for_each_entry(spcm, &sdev->pcm_list, list) {
+		if (spcm->comp_id == comp_id)
 			return spcm;
 	}
 

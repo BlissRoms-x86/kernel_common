@@ -402,7 +402,7 @@ static irqreturn_t bdw_irq_thread(int irq, void *context)
 	if (ipcx & SHIM_IPCX_DONE) {
 
 		/* Handle Immediate reply from DSP Core */
-		snd_sof_ipc_process_reply(sdev, ipcx);
+		snd_sof_ipc_reply(sdev, ipcx);
 
 		/* clear DONE bit - tell DSP we have completed */
 		snd_sof_dsp_update_bits64_unlocked(sdev, BDW_DSP_BAR, SHIM_IPCX,
@@ -416,8 +416,8 @@ static irqreturn_t bdw_irq_thread(int irq, void *context)
 	/* new message from DSP */
 	if (ipcd & SHIM_IPCD_BUSY) {
 
-		/* Handle Notification and Delayed reply from DSP Core */
-		snd_sof_ipc_process_notification(sdev, ipcd);
+		/* Handle messages from DSP Core */
+		snd_sof_ipc_msgs_rx(sdev, ipcd);
 
 		/* clear BUSY bit and set DONE bit - accept new messages */
 		snd_sof_dsp_update_bits64_unlocked(sdev, BDW_DSP_BAR, SHIM_IPCD,
@@ -432,7 +432,7 @@ static irqreturn_t bdw_irq_thread(int irq, void *context)
 	spin_unlock_irqrestore(&sdev->spinlock, flags);
 
 	/* continue to send any remaining messages... */
-	snd_sof_ipc_process_msgs(sdev);
+	snd_sof_ipc_msgs_tx(sdev);
 
 	return IRQ_HANDLED;
 }

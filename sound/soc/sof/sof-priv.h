@@ -175,6 +175,7 @@ struct snd_sof_pcm {
 
 	/* offset to mmaped sof_ipc_stream_posn if used */
 	uint32_t posn_offset[2];
+	struct snd_pcm_substream *substream;
 
 	struct mutex mutex;
 	struct list_head list;	/* list in sdev pcm list */
@@ -385,9 +386,9 @@ int snd_sof_fw_parse_ext_data(struct snd_sof_dev *sdev, u32 offset);
 
 struct snd_sof_ipc *snd_sof_ipc_init(struct snd_sof_dev *sdev);
 void snd_sof_ipc_free(struct snd_sof_dev *sdev);
-void snd_sof_ipc_process_reply(struct snd_sof_dev *sdev, u32 msg_id);
-void snd_sof_ipc_process_notification(struct snd_sof_dev *sdev, u32 msg_id);
-void snd_sof_ipc_process_msgs(struct snd_sof_dev *sdev);
+void snd_sof_ipc_reply(struct snd_sof_dev *sdev, u32 msg_id);
+void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id);
+void snd_sof_ipc_msgs_tx(struct snd_sof_dev *sdev);
 int snd_sof_ipc_stream_pcm_params(struct snd_sof_dev *sdev,
 	struct sof_ipc_pcm_params *params);
 int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 inbox,
@@ -398,10 +399,12 @@ int sof_ipc_tx_message_nowait(struct snd_sof_ipc *ipc, u32 header,
 	void *tx_data, size_t tx_bytes);
 struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
 	char *name);
-struct snd_sof_pcm *snd_sof_find_spcm(struct snd_sof_dev *sdev,
+struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,
 	struct snd_soc_pcm_runtime *rtd);
 struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
 	char *name);
+struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
+	unsigned int comp_id);
 
 
 /*

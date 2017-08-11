@@ -898,7 +898,7 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 			APL_DSP_REG_HIPCCTL, APL_DSP_REG_HIPCCTL_DONE, 0);
 
 		/* handle immediate reply from DSP core */
-		snd_sof_ipc_process_reply(sdev, msg);
+		snd_sof_ipc_reply(sdev, msg);
 
 		/* clear DONE bit - tell DSP we have completed the operation */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
@@ -924,7 +924,8 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		dev_dbg(sdev->dev, "ipc: firmware initiated, msg:0x%x, msg_ext:0x%x\n",
 			msg, msg_ext);
 
-		snd_sof_ipc_process_notification(sdev, msg);
+		/* handle messages from DSP */
+		snd_sof_ipc_msgs_rx(sdev, msg);
 
 		/* clear busy interrupt */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
@@ -939,7 +940,7 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, APL_DSP_REG_ADSPIC,
 			APL_ADSPIC_IPC, APL_ADSPIC_IPC);
 		/* continue to send any remaining messages... */
-		snd_sof_ipc_process_msgs(sdev);
+		snd_sof_ipc_msgs_tx(sdev);
 	}
 
 	if (sdev->code_loading)	{
