@@ -21,7 +21,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
-#include <linux/sched/clock.h>
+#include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
