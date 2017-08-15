@@ -175,17 +175,20 @@ extern void swsusp_show_speed(struct timeval *, struct timeval *,
 				unsigned int, char *);
 
 #ifdef CONFIG_SUSPEND
-/* kernel/power/suspend.c */
-extern const char *const pm_states[];
+struct pm_sleep_state {
+	const char *label;
+	suspend_state_t state;
+};
 
-extern bool valid_state(suspend_state_t state);
+/* kernel/power/suspend.c */
+extern struct pm_sleep_state pm_states[];
+
 extern int suspend_devices_and_enter(suspend_state_t state);
 #else /* !CONFIG_SUSPEND */
 static inline int suspend_devices_and_enter(suspend_state_t state)
 {
 	return -ENOSYS;
 }
-static inline bool valid_state(suspend_state_t state) { return false; }
 #endif /* !CONFIG_SUSPEND */
 
 #ifdef CONFIG_PM_TEST_SUSPEND
@@ -294,3 +297,28 @@ extern int pm_wake_lock(const char *buf);
 extern int pm_wake_unlock(const char *buf);
 
 #endif /* !CONFIG_PM_WAKELOCKS */
+#ifdef CONFIG_USER_SCENELOCK
+ssize_t scene_lock_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf);
+ssize_t scene_lock_store(struct kobject *kobj, struct kobj_attribute *attr,
+			const char *buf, size_t n);
+ssize_t scene_unlock_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf);
+ssize_t scene_unlock_store(struct kobject *kobj, struct kobj_attribute *attr,
+			const char *buf, size_t n);
+ssize_t scene_state_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t n);
+ssize_t scene_state_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+ssize_t wakeup_src_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t n);
+ssize_t wakeup_src_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+#if (defined CONFIG_AW_AXP)
+ssize_t sys_pwr_dm_mask_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t n);
+ssize_t sys_pwr_dm_mask_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+#endif
+#endif
+

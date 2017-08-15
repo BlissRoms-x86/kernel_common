@@ -60,6 +60,7 @@ struct mmc_ios {
 #define MMC_TIMING_UHS_SDR104	6
 #define MMC_TIMING_UHS_DDR50	7
 #define MMC_TIMING_MMC_HS200	8
+#define MMC_TIMING_MMC_HS400	9
 
 #define MMC_SDR_MODE		0
 #define MMC_1_2V_DDR_MODE	1
@@ -194,6 +195,7 @@ struct regulator;
 struct mmc_supply {
 	struct regulator *vmmc;		/* Card power supply */
 	struct regulator *vqmmc;	/* Optional Vccq supply */
+	struct regulator *vdmmc;	/* Optional card detect pin supply */
 };
 
 struct mmc_host {
@@ -282,6 +284,13 @@ struct mmc_host {
 #define MMC_CAP2_PACKED_CMD	(MMC_CAP2_PACKED_RD | \
 				 MMC_CAP2_PACKED_WR)
 #define MMC_CAP2_NO_PRESCAN_POWERUP (1 << 14)	/* Don't power up before scan */
+#define MMC_CAP2_HS400_1_8V	(1 << 15)	/* Can support HS400 1.8V */
+#define MMC_CAP2_HS400_1_2V	(1 << 16)	/* Can support HS400 1.2V */
+#define MMC_CAP2_HS400		(MMC_CAP2_HS400_1_8V | \
+				 MMC_CAP2_HS400_1_2V)
+
+#define MMC_SUNXI_CAP3_DAT3_DET	(1 << 0)
+	u32 		sunxi_caps3;
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -304,7 +313,7 @@ struct mmc_host {
 	unsigned int		max_req_size;	/* maximum number of bytes in one req */
 	unsigned int		max_blk_size;	/* maximum size of one mmc block */
 	unsigned int		max_blk_count;	/* maximum number of blocks in one req */
-	unsigned int		max_discard_to;	/* max. discard timeout in ms */
+	unsigned int		max_busy_timeout; /* max busy timeout in ms */
 
 	/* private data */
 	spinlock_t		lock;		/* lock for claim and bus ops */
@@ -322,6 +331,7 @@ struct mmc_host {
 
 	int			rescan_disable;	/* disable card detection */
 	int			rescan_entered;	/* used with nonremovable devices */
+	int         rescan_pre_state;
 
 	struct mmc_card		*card;		/* device attached to this host */
 

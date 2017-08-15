@@ -25,8 +25,19 @@ config DW_APB_TIMER_OF
 config ARMADA_370_XP_TIMER
 	bool
 
+choice 
+	prompt "TIMER: Select the soc timer version."
+	default SUNXI_TIMER
+	help
+	  Select the soc timer.
+
 config SUN4I_TIMER
-	bool
+	bool "SUN4I TIMER"
+
+config SUNXI_TIMER
+	bool "SUNXI TIMER"
+
+endchoice 
 
 config VT8500_TIMER
 	bool
@@ -66,6 +77,21 @@ config CLKSRC_DBX500_PRCMU_SCHED_CLOCK
 config ARM_ARCH_TIMER
 	bool
 	select CLKSRC_OF if OF
+
+config ARM_ARCH_TIMER_EVTSTREAM
+	bool "Support for ARM architected timer event stream generation"
+	default y if ARM_ARCH_TIMER
+	help
+	  This option enables support for event stream generation based on
+	  the ARM architected timer. It is used for waking up CPUs executing
+	  the wfe instruction at a frequency represented as a power-of-2
+	  divisor of the clock rate.
+	  The main use of the event stream is wfe-based timeouts of userspace
+	  locking implementations. It might also be useful for imposing timeout
+	  on wfe to safeguard against any programming errors in case an expected
+	  event is not generated.
+	  This must be disabled for hardware validation purposes to detect any
+	  hardware anomalies of missing events.
 
 config CLKSRC_METAG_GENERIC
 	def_bool y if METAG

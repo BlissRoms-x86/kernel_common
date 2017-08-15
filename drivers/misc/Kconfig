@@ -455,7 +455,7 @@ config ARM_CHARLCD
 	  still useful.
 
 config BMP085
-	bool
+	tristate
 	depends on SYSFS
 
 config BMP085_I2C
@@ -540,4 +540,5 @@ source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
+source "drivers/misc/sunxi-rf/Kconfig"
 endmenu

@@ -206,6 +206,7 @@ int i2c_generic_scl_recovery(struct i2c_adapter *adap)
 	adap->bus_recovery_info->set_scl(adap, 1);
 	return i2c_generic_recovery(adap);
 }
+EXPORT_SYMBOL_GPL(i2c_generic_scl_recovery);
 
 int i2c_generic_gpio_recovery(struct i2c_adapter *adap)
 {
@@ -220,6 +221,7 @@ int i2c_generic_gpio_recovery(struct i2c_adapter *adap)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(i2c_generic_gpio_recovery);
 
 int i2c_recover_bus(struct i2c_adapter *adap)
 {
@@ -229,6 +231,7 @@ int i2c_recover_bus(struct i2c_adapter *adap)
 	dev_dbg(&adap->dev, "Trying i2c bus recovery\n");
 	return adap->bus_recovery_info->recover_bus(adap);
 }
+EXPORT_SYMBOL_GPL(i2c_recover_bus);
 
 static int i2c_device_probe(struct device *dev)
 {
@@ -520,7 +523,11 @@ static int i2c_check_addr_validity(unsigned short addr)
 	 *  0x78-0x7b  10-bit slave addressing
 	 *  0x7c-0x7f  Reserved for future purposes
 	 */
+#ifdef CONFIG_ARCH_SUNXI
+	if (addr < 0x03 || addr > 0x77)
+#else
 	if (addr < 0x08 || addr > 0x77)
+#endif
 		return -EINVAL;
 	return 0;
 }
@@ -1340,6 +1347,7 @@ int i2c_register_driver(struct module *owner, struct i2c_driver *driver)
 	/* add the driver to the list of i2c drivers in the driver core */
 	driver->driver.owner = owner;
 	driver->driver.bus = &i2c_bus_type;
+	INIT_LIST_HEAD(&driver->clients);
 
 	/* When registration returns, the driver core
 	 * will have called probe() for all matching-but-unbound devices.
@@ -1358,7 +1366,6 @@ int i2c_register_driver(struct module *owner, struct i2c_driver *driver)
 
 	pr_debug("i2c-core: driver [%s] registered\n", driver->driver.name);
 
-	INIT_LIST_HEAD(&driver->clients);
 	/* Walk the adapters that are already present */
 	i2c_for_each_dev(driver, __process_new_driver);
 
@@ -1717,9 +1724,11 @@ static int i2c_detect_address(struct i2c_client *temp_client,
 	if (i2c_check_addr_busy(adapter, addr))
 		return 0;
 
+#ifndef CONFIG_ARCH_SUNXI
 	/* Make sure there is something at this address */
 	if (!i2c_default_probe(adapter, addr))
 		return 0;
+#endif
 
 	/* Finally call the custom detection function */
 	memset(&info, 0, sizeof(struct i2c_board_info));

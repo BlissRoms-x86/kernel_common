@@ -397,6 +397,7 @@ struct virtio_device_id {
 /*
  * For Hyper-V devices we use the device guid as the id.
  */
+#define vmbus_device_id hv_vmbus_device_id
 struct hv_vmbus_device_id {
 	__u8 guid[16];
 	kernel_ulong_t driver_data;	/* Data private to the driver */
@@ -547,6 +548,11 @@ struct amba_id {
  * See documentation of "x86_match_cpu" for details.
  */
 
+/*
+ * MODULE_DEVICE_TABLE expects this struct to be called x86cpu_device_id.
+ * Although gcc seems to ignore this error, clang fails without this define.
+ */
+#define x86cpu_device_id x86_cpu_id
 struct x86_cpu_id {
 	__u16 vendor;
 	__u16 family;
@@ -563,6 +569,15 @@ struct x86_cpu_id {
 #define X86_MODEL_ANY  0
 #define X86_FEATURE_ANY 0	/* Same as FPU, you can't test for that */
 
+/*
+ * Generic table type for matching CPU features.
+ * @feature:	the bit number of the feature (0 - 65535)
+ */
+
+struct cpu_feature {
+	__u16	feature;
+};
+
 #define IPACK_ANY_FORMAT 0xff
 #define IPACK_ANY_ID (~0)
 struct ipack_device_id {
@@ -574,6 +589,7 @@ struct ipack_device_id {
 #define MEI_CL_MODULE_PREFIX "mei:"
 #define MEI_CL_NAME_SIZE 32
 
+#define mei_device_id mei_cl_device_id
 struct mei_cl_device_id {
 	char name[MEI_CL_NAME_SIZE];
 	kernel_ulong_t driver_info;

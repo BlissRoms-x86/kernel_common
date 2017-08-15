@@ -206,6 +206,21 @@ ktime_t alarm_expires_remaining(const struct alarm *alarm)
 }
 
 #ifdef CONFIG_RTC_CLASS
+static int boot_mode=0;                // 0: normal boot; 1: charger mode; 2: recovery mode
+
+static int __init boot_mode_setup(char *str)
+{
+       if (!str)
+               return -EINVAL;
+
+       // androidboot.mode=charger
+       if (!strncmp(str, "charger", strlen("charger")))
+               boot_mode=1;
+
+       return 1;
+}
+__setup("androidboot.mode=", boot_mode_setup);
+
 /**
  * alarmtimer_suspend - Suspend time callback
  * @dev: unused
@@ -270,8 +285,83 @@ static int alarmtimer_suspend(struct device *dev)
 		__pm_wakeup_event(ws, MSEC_PER_SEC);
 	return ret;
 }
+
+static int alarmtimer_resume(struct device *dev)
+{
+        struct rtc_device *rtc;
+        int ret;
+
+        rtc = alarmtimer_get_rtcdev();
+        /* If we have no rtcdev, just return */
+        if (!rtc)
+            return 0;
+        /* Clear the timer in rtc*/
+        ret = rtc_timer_cancel(rtc, &rtctimer);
+        return ret;
+}
+
+static void alarmtimer_shutdown(struct platform_device *dev)
+{
+        struct rtc_time tm;
+        ktime_t min, now;
+        unsigned long flags;
+        struct rtc_device *rtc;
+        int ret;
+        struct alarm_base *base = &alarm_bases[ALARM_REALTIME_SHUTDOWN];
+        // struct alarm_base *base = &alarm_bases[ALARM_BOOTTIME];
+        struct timerqueue_node *next;
+        ktime_t delta;
+
+        spin_lock_irqsave(&freezer_delta_lock, flags);
+        min = freezer_delta;
+        freezer_delta = ktime_set(0, 0);
+        spin_unlock_irqrestore(&freezer_delta_lock, flags);
+
+        rtc = alarmtimer_get_rtcdev();
+        /* If we have no rtcdev, just return */
+        if (!rtc)
+                return;
+
+        /* Find the soonest timer to expire*/
+        spin_lock_irqsave(&base->lock, flags);
+        next = timerqueue_getnext(&base->timerqueue);
+        spin_unlock_irqrestore(&base->lock, flags);
+        if (!next) {
+            printk("[alarmtimer] have no shutdown alarm! %s %d\n", __FUNCTION__, __LINE__);
+            return;
+        }
+        delta = ktime_sub(next->expires, base->gettime());
+        if (!min.tv64 || (delta.tv64 < min.tv64))
+            min = delta;
+
+        /* Setup an rtc timer to fire that far in the future */
+        rtc_timer_cancel(rtc, &rtctimer);
+        rtc_read_time(rtc, &tm);
+        now = rtc_tm_to_ktime(tm);
+        /* if not in charger mode cur_time < (40s + alarm_time), alarm start right away(5s for shut down time),
+         * otherwise, power on before alarm for 35s
+         * */
+        if (!boot_mode) {
+            if (ktime_to_ms(min) < 40 * MSEC_PER_SEC){
+                min = ktime_set(5, 0);
+            }else{
+                min = ktime_sub(min, ktime_set(35, 0));
+            }
+        }
+        printk("[alarmtimer] add shutdown alarm interval=%lldms, %s %d\n", ktime_to_ms(min), __FUNCTION__, __LINE__);
+        now = ktime_add(now, min);
+
+        /* Set alarm, if in the past reject suspend briefly to handle */
+        ret = rtc_timer_start(rtc, &rtctimer, now, ktime_set(0, 0));
+        return;
+}
 #else
 static int alarmtimer_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int alarmtimer_resume(struct device *dev)
 {
 	return 0;
 }
@@ -456,18 +546,26 @@ static enum alarmtimer_type clock2alarm(clockid_t clockid)
 static enum alarmtimer_restart alarm_handle_timer(struct alarm *alarm,
 							ktime_t now)
 {
+	unsigned long flags;
 	struct k_itimer *ptr = container_of(alarm, struct k_itimer,
 						it.alarm.alarmtimer);
-	if (posix_timer_event(ptr, 0) != 0)
-		ptr->it_overrun++;
+	enum alarmtimer_restart result = ALARMTIMER_NORESTART;
+
+	spin_lock_irqsave(&ptr->it_lock, flags);
+	if ((ptr->it_sigev_notify & ~SIGEV_THREAD_ID) != SIGEV_NONE) {
+		if (posix_timer_event(ptr, 0) != 0)
+			ptr->it_overrun++;
+	}
 
 	/* Re-add periodic timers */
 	if (ptr->it.alarm.interval.tv64) {
 		ptr->it_overrun += alarm_forward(alarm, now,
 						ptr->it.alarm.interval);
-		return ALARMTIMER_RESTART;
+		result = ALARMTIMER_RESTART;
 	}
-	return ALARMTIMER_NORESTART;
+	spin_unlock_irqrestore(&ptr->it_lock, flags);
+
+	return result;
 }
 
 /**
@@ -783,13 +881,17 @@ out:
 /* Suspend hook structures */
 static const struct dev_pm_ops alarmtimer_pm_ops = {
 	.suspend = alarmtimer_suspend,
+	.resume = alarmtimer_resume,
 };
 
 static struct platform_driver alarmtimer_driver = {
 	.driver = {
 		.name = "alarmtimer",
 		.pm = &alarmtimer_pm_ops,
-	}
+	},
+#ifdef CONFIG_RTC_CLASS
+	.shutdown = alarmtimer_shutdown,
+#endif
 };
 
 /**
@@ -823,6 +925,8 @@ static int __init alarmtimer_init(void)
 	alarm_bases[ALARM_REALTIME].gettime = &ktime_get_real;
 	alarm_bases[ALARM_BOOTTIME].base_clockid = CLOCK_BOOTTIME;
 	alarm_bases[ALARM_BOOTTIME].gettime = &ktime_get_boottime;
+	alarm_bases[ALARM_REALTIME_SHUTDOWN].base_clockid = CLOCK_REALTIME;
+	alarm_bases[ALARM_REALTIME_SHUTDOWN].gettime = &ktime_get_real;
 	for (i = 0; i < ALARM_NUMTYPE; i++) {
 		timerqueue_init_head(&alarm_bases[i].timerqueue);
 		spin_lock_init(&alarm_bases[i].lock);

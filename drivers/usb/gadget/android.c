@@ -27,23 +27,162 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
+#include  <linux/of_device.h>
 
 #include "gadget_chips.h"
 
 #include "f_fs.c"
+#ifdef CONFIG_SND_SOC
 #include "f_audio_source.c"
+#endif
 #include "f_mass_storage.c"
+#ifdef CONFIG_USB_SUNXI_USB_ADB
+#include "f_adb.c"
+#endif
 #include "f_mtp.c"
 #include "f_accessory.c"
+#ifdef CONFIG_NET
 #define USB_ETH_RNDIS y
 #include "f_rndis.c"
 #include "rndis.c"
 #include "u_ether.c"
+#endif
 
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
+
+#ifdef CONFIG_USB_SUNXI_UDC0
+
+#define  KEY_USB_LUNS				"usb_luns"
+#define  KEY_USB_SERIAL_UNIQUE			"usb_serial_unique"
+#define  KEY_USB_SERIAL_NUMBER			"usb_serial_number"
+
+#define KEY_CMDLINE_SERIAL          "androidboot.serialno"
+#define  KEY_USB_RNDIS_WCEIS			"rndis_wceis"
+u32 luns = 1;
+u32 serial_unique = 0;
+char g_usb_serial_number[64];
+u32 rndis_wceis = 1;
+
+#ifdef CONFIG_USB_SUNXI_UDC0
+extern atomic_t thread_suspend_flag;
+#endif
+
+static int get_para_from_cmdline(const char *cmdline, const char *name, char *value, int maxsize)
+{
+    char *p = (char *)cmdline;
+    char *value_p = value;
+    int size= 0;
+
+    if(!cmdline || !name || !value) {
+        return -1;
+    }
+
+    for(; *p != 0;){
+        if(*p++ == ' '){
+            if(0 == strncmp(p, name, strlen(name))) {
+                p += strlen(name);
+                if(*p++ != '=') {
+                    continue;
+                }
+                while((*p != 0) && (*p != ' ') && (++size < maxsize)) {
+                    *value_p++ = *p++;
+                }
+                *value_p = '\0';
+                return value_p - value;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static int get_android_usb_config(void)
+{
+#ifdef CONFIG_OF
+
+	struct device_node *usbc0_np = NULL;
+
+	const char *usb_serial_number;
+	int ret = -1;
+
+	usbc0_np = of_find_node_by_type(NULL, "usbc0");
+
+	/* usbc enable */
+	ret = of_property_read_u32(usbc0_np, KEY_USB_LUNS, &luns);
+	if (ret) {
+		 printk("get luns is failn");
+	}
+
+	/* usbc init_state */
+	ret = of_property_read_u32(usbc0_np, KEY_USB_SERIAL_UNIQUE, &serial_unique);
+	if (ret) {
+		 printk("get serial_unique is fail\n");
+	}
+
+    /* get usb serial number from boot command line*/
+    ret = get_para_from_cmdline(saved_command_line, KEY_CMDLINE_SERIAL, g_usb_serial_number, sizeof(g_usb_serial_number));
+
+    if (1 == serial_unique && ret > 0) {
+        printk("get usb_serial_number success from boot command line");
+    } else {
+        /* usbc det_vbus */
+        ret = of_property_read_string(usbc0_np, KEY_USB_SERIAL_NUMBER, &usb_serial_number);
+        if (ret) {
+            printk("get usb_serial_number is fail\n");
+            strcpy(g_usb_serial_number, "20080411");
+        } else {
+            if(usb_serial_number != NULL) {
+                strcpy(g_usb_serial_number, usb_serial_number);
+                printk("usb_serial_number:%s\n", usb_serial_number);
+            }
+        }
+    }
+
+	/* rndis_wceis */
+	ret = of_property_read_u32(usbc0_np, KEY_USB_RNDIS_WCEIS, &rndis_wceis);
+	if (ret) {
+		 printk("get serial_unique is fail\n");
+		 rndis_wceis = 1;
+	}
+
+#else
+	script_item_value_type_e type = 0;
+	script_item_u item_temp;
+
+	/* usbc enable */
+	type = script_get_item("usbc0", KEY_USB_LUNS, &item_temp);
+	if(type == SCIRPT_ITEM_VALUE_TYPE_INT){
+		luns = item_temp.val;
+	}else{
+		printk("get luns is fail\n");
+	}
+
+	/* host_init_state */
+	type = script_get_item("usbc0", KEY_USB_SERIAL_UNIQUE, &item_temp);
+	if(type == SCIRPT_ITEM_VALUE_TYPE_INT){
+		serial_unique = item_temp.val;
+	}else{
+		printk("get serial_unique is fail\n");
+	}
+
+	}
+
+	/* get regulator io information */
+	type = script_get_item("usbc0", KEY_USB_SERIAL_NUMBER, &item_temp);
+	if(type == SCIRPT_ITEM_VALUE_TYPE_STR){
+		strcpy(g_usb_serial_number, item_temp.str);
+	}else{
+		printk("get usb_serial_number is fail\n");
+		strcpy(g_usb_serial_number, "20080411");
+	}
+#endif
+	return 0;
+}
+
+#endif
 
 static const char longname[] = "Gadget Android";
 
@@ -360,7 +499,99 @@ static void *functionfs_acquire_dev_callback(const char *dev_name)
 static void functionfs_release_dev_callback(struct ffs_data *ffs_data)
 {
 }
+#ifdef CONFIG_USB_SUNXI_USB_ADB
+struct adb_data {
+	bool opened;
+	bool enabled;
+};
 
+static int
+adb_function_init(struct android_usb_function *f,
+		struct usb_composite_dev *cdev)
+{
+	f->config = kzalloc(sizeof(struct adb_data), GFP_KERNEL);
+	if (!f->config)
+		return -ENOMEM;
+
+	return adb_setup();
+}
+
+static void adb_function_cleanup(struct android_usb_function *f)
+{
+	adb_cleanup();
+	kfree(f->config);
+}
+
+static int
+adb_function_bind_config(struct android_usb_function *f,
+		struct usb_configuration *c)
+{
+	return adb_bind_config(c);
+}
+
+static void adb_android_function_enable(struct android_usb_function *f)
+{
+	struct android_dev *dev = _android_dev;
+	struct adb_data *data = f->config;
+
+	data->enabled = true;
+
+	/* Disable the gadget until adbd is ready */
+	if (!data->opened)
+		android_disable(dev);
+}
+
+static void adb_android_function_disable(struct android_usb_function *f)
+{
+	struct android_dev *dev = _android_dev;
+	struct adb_data *data = f->config;
+
+	data->enabled = false;
+
+	/* Balance the disable that was called in closed_callback */
+	if (!data->opened)
+		android_enable(dev);
+}
+
+static struct android_usb_function adb_function = {
+	.name		= "adb",
+	.enable		= adb_android_function_enable,
+	.disable	= adb_android_function_disable,
+	.init		= adb_function_init,
+	.cleanup	= adb_function_cleanup,
+	.bind_config	= adb_function_bind_config,
+};
+
+static void adb_ready_callback(void)
+{
+	struct android_dev *dev = _android_dev;
+	struct adb_data *data = adb_function.config;
+
+	mutex_lock(&dev->mutex);
+
+	data->opened = true;
+
+	if (data->enabled)
+		android_enable(dev);
+
+	mutex_unlock(&dev->mutex);
+}
+
+static void adb_closed_callback(void)
+{
+	struct android_dev *dev = _android_dev;
+	struct adb_data *data = adb_function.config;
+
+	mutex_lock(&dev->mutex);
+
+	data->opened = false;
+
+	if (data->enabled)
+		android_disable(dev);
+
+	mutex_unlock(&dev->mutex);
+}
+#endif
 #define MAX_ACM_INSTANCES 4
 struct acm_function_config {
 	int instances;
@@ -554,6 +785,7 @@ static struct android_usb_function ptp_function = {
 };
 
 
+#ifdef CONFIG_NET
 struct rndis_function_config {
 	u8      ethaddr[ETH_ALEN];
 	u32     vendorID;
@@ -603,6 +835,8 @@ rndis_function_bind_config(struct android_usb_function *f,
 		return ret;
 	}
 	rndis->dev = dev;
+
+	rndis->wceis = rndis_wceis;
 
 	if (rndis->wceis) {
 		/* "Wireless" RNDIS; auto-detected by Windows */
@@ -744,7 +978,7 @@ static struct android_usb_function rndis_function = {
 	.unbind_config	= rndis_function_unbind_config,
 	.attributes	= rndis_function_attributes,
 };
-
+#endif
 
 struct mass_storage_function_config {
 	struct fsg_config fsg;
@@ -763,8 +997,26 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	if (!config)
 		return -ENOMEM;
 
+#ifdef CONFIG_USB_SUNXI_UDC0
+{
+	int i = 0;
+	if(luns <= FSG_MAX_LUNS){
+		config->fsg.nluns = luns;
+	}else{
+		config->fsg.nluns = FSG_MAX_LUNS;
+	}
+
+	for(i = 0; i < config->fsg.nluns; i++){
+		config->fsg.luns[i].removable	= 1;
+		config->fsg.luns[i].ro		= 0;
+		config->fsg.luns[i].cdrom	= 0;
+		config->fsg.luns[i].nofua	= 1;
+	}
+}
+#else
 	config->fsg.nluns = 1;
 	config->fsg.luns[0].removable = 1;
+#endif
 
 	common = fsg_common_init(NULL, cdev, &config->fsg);
 	if (IS_ERR(common)) {
@@ -772,6 +1024,33 @@ static int mass_storage_function_init(struct android_usb_function *f,
 		return PTR_ERR(common);
 	}
 
+#ifdef CONFIG_USB_SUNXI_UDC0
+{
+	int i = 0;
+
+	for(i = 0; i < config->fsg.nluns; i++){
+	    char name[32];
+
+	    memset(name, 0, 32);
+
+	    if(i){
+		snprintf(name, 5, "lun%d\n", i);
+	    }else{
+		strcpy(name, "lun");
+	    }
+
+	    pr_debug("lun name: %s\n", name);
+
+	    err = sysfs_create_link(&f->dev->kobj,
+			&common->luns[i].dev.kobj,
+			name);
+	    if (err) {
+		kfree(config);
+		return err;
+	    }
+	}
+}
+#else
 	err = sysfs_create_link(&f->dev->kobj,
 				&common->luns[0].dev.kobj,
 				"lun");
@@ -779,6 +1058,7 @@ static int mass_storage_function_init(struct android_usb_function *f,
 		kfree(config);
 		return err;
 	}
+#endif
 
 	config->common = common;
 	f->config = config;
@@ -868,6 +1148,7 @@ static struct android_usb_function accessory_function = {
 	.ctrlrequest	= accessory_function_ctrlrequest,
 };
 
+#ifdef CONFIG_SND_SOC
 static int audio_source_function_init(struct android_usb_function *f,
 			struct usb_composite_dev *cdev)
 {
@@ -929,16 +1210,24 @@ static struct android_usb_function audio_source_function = {
 	.unbind_config	= audio_source_function_unbind_config,
 	.attributes	= audio_source_function_attributes,
 };
+#endif
 
 static struct android_usb_function *supported_functions[] = {
 	&ffs_function,
+#ifdef CONFIG_USB_SUNXI_USB_ADB
+	&adb_function,
+#endif
 	&acm_function,
 	&mtp_function,
 	&ptp_function,
+#ifdef CONFIG_NET
 	&rndis_function,
+#endif
 	&mass_storage_function,
 	&accessory_function,
+#ifdef CONFIG_SND_SOC
 	&audio_source_function,
+#endif
 	NULL
 };
 
@@ -1337,11 +1626,15 @@ static int android_bind(struct usb_composite_dev *cdev)
 	strings_dev[STRING_PRODUCT_IDX].id = id;
 	device_desc.iProduct = id;
 
-	/* Default strings - should be updated by userspace */
 	strncpy(manufacturer_string, "Android", sizeof(manufacturer_string)-1);
 	strncpy(product_string, "Android", sizeof(product_string) - 1);
-	strncpy(serial_string, "0123456789ABCDEF", sizeof(serial_string) - 1);
 
+#ifdef CONFIG_USB_SUNXI_UDC0
+	strncpy(serial_string, g_usb_serial_number, sizeof(serial_string) - 1);
+#else
+	/* Default strings - should be updated by userspace */
+	strncpy(serial_string, "0123456789ABCDEF", sizeof(serial_string) - 1);
+#endif
 	id = usb_string_id(cdev);
 	if (id < 0)
 		return id;
@@ -1421,7 +1714,16 @@ static void android_disconnect(struct usb_composite_dev *cdev)
 	acc_disconnect();
 
 	dev->connected = 0;
+
+#ifdef CONFIG_USB_SUNXI_UDC0
+	if(!atomic_read(&thread_suspend_flag)){
+		schedule_work(&dev->work);
+	}else{
+		printk("warning: %s cannot sent uevent env on suspend\n", __func__);
+	}
+#else
 	schedule_work(&dev->work);
+#endif
 }
 
 static struct usb_composite_driver android_usb_driver = {
@@ -1462,6 +1764,10 @@ static int __init init(void)
 {
 	struct android_dev *dev;
 	int err;
+
+#ifdef CONFIG_USB_SUNXI_UDC0
+	get_android_usb_config();
+#endif
 
 	android_class = class_create(THIS_MODULE, "android_usb");
 	if (IS_ERR(android_class))

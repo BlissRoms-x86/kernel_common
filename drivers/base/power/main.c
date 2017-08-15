@@ -28,8 +28,12 @@
 #include <linux/sched.h>
 #include <linux/async.h>
 #include <linux/suspend.h>
+#include <trace/events/power.h>
+#include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
+#include <linux/wakeup_reason.h>
+#include <linux/delay.h>
 
 #include "../base.h"
 #include "power.h"
@@ -189,6 +193,10 @@ static void initcall_debug_report(struct device *dev, ktime_t calltime,
 		delta = ktime_sub(rettime, calltime);
 		pr_info("call %s+ returned %d after %Ld usecs\n", dev_name(dev),
 			error, (unsigned long long)ktime_to_ns(delta) >> 10);
+		if(initcall_debug_delay_ms > 0){
+		    printk("sleep %d ms for debug. \n", initcall_debug_delay_ms);
+		    msleep(initcall_debug_delay_ms);
+		}
 	}
 }
 
@@ -382,7 +390,6 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 		return 0;
 
 	calltime = initcall_debug_start(dev);
-
 	pm_dev_dbg(dev, state, info);
 	error = cb(dev);
 	suspend_report_result(cb, error);
@@ -424,7 +431,7 @@ static void dpm_wd_set(struct dpm_watchdog *wd, struct device *dev)
 	wd->tsk = get_current();
 
 	init_timer_on_stack(timer);
-	timer->expires = jiffies + HZ * 12;
+	timer->expires = jiffies + (initcall_debug_delay_ms/1000 + 12) * HZ;
 	timer->function = dpm_wd_handler;
 	timer->data = (unsigned long)wd;
 	add_timer(timer);
@@ -774,6 +781,8 @@ void dpm_resume(pm_message_t state)
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, NULL);
+
+	cpufreq_resume();
 }
 
 /**
@@ -938,6 +947,7 @@ static int device_suspend_noirq(struct device *dev, pm_message_t state)
 static int dpm_suspend_noirq(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 	int error = 0;
 
 	cpuidle_pause();
@@ -965,6 +975,9 @@ static int dpm_suspend_noirq(pm_message_t state)
 		put_device(dev);
 
 		if (pm_wakeup_pending()) {
+			pm_get_active_wakeup_sources(suspend_abort,
+				MAX_SUSPEND_ABORT_LEN);
+			log_suspend_abort_reason(suspend_abort);
 			error = -EBUSY;
 			break;
 		}
@@ -1023,6 +1036,7 @@ static int device_suspend_late(struct device *dev, pm_message_t state)
 static int dpm_suspend_late(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 	int error = 0;
 
 	mutex_lock(&dpm_list_mtx);
@@ -1048,6 +1062,9 @@ static int dpm_suspend_late(pm_message_t state)
 		put_device(dev);
 
 		if (pm_wakeup_pending()) {
+			pm_get_active_wakeup_sources(suspend_abort,
+				MAX_SUSPEND_ABORT_LEN);
+			log_suspend_abort_reason(suspend_abort);
 			error = -EBUSY;
 			break;
 		}
@@ -1115,6 +1132,7 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	char *info = NULL;
 	int error = 0;
 	struct dpm_watchdog wd;
+	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 
 	dpm_wait_for_children(dev, async);
 
@@ -1131,6 +1149,9 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 		pm_wakeup_event(dev, 0);
 
 	if (pm_wakeup_pending()) {
+		pm_get_active_wakeup_sources(suspend_abort,
+			MAX_SUSPEND_ABORT_LEN);
+		log_suspend_abort_reason(suspend_abort);
 		async_error = -EBUSY;
 		goto Complete;
 	}
@@ -1242,6 +1263,8 @@ int dpm_suspend(pm_message_t state)
 	int error = 0;
 
 	might_sleep();
+
+	cpufreq_suspend();
 
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;

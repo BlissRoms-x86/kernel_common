@@ -177,11 +177,8 @@ dtb-$(CONFIG_ARCH_SPEAR3XX)+= spear300-evb.dtb \
 	spear320-evb.dtb \
 	spear320-hmi.dtb
 dtb-$(CONFIG_ARCH_SPEAR6XX)+= spear600-evb.dtb
-dtb-$(CONFIG_ARCH_SUNXI) += \
-	sun4i-a10-cubieboard.dtb \
-	sun4i-a10-mini-xplus.dtb \
-	sun4i-a10-hackberry.dtb \
-	sun5i-a13-olinuxino.dtb
+dtb-$(CONFIG_ARCH_SUN8IW10P1) += sun8iw10p1-fpga.dtb
+dtb-$(CONFIG_ARCH_SUN8IW11P1) += sun8iw11p1-fpga.dtb
 dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra20-iris-512.dtb \
 	tegra20-medcom-wide.dtb \
@@ -202,7 +199,14 @@ dtb-$(CONFIG_ARCH_VERSATILE) += versatile-ab.dtb \
 dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 	vexpress-v2p-ca9.dtb \
 	vexpress-v2p-ca15-tc1.dtb \
-	vexpress-v2p-ca15_a7.dtb
+	vexpress-v2p-ca15_a7.dtb \
+	rtsm_ve-cortex_a9x2.dtb \
+	rtsm_ve-cortex_a9x4.dtb \
+	rtsm_ve-cortex_a15x1.dtb \
+	rtsm_ve-cortex_a15x2.dtb \
+	rtsm_ve-cortex_a15x4.dtb \
+	rtsm_ve-v2p-ca15x1-ca7x1.dtb \
+	rtsm_ve-v2p-ca15x4-ca7x4.dtb
 dtb-$(CONFIG_ARCH_VIRT) += xenvm-4.2.dtb
 dtb-$(CONFIG_ARCH_VT8500) += vt8500-bv07.dtb \
 	wm8505-ref.dtb \

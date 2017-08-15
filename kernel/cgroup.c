@@ -27,6 +27,9 @@
  */
 
 #include <linux/cgroup.h>
+#ifdef CONFIG_ARCH_SUNXI
+#include <linux/cpu.h>
+#endif
 #include <linux/cred.h>
 #include <linux/ctype.h>
 #include <linux/errno.h>
@@ -984,7 +987,7 @@ static void cgroup_d_remove_dir(struct dentry *dentry)
 	parent = dentry->d_parent;
 	spin_lock(&parent->d_lock);
 	spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
-	list_del_init(&dentry->d_u.d_child);
+	list_del_init(&dentry->d_child);
 	spin_unlock(&dentry->d_lock);
 	spin_unlock(&parent->d_lock);
 	remove_dir(dentry);
@@ -2124,6 +2127,25 @@ static int cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
 	return 0;
 }
 
+int subsys_cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
+{
+	const struct cred *cred = current_cred(), *tcred;
+	struct task_struct *task;
+
+	if (capable(CAP_SYS_NICE))
+		return 0;
+
+	cgroup_taskset_for_each(task, cgrp, tset) {
+		tcred = __task_cred(task);
+
+		if (current != task && !uid_eq(cred->euid, tcred->uid) &&
+		     !uid_eq(cred->euid, tcred->suid))
+			return -EACCES;
+	}
+
+	return 0;
+}
+
 /*
  * Find the task_struct of the task to attach by vpid and pass it along to the
  * function to attach either it or all tasks in its threadgroup. Will lock
@@ -2240,7 +2262,19 @@ EXPORT_SYMBOL_GPL(cgroup_attach_task_all);
 
 static int cgroup_tasks_write(struct cgroup *cgrp, struct cftype *cft, u64 pid)
 {
-	return attach_task_by_pid(cgrp, pid, false);
+	int ret;
+
+#ifdef CONFIG_ARCH_SUNXI
+	get_online_cpus();
+#endif
+
+	ret = attach_task_by_pid(cgrp, pid, false);
+
+#ifdef CONFIG_ARCH_SUNXI
+	put_online_cpus();
+#endif
+
+	return ret;
 }
 
 static int cgroup_procs_write(struct cgroup *cgrp, struct cftype *cft, u64 tgid)

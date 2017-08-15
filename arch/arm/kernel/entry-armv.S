@@ -358,7 +358,8 @@ ENDPROC(__pabt_svc)
 	.endm
 
 	.macro	kuser_cmpxchg_check
-#if !defined(CONFIG_CPU_32v6K) && !defined(CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG)
+#if !defined(CONFIG_CPU_32v6K) && defined(CONFIG_KUSER_HELPERS) && \
+    !defined(CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG)
 #ifndef CONFIG_MMU
 #warning "NPTL on non MMU needs fixing"
 #else
@@ -416,9 +417,8 @@ __und_usr:
 	bne	__und_usr_thumb
 	sub	r4, r2, #4			@ ARM instr at LR - 4
 1:	ldrt	r0, [r4]
-#ifdef CONFIG_CPU_ENDIAN_BE8
-	rev	r0, r0				@ little endian instruction
-#endif
+ ARM_BE8(rev	r0, r0)				@ little endian instruction
+
 	@ r0 = 32-bit ARM instruction which caused the exception
 	@ r2 = PC value for the following instruction (:= regs->ARM_pc)
 	@ r4 = PC value for the faulting instruction

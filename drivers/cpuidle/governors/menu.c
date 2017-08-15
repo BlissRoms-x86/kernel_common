@@ -126,6 +126,7 @@ struct menu_device {
 #define LOAD_INT(x) ((x) >> FSHIFT)
 #define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
 
+/*
 static int get_loadavg(void)
 {
 	unsigned long this = this_cpu_load();
@@ -133,6 +134,7 @@ static int get_loadavg(void)
 
 	return LOAD_INT(this) * 10 + LOAD_FRAC(this) / 10;
 }
+*/
 
 static inline int which_bucket(unsigned int duration)
 {
@@ -274,7 +276,7 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 		data->needs_update = 0;
 	}
 
-	data->last_state_idx = 0;
+	data->last_state_idx = CPUIDLE_DRIVER_STATE_START - 1;
 	data->exit_us = 0;
 
 	/* Special case when user has set very strict latency requirement */

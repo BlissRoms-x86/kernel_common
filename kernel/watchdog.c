@@ -24,10 +24,13 @@
 #include <linux/sysctl.h>
 #include <linux/smpboot.h>
 #include <linux/sched/rt.h>
-
+#include <linux/of.h>
+#include <linux/of_address.h>
 #include <asm/irq_regs.h>
 #include <linux/kvm_para.h>
 #include <linux/perf_event.h>
+#include <linux/sched.h>
+#include "../drivers/soc/allwinner/pm/pm.h"
 
 int watchdog_enabled = 1;
 int __read_mostly watchdog_thresh = 10;
@@ -52,6 +55,11 @@ static cpumask_t __read_mostly watchdog_cpus;
 #ifdef CONFIG_HARDLOCKUP_DETECTOR_NMI
 static DEFINE_PER_CPU(struct perf_event *, watchdog_ev);
 #endif
+
+static void __iomem *base = NULL;
+static void __iomem *gicd_base = NULL;
+static void __iomem *gicc_base = NULL;
+static u32 cpu_reset_status = 0;
 
 /* boot commands */
 /*
@@ -224,6 +232,21 @@ static int is_hardlockup_other_cpu(unsigned int cpu)
 	return 0;
 }
 
+static void local_reset_cpu(unsigned int next_cpu)
+{
+	
+	cpu_reset_status = readl_relaxed(base + 0x80); 
+	printk("cpu_reset_status = 0x%x. next_cpu = 0x%x\n", cpu_reset_status, next_cpu);
+	cpu_reset_status &= (0xfffffff0);
+	cpu_reset_status |= ((unsigned int)0x1<<(unsigned int)next_cpu);
+	cpu_reset_status |= ((unsigned int)0x1<<(unsigned int)smp_processor_id());
+	printk("set cpu_reset_status = 0x%x. next_cpu = 0x%x\n", cpu_reset_status, next_cpu);
+	writel_relaxed(cpu_reset_status, base + 0x80);
+
+	return ;
+
+}
+
 static void watchdog_check_hardlockup_other_cpu(void)
 {
 	unsigned int next_cpu;
@@ -253,10 +276,16 @@ static void watchdog_check_hardlockup_other_cpu(void)
 		if (per_cpu(hard_watchdog_warn, next_cpu) == true)
 			return;
 
-		if (hardlockup_panic)
+		if (hardlockup_panic){
 			panic("Watchdog detected hard LOCKUP on cpu %u", next_cpu);
-		else
+		}
+		else{
 			WARN(1, "Watchdog detected hard LOCKUP on cpu %u", next_cpu);
+			local_reset_cpu(next_cpu);
+			printk(KERN_INFO "gicd_base = 0x%p. \n", gicd_base);
+			printk(KERN_INFO "gicc_base = 0x%p. \n", gicc_base);
+			busy_waiting();
+		}
 
 		per_cpu(hard_watchdog_warn, next_cpu) = true;
 	} else {
@@ -318,7 +347,6 @@ static void watchdog_overflow_callback(struct perf_event *event,
 			panic("Watchdog detected hard LOCKUP on cpu %d", this_cpu);
 		else
 			WARN(1, "Watchdog detected hard LOCKUP on cpu %d", this_cpu);
-
 		__this_cpu_write(hard_watchdog_warn, true);
 		return;
 	}
@@ -396,10 +424,12 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 			current->comm, task_pid_nr(current));
 		print_modules();
 		print_irqtrace_events(current);
-		if (regs)
+		if (regs){
 			show_regs(regs);
-		else
+			show_state();
+		}else{
 			dump_stack();
+		}
 
 		if (softlockup_panic)
 			panic("softlockup: hung tasks");
@@ -654,11 +684,21 @@ static struct smp_hotplug_thread watchdog_threads = {
 	.unpark			= watchdog_enable,
 };
 
+
 void __init lockup_detector_init(void)
 {
+
 	set_sample_period();
 	if (smpboot_register_percpu_thread(&watchdog_threads)) {
 		pr_err("Failed to create watchdog threads, disabled\n");
 		watchdog_disabled = -ENODEV;
 	}
+
+	base = ioremap(0x01700000, 0x1000);
+	printk(KERN_INFO "virtual base = 0x%p. \n", base);
+	gicd_base = ioremap(0x01c81000, 0x1000);
+	gicc_base = ioremap(0x01c82000, 0x1000);
+	printk(KERN_INFO "gicd_base = 0x%p. \n", gicd_base);
+	printk(KERN_INFO "gicc_base = 0x%p. \n", gicc_base);
+
 }

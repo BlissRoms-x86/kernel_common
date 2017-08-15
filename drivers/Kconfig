@@ -1,5 +1,7 @@
 menu "Device Drivers"
 
+source "drivers/arisc/Kconfig"
+
 source "drivers/base/Kconfig"
 
 source "drivers/bus/Kconfig"
@@ -167,5 +169,7 @@ source "drivers/irqchip/Kconfig"
 source "drivers/ipack/Kconfig"
 
 source "drivers/reset/Kconfig"
+
+source "drivers/gator/Kconfig"
 
 endmenu
