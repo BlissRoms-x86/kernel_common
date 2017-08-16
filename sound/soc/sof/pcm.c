@@ -179,7 +179,7 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 		&ipc_params_reply, sizeof(ipc_params_reply));
 
 	/* copy offset */
-	spcm->posn_offset[substream->stream] = ipc_params_reply.posn_offset;
+	//spcm->posn_offset[substream->stream] = ipc_params_reply.posn_offset;
 
 	return ret;
 }
@@ -228,25 +228,25 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
-		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
-		break;
 	case SNDRV_PCM_TRIGGER_RESUME:
-		//stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
+		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_RELEASE;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
-		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_STOP;
-		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		//stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
+		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_STOP;
 		break;		
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_PAUSE;
 		break;
-	default:
+	case SNDRV_PCM_TRIGGER_DRAIN:
+		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_DRAIN;
 		break;
+	default:
+		dev_err(sdev->dev, "error: unhandled trigger cmd %d\n", cmd);
+		return -EINVAL;
 	}
 
 	/* send IPC to the DSP */
@@ -259,17 +259,38 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
+	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
-	snd_pcm_uframes_t host, dai;
+	snd_pcm_uframes_t host = 0, dai = 0;
+	int err;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
 		return 0;
 
-	snd_sof_ipc_stream_posn(sdev, spcm, substream->stream, &host, &dai);
+	/* TODO force local readback atm */
+	/* can we read the position locally ? */
+	if (1 || spcm->posn_valid[substream->stream]) {
+		host = bytes_to_frames(substream->runtime,
+			spcm->posn[substream->stream].host_posn);
+		dai = bytes_to_frames(substream->runtime,
+			spcm->posn[substream->stream].dai_posn);
+		spcm->posn_valid[substream->stream] = false;
 
-	dev_vdbg(sdev->dev, "PCM: DMA position %lu DAI position %lu\n",
-		host, dai);
+		dev_dbg(sdev->dev, "PCM: local DMA position %lu DAI position %lu\n",
+			host, dai);
+	} else {
+		err = snd_sof_ipc_stream_posn(sdev, spcm, &posn);
+		if (err < 0) {
+			dev_err(sdev->dev, "error: cannot get stream position\n");
+		}
+
+		host = bytes_to_frames(substream->runtime, posn.host_posn);
+		dai = bytes_to_frames(substream->runtime, posn.dai_posn);
+
+		dev_dbg(sdev->dev, "PCM: IPC DMA position %lu DAI position %lu\n",
+			host, dai);
+	}
 
 	return host;
 }
@@ -293,13 +314,13 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 
 	pm_runtime_get_sync(sdev->dev);
 
-	/* TODO: get from topology - set runtime constraints */
-#if 0
+	/* set any runtime constraints based on topology */
 	snd_pcm_hw_constraint_step(substream->runtime, 0,
-		SNDRV_PCM_HW_PARAM_BUFFER_SIZE, PAGE_SIZE);
+		SNDRV_PCM_HW_PARAM_BUFFER_SIZE, caps->period_size_min);
 	snd_pcm_hw_constraint_step(substream->runtime, 0,
-		SNDRV_PCM_HW_PARAM_PERIOD_SIZE, 256);
-#endif
+		SNDRV_PCM_HW_PARAM_PERIOD_SIZE, caps->period_size_min);
+
+	/* set runtime config */
 	runtime->hw.info = SNDRV_PCM_INFO_MMAP |
 			  SNDRV_PCM_INFO_MMAP_VALID |
 			  SNDRV_PCM_INFO_INTERLEAVED |
@@ -317,10 +338,19 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	runtime->hw.periods_max = caps->periods_max;
 	runtime->hw.buffer_bytes_max = caps->buffer_size_max;
 
+	dev_dbg(sdev->dev, "period min %ld max %ld bytes\n",
+		runtime->hw.period_bytes_min,
+		runtime->hw.period_bytes_max);
+	dev_dbg(sdev->dev, "period count %d max %d\n",
+		runtime->hw.periods_min,
+		runtime->hw.periods_max);
+	dev_dbg(sdev->dev, "buffer max %ld bytes\n",
+		runtime->hw.buffer_bytes_max);
 
-	// TODO: this could depend on pipeline.
+	// TODO: create IPC to get this from DSP pipeline
 	//runtime->hw.fifo_size = hw->fifo_size;
 
+	spcm->posn_valid[substream->stream] = false;
 	spcm->substream = substream;
 	mutex_unlock(&spcm->mutex);
 	return 0;
@@ -380,7 +410,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		goto capture;
 
 	/* pre-allocate playback audio buffer pages */
-	dev_dbg(sdev->dev, "spcm: allocate %s playback DMA buffer min 0x%x max 0x%x\n",
+	dev_dbg(sdev->dev, "spcm: allocate %s playback DMA buffer size 0x%x max 0x%x\n",
 		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].name,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_min,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_max);
@@ -413,7 +443,7 @@ capture:
 		return ret;
 
 	/* pre-allocate capture audio buffer pages */
-	dev_dbg(sdev->dev, "spcm: allocate %s capture DMA buffer min 0x%x max 0x%x\n",
+	dev_dbg(sdev->dev, "spcm: allocate %s capture DMA buffer size 0x%x max 0x%x\n",
 		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].name,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_min,
 		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_max);

@@ -848,7 +848,7 @@ static irqreturn_t apl_irq_handler(int irq, void *context)
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
 	int ret = IRQ_NONE;
 
-	spin_lock(&sdev->spinlock);
+	spin_lock(&sdev->hw_lock);
 
 	/* store status */
 	sdev->irq_status = snd_sof_dsp_read(sdev, APL_DSP_BAR,
@@ -867,7 +867,7 @@ static irqreturn_t apl_irq_handler(int irq, void *context)
 	}
 
 out:
-	spin_unlock(&sdev->spinlock);
+	spin_unlock(&sdev->hw_lock);
 	return ret;
 }
 
@@ -1289,11 +1289,18 @@ static void apl_notify(struct snd_sof_dev *dsp)
 		SHIM_BYT_IPCD_DONE);
 }
 
-static bool apl_is_dsp_busy(struct snd_sof_dev *sdev)
+#endif
+
+static int apl_tx_busy(struct snd_sof_dev *sdev)
 {
+	uint64_t val;
+
+	val = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI);
+	if (val & APL_DSP_REG_HIPCI_BUSY)
+		return 1;
+
 	return 0;
 }
-#endif
 
 static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
@@ -1306,6 +1313,22 @@ static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 		cmd | APL_DSP_REG_HIPCI_BUSY);
 
 	return 0;
+}
+
+
+static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+{
+	struct sof_ipc_reply reply;
+
+	/* get reply */
+	apl_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	if (reply.error < 0)
+		return reply.error;
+
+	/* read the message */
+	apl_mailbox_read(sdev, 0, msg->msg_data, reply.hdr.size);
+
+	return reply.hdr.size;
 }
 
 /*
@@ -1972,7 +1995,8 @@ struct snd_sof_dsp_ops snd_sof_bxt_ops = {
 	/* ipc */
 	.tx_msg		= apl_tx_msg,
 	.fw_ready	= apl_fw_ready,
-	//int (*rx_msg)(struct snd_sof_dev *sof_dev, struct sof_ipc_msg *msg);
+	.rx_msg		= apl_rx_msg,
+	.tx_busy	= apl_tx_busy,
 
 	/* debug */
 	.debug_map	= apl_debugfs,
@@ -2020,7 +2044,8 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 	/* ipc */
 	.tx_msg		= apl_tx_msg,
 	.fw_ready	= apl_fw_ready,
-	//int (*rx_msg)(struct snd_sof_dev *sof_dev, struct sof_ipc_msg *msg);
+	.rx_msg		= apl_rx_msg,
+	.tx_busy	= apl_tx_busy,
 
 	/* debug */
 	.debug_map	= apl_debugfs,

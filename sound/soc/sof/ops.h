@@ -220,6 +220,14 @@ static inline int snd_sof_dsp_rx_msg(struct snd_sof_dev *sdev,
 		return 0;
 }
 
+static inline int snd_sof_dsp_tx_busy(struct snd_sof_dev *sdev)
+{
+	if (sdev->ops->tx_busy)
+		return sdev->ops->tx_busy(sdev);
+	else
+		return 0;
+}
+
 int snd_sof_dsp_update_bits_unlocked(struct snd_sof_dev *sdev, u32 bar,
 		u32 offset, u32 mask, u32 value);
 

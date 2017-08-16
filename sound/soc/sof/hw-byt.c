@@ -311,7 +311,7 @@ static irqreturn_t byt_irq_handler(int irq, void *context)
 	u64 isr;
 	int ret = IRQ_NONE;
 
-	spin_lock(&sdev->spinlock);
+	spin_lock(&sdev->hw_lock);
 
 	/* Interrupt arrived, check src */
 	isr = snd_sof_dsp_read64(sdev, BYT_DSP_BAR, SHIM_ISRX);
@@ -331,7 +331,7 @@ static irqreturn_t byt_irq_handler(int irq, void *context)
 		ret = IRQ_WAKE_THREAD;
 	}
 
-	spin_unlock(&sdev->spinlock);
+	spin_unlock(&sdev->hw_lock);
 	return ret;
 }
 
@@ -341,7 +341,7 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 	u64 ipcx, ipcd;
 	unsigned long flags;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 
 	ipcx = snd_sof_dsp_read64(sdev, BYT_DSP_BAR, SHIM_IPCX);
 	ipcd = snd_sof_dsp_read64(sdev, BYT_DSP_BAR, SHIM_IPCD);
@@ -377,12 +377,23 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 			SHIM_IMRX_BUSY, 0);
 	}
 
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 
 	/* continue to send any remaining messages... */
 	snd_sof_ipc_msgs_tx(sdev);
 
 	return IRQ_HANDLED;
+}
+
+static int byt_tx_busy(struct snd_sof_dev *sdev)
+{
+	uint64_t val;
+
+	val = snd_sof_dsp_read64(sdev, BYT_DSP_BAR, SHIM_IPCX);
+	if (val & SHIM_BYT_IPCX_BUSY)
+		return 1;
+
+	return 0;
 }
 
 static int byt_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
@@ -399,13 +410,18 @@ static int byt_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 
 static int byt_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
-	/* send the message */
-	byt_mailbox_read(sdev, 0, msg->msg_data, msg->msg_size);
+	struct sof_ipc_reply reply;
 
-	return msg->msg_size;
+	/* get reply */
+	byt_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	if (reply.error < 0)
+		return reply.error;
+
+	/* read the message */
+	byt_mailbox_read(sdev, 0, msg->msg_data, reply.hdr.size);
+
+	return reply.hdr.size;
 }
-
-
 
 /*
  * DSP control.
@@ -730,6 +746,7 @@ struct snd_sof_dsp_ops snd_sof_byt_ops = {
 	.tx_msg		= byt_tx_msg,
 	.rx_msg		= byt_rx_msg,
 	.fw_ready	= byt_fw_ready,
+	.tx_busy	= byt_tx_busy,
 
 	/* debug */
 	.debug_map	= byt_debugfs,
@@ -777,6 +794,7 @@ struct snd_sof_dsp_ops snd_sof_cht_ops = {
 	.tx_msg		= byt_tx_msg,
 	.rx_msg		= byt_rx_msg,
 	.fw_ready	= byt_fw_ready,
+	.tx_busy	= byt_tx_busy,
 
 	/* debug */
 	.debug_map	= cht_debugfs,

@@ -53,6 +53,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define DEBUG
+
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -123,7 +125,7 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 	ret = wait_event_timeout(msg->waitq, msg->complete,
 		msecs_to_jiffies(IPC_TIMEOUT_MSECS));
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->ipc_lock, flags);
 	if (ret == 0) {
 		dev_err(sdev->dev, "error: ipc timed out for 0x%x size 0x%x\n",
 			hdr->cmd, hdr->size);
@@ -134,13 +136,12 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 		ret = snd_sof_dsp_rx_msg(sdev, msg);
 		if (ret > 0)
 			memcpy(reply_data, msg->reply_data, msg->reply_size);
-		ret = 0;
 	}
 
 	/* return message body to empty list */
 	list_move(&msg->list, &ipc->empty_list);
 
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 	return ret;
 }
 
@@ -152,11 +153,11 @@ static int ipc_tx_message(struct snd_sof_ipc *ipc, u64 header,
 	struct snd_sof_ipc_msg *msg;
 	unsigned long flags;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->ipc_lock, flags);
 
 	msg = msg_get_empty(ipc);
 	if (msg == NULL) {
-		spin_unlock_irqrestore(&sdev->spinlock, flags);
+		spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 		return -EBUSY;
 	}
 
@@ -170,8 +171,12 @@ static int ipc_tx_message(struct snd_sof_ipc *ipc, u64 header,
 		memcpy(msg->msg_data, msg_data, msg_bytes);
 
 	list_add_tail(&msg->list, &ipc->tx_list);
-	schedule_work(&ipc->kwork);
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+
+	/* schedule the messgae if not busy */	
+	if (!snd_sof_dsp_tx_busy(sdev))
+		schedule_work(&ipc->kwork);
+
+	spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 
 	if (wait)
 		return tx_wait_done(ipc, msg, reply_data);
@@ -186,7 +191,7 @@ static void ipc_tx_next_msg(struct work_struct *work)
 	struct snd_sof_dev *sdev = ipc->sdev;
 	struct snd_sof_ipc_msg *msg;
 
-	spin_lock_irq(&sdev->spinlock);
+	spin_lock_irq(&sdev->ipc_lock);
 
 	if (list_empty(&ipc->tx_list))
 		goto out;
@@ -197,7 +202,7 @@ static void ipc_tx_next_msg(struct work_struct *work)
 	snd_sof_dsp_tx_msg(sdev, msg);
 
 out:
-	spin_unlock_irq(&sdev->spinlock);
+	spin_unlock_irq(&sdev->ipc_lock);
 }
 
 struct snd_sof_ipc_msg *sof_ipc_reply_find_msg(struct snd_sof_ipc *ipc, u32 header)
@@ -241,7 +246,7 @@ void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
 	unsigned long flags;
 
 	/* drop all TX and Rx messages before we stall + reset DSP */
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->ipc_lock, flags);
 
 	list_for_each_entry_safe(msg, tmp, &ipc->tx_list, list) {
 		list_move(&msg->list, &ipc->empty_list);
@@ -253,7 +258,7 @@ void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
 		dev_err(sdev->dev, "error: dropped reply %d\n", msg->header);
 	}
 
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 }
 EXPORT_SYMBOL(sof_ipc_drop_all);
 
@@ -307,6 +312,8 @@ static void ipc_period_elapsed(struct snd_sof_dev *sdev, u32 msg_id)
 
 	/* read back full message */
 	snd_sof_dsp_mailbox_read(sdev, 0, &posn, sizeof(posn));
+	dev_dbg(sdev->dev,  "posn: host %llx dai %llx wall %llx\n",
+		posn.host_posn, posn.dai_posn, posn.wallclock);
 
 	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id);
 	if (spcm == NULL) {
@@ -315,6 +322,8 @@ static void ipc_period_elapsed(struct snd_sof_dev *sdev, u32 msg_id)
 		return;
 	}
 
+	memcpy(&spcm->posn[0], &posn, sizeof(posn));
+	spcm->posn_valid[0] = true;
 	snd_pcm_period_elapsed(spcm->substream);
 }
 
@@ -329,17 +338,7 @@ void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id)
 
 	switch (cmd) {
 	case SOF_IPC_GLB_REPLY:
-		switch (reply) {
-		case SOF_IPC_REPLY_SUCCESS:
-			break;
-		case SOF_IPC_REPLY_ERROR:
-			dev_err(sdev->dev, "error: ipc failed 0x%x\n", reply);
-			break;
-		default:
-			dev_err(sdev->dev, "error: ipc reply unknown 0x%x\n",
-				reply);
-			break;
-		}
+		dev_err(sdev->dev, "error: ipc reply unknown\n");
 		break;
 	case SOF_IPC_FW_READY:
 		/* check for FW boot completion */
@@ -367,6 +366,7 @@ void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id)
 	case SOF_IPC_GLB_STREAM_MSG:
 		/* TODO: other stream messages */
 		ipc_period_elapsed(sdev, msg_id);
+		break;
 	default:
 		dev_err(sdev->dev, "unknown DSP message 0x%x\n", cmd);
 		break;
@@ -433,42 +433,28 @@ void snd_sof_ipc_free(struct snd_sof_dev *sdev)
 }
 EXPORT_SYMBOL(snd_sof_ipc_free);
 
-void snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
-	struct snd_sof_pcm *spcm, int direction,
-	snd_pcm_uframes_t *host, snd_pcm_uframes_t *dai)
+int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
+	struct snd_sof_pcm *spcm, struct sof_ipc_stream_posn *posn)
 {
-	struct sof_ipc_stream_posn posn;
 	struct sof_ipc_stream stream;
 	int err;
 
-	/* read firmware byte counters */
-	if (spcm->posn_offset[direction] != 0) {
+	/* read position via slower IPC */
+	stream.hdr.size = sizeof(stream);
+	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_POSITION;
+	stream.comp_id = spcm->comp_id;
 
-		/* we can read position via mmaped region */
-		snd_sof_dsp_block_read(sdev, spcm->posn_offset[direction],
-			&posn, sizeof(posn));
-
-	} else {
-		/* read position via slower IPC */
-		stream.hdr.size = sizeof(stream);
-		stream.hdr.cmd =
-			SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_POSITION;
-		stream.comp_id = spcm->comp_id;
-
-		/* send IPC to the DSP */
- 		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			stream.hdr.cmd, &stream, sizeof(stream), 
-			&posn, sizeof(posn));
-		if (err < 0) {
-			dev_err(sdev->dev, "error: failed to get stream %d position\n",
-				stream.comp_id);
-			return;
-		}
-
+	/* send IPC to the DSP */
+	err = sof_ipc_tx_message_wait(sdev->ipc, 
+		stream.hdr.cmd, &stream, sizeof(stream), 
+		&posn, sizeof(*posn));
+	if (err < 0) {
+		dev_err(sdev->dev, "error: failed to get stream %d position\n",
+			stream.comp_id);
+		return err;
 	}
 
-	*host = posn.host_posn;
-	*dai = posn.dai_posn;
+	return 0;
 }
 EXPORT_SYMBOL(snd_sof_ipc_stream_posn);
 

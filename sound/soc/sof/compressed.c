@@ -206,13 +206,13 @@ static int sof_compressed_pointer(struct snd_compr_stream *cstream,
 	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
+	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
-	snd_pcm_uframes_t host, dai;
 
-	snd_sof_ipc_stream_posn(sdev, spcm, cstream->direction, &host, &dai);
+	snd_sof_ipc_stream_posn(sdev, spcm, &posn);
 
-	dev_vdbg(sdev->dev, "CPCM: DMA position %lu DAI position %lu\n",
-		host, dai);
+	dev_vdbg(sdev->dev, "CPCM: DMA position %llu DAI position %llu\n",
+		posn.host_posn, posn.dai_posn);
 
 	return 0;
 }

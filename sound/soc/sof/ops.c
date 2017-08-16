@@ -95,9 +95,9 @@ int snd_sof_pci_update_bits(struct snd_sof_dev *sdev, u32 offset,
 	unsigned long flags;
 	bool change;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 	change = snd_sof_pci_update_bits_unlocked(sdev, offset, mask, value);
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 	return change;
 }
 EXPORT_SYMBOL(snd_sof_pci_update_bits);
@@ -162,9 +162,9 @@ int snd_sof_dsp_update_bits(struct snd_sof_dev *sdev, u32 bar, u32 offset,
 	unsigned long flags;
 	bool change;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 	change = snd_sof_dsp_update_bits_unlocked(sdev, bar, offset, mask, value);
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 	return change;
 }
 EXPORT_SYMBOL(snd_sof_dsp_update_bits);
@@ -175,9 +175,9 @@ int snd_sof_dsp_update_bits64(struct snd_sof_dev *sdev, u32 bar, u32 offset,
 	unsigned long flags;
 	bool change;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 	change = snd_sof_dsp_update_bits64_unlocked(sdev, bar, offset, mask, value);
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 	return change;
 }
 EXPORT_SYMBOL(snd_sof_dsp_update_bits64);
@@ -188,9 +188,9 @@ void snd_sof_dsp_update_bits_forced(struct snd_sof_dev *sdev, u32 bar,
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 	snd_sof_dsp_update_bits_forced_unlocked(sdev, bar, offset, mask, value);
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 }
 EXPORT_SYMBOL(snd_sof_dsp_update_bits_forced);
 

@@ -367,7 +367,7 @@ static irqreturn_t hsw_irq_handler(int irq, void *context)
 	u64 isr;
 	int ret = IRQ_NONE;
 
-	spin_lock(&sdev->spinlock);
+	spin_lock(&sdev->hw_lock);
 
 	/* Interrupt arrived, check src */
 	isr = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_ISRX);
@@ -387,7 +387,7 @@ static irqreturn_t hsw_irq_handler(int irq, void *context)
 		ret = IRQ_WAKE_THREAD;
 	}
 
-	spin_unlock(&sdev->spinlock);
+	spin_unlock(&sdev->hw_lock);
 	return ret;
 }
 
@@ -397,7 +397,7 @@ static irqreturn_t hsw_irq_thread(int irq, void *context)
 	u64 ipcx, ipcd;
 	unsigned long flags;
 
-	spin_lock_irqsave(&sdev->spinlock, flags);
+	spin_lock_irqsave(&sdev->hw_lock, flags);
 
 	ipcx = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCX);
 	ipcd = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCD);
@@ -433,7 +433,7 @@ static irqreturn_t hsw_irq_thread(int irq, void *context)
 			SHIM_IMRX_BUSY, 0);
 	}
 
-	spin_unlock_irqrestore(&sdev->spinlock, flags);
+	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 
 	/* continue to send any remaining messages... */
 	snd_sof_ipc_msgs_tx(sdev);
@@ -494,6 +494,17 @@ static void hsw_mailbox_read(struct snd_sof_dev *sdev, u32 offset,
 	memcpy_fromio(message, src, bytes);
 }
 
+static int hsw_tx_busy(struct snd_sof_dev *sdev)
+{
+	uint64_t val;
+
+	val = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCX);
+	if (val & SHIM_IPCX_BUSY)
+		return 1;
+
+	return 0;
+}
+
 static int hsw_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	u64 cmd = msg->header;
@@ -504,6 +515,21 @@ static int hsw_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	snd_sof_dsp_write64(sdev, HSW_DSP_BAR, SHIM_IPCX, cmd | SHIM_IPCX_BUSY);
 
 	return 0;
+}
+
+static int hsw_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+{
+	struct sof_ipc_reply reply;
+
+	/* get reply */
+	hsw_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	if (reply.error < 0)
+		return reply.error;
+
+	/* read the message */
+	hsw_mailbox_read(sdev, 0, msg->msg_data, reply.hdr.size);
+
+	return reply.hdr.size;
 }
 
 /*
@@ -650,7 +676,8 @@ struct snd_sof_dsp_ops snd_sof_hsw_ops = {
 	/* ipc */
 	.tx_msg     	= hsw_tx_msg,
 	.fw_ready	= hsw_fw_ready,
-	//int (*rx_msg)(struct snd_sof_dev *sof_dev, struct sof_ipc_msg *msg);
+	.rx_msg		= hsw_rx_msg,
+	.tx_busy	= hsw_tx_busy,
 
 	/* debug */
 	.debug_map  = hsw_debugfs,

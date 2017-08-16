@@ -134,6 +134,7 @@ struct snd_sof_dsp_ops {
 	/* ipc */
 	int (*tx_msg)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
 	int (*rx_msg)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
+	int (*tx_busy)(struct snd_sof_dev *sof_dev);
 
 	/* debug */
 	const struct snd_sof_debugfs_map *debug_map;
@@ -174,7 +175,8 @@ struct snd_sof_pcm {
 	struct snd_dma_buffer page_table[2];	/* playback and capture */
 
 	/* offset to mmaped sof_ipc_stream_posn if used */
-	uint32_t posn_offset[2];
+	struct sof_ipc_stream_posn posn[2];
+	bool posn_valid[2];
 	struct snd_pcm_substream *substream;
 
 	struct mutex mutex;
@@ -289,7 +291,8 @@ struct snd_sof_hda_dev {
 struct snd_sof_dev {
 	struct device *dev;
 	struct device *parent;
-	spinlock_t spinlock;
+	spinlock_t ipc_lock;
+	spinlock_t hw_lock;
 
 	/* ASoC components */
 	struct snd_soc_platform_driver plat_drv;
@@ -410,9 +413,8 @@ struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
 /*
  * Stream IPC
  */
-void snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
-	struct snd_sof_pcm *spcm, int direction,
-	snd_pcm_uframes_t *host, snd_pcm_uframes_t *dai);
+int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
+	struct snd_sof_pcm *spcm, struct sof_ipc_stream_posn *posn);
 
 /*
  * Mixer IPC
