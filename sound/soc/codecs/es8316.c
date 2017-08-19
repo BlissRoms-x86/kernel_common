@@ -10,6 +10,8 @@
  * published by the Free Software Foundation.
  */
 
+#define DEBUG
+
 #include <linux/module.h>
 #include <linux/acpi.h>
 #include <linux/delay.h>
@@ -22,6 +24,9 @@
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
 #include "es8316.h"
+
+#include <linux/dmi.h>
+#include <linux/gpio/consumer.h>
 
 /* In slave mode at single speed, the codec is documented as accepting 5
  * MCLK/LRCK ratios, but we also add ratio 400, which is commonly used on
@@ -575,11 +580,38 @@ static const struct regmap_config es8316_regmap = {
 	.cache_type = REGCACHE_RBTREE,
 };
 
+
+static const struct dmi_system_id chuwi_hi12[] = {
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
+	{
+		.ident = "Chuwi Hi12",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Hampoo"),
+			DMI_MATCH(DMI_BOARD_NAME, "Cherry Trail CR")
+		}
+	},
+#endif
+	{}
+};
+
+static const struct acpi_gpio_params hi12_es8316_gpio_spken = { 0, 0, false };
+static const struct acpi_gpio_params hi12_es8316_gpio_hpint = { 1, 0, false };
+
+static const struct acpi_gpio_mapping hi12_es8316_gpios_map[] = {
+	{ "spken-gpios", &hi12_es8316_gpio_spken, 1 },
+	{ "hpint-gpios", &hi12_es8316_gpio_hpint, 1 },
+	{ },
+};
+
 static int es8316_i2c_probe(struct i2c_client *i2c_client,
 			    const struct i2c_device_id *id)
 {
 	struct es8316_priv *es8316;
 	struct regmap *regmap;
+
+	struct gpio_desc *gpiod_spken;
+	//struct gpio_desc *gpiod_hpint;
+	int error;
 
 	es8316 = devm_kzalloc(&i2c_client->dev, sizeof(struct es8316_priv),
 			      GFP_KERNEL);
@@ -591,6 +623,28 @@ static int es8316_i2c_probe(struct i2c_client *i2c_client,
 	regmap = devm_regmap_init_i2c(i2c_client, &es8316_regmap);
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
+
+	if (dmi_check_system(chuwi_hi12) && ACPI_HANDLE(&i2c_client->dev)) {
+		dev_dbg(&i2c_client->dev, "Applying gpios quirk\n");
+		error = devm_acpi_dev_add_driver_gpios(&i2c_client->dev, hi12_es8316_gpios_map);
+		if (error)
+			return error;
+	}
+
+	gpiod_spken = devm_gpiod_get_optional(&i2c_client->dev, "spken", GPIOD_ASIS);
+	if (IS_ERR(gpiod_spken)) {
+		error = PTR_ERR(gpiod_spken);
+		dev_dbg(&i2c_client->dev, "Failed to get SPK-EN GPIO: %d\n", error);
+		return error;
+	}
+	if (gpiod_spken) {
+		if (gpiod_export(gpiod_spken, false) < 0) {
+			dev_err(&i2c_client->dev, "Failed to export SPK-EN GPIO!.\n");
+		} else {
+			dev_dbg(&i2c_client->dev, "Exported SPK-EN GPIO to sysfs\n");
+		}
+	}
+	//TODO: configure chip to generate HP-DET interrupts
 
 	return snd_soc_register_codec(&i2c_client->dev, &soc_codec_dev_es8316,
 				      &es8316_dai, 1);
