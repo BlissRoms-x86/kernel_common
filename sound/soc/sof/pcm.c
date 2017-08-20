@@ -191,6 +191,7 @@ static int sof_pcm_hw_free(struct snd_pcm_substream *substream)
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct sof_ipc_stream stream;
+	struct sof_ipc_reply reply;
 	int ret;
 
 	/* nothing todo for BE */
@@ -202,8 +203,8 @@ static int sof_pcm_hw_free(struct snd_pcm_substream *substream)
 	stream.comp_id = spcm->comp_id;
 
 	/* send IPC to the DSP */
- 	ret = sof_ipc_tx_message_wait(sdev->ipc, 
-		stream.hdr.cmd, &stream, sizeof(stream), NULL, 0);
+ 	ret = sof_ipc_tx_message_wait(sdev->ipc, stream.hdr.cmd, &stream,
+		sizeof(stream), &reply, sizeof(reply));
 
 	snd_pcm_lib_free_pages(substream);
 	return ret;
@@ -330,7 +331,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 			  SNDRV_PCM_INFO_DRAIN_TRIGGER,
 	runtime->hw.formats = SNDRV_PCM_FMTBIT_S16_LE |
 		SNDRV_PCM_FMTBIT_S24_LE |
-		SNDRV_PCM_FMTBIT_S32_LE;
+		SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_FLOAT;
 	runtime->hw.formats = caps->formats;
 	runtime->hw.period_bytes_min = caps->period_size_min;
 	runtime->hw.period_bytes_max = caps->period_size_max;

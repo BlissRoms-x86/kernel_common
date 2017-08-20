@@ -1319,16 +1319,30 @@ static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	struct sof_ipc_reply reply;
+	int ret = 0;
+	u32 size;
 
 	/* get reply */
 	apl_mailbox_read(sdev, 0, &reply, sizeof(reply));
-	if (reply.error < 0)
-		return reply.error;
+	if (reply.error < 0) {
+		size = sizeof(reply);
+		ret = reply.error;
+	} else {
+		/* reply correct size ? */
+		if (reply.hdr.size != msg->reply_size) {
+			dev_err(sdev->dev, "error: reply expected 0x%lx got 0x%x bytes\n",
+				msg->reply_size, reply.hdr.size);
+			size = msg->reply_size;
+		} else {
+			size = reply.hdr.size;
+		}
+	}
 
 	/* read the message */
-	apl_mailbox_read(sdev, 0, msg->msg_data, reply.hdr.size);
+	if (msg->msg_data && size > 0)
+		apl_mailbox_read(sdev, 0, msg->reply_data, size);
 
-	return reply.hdr.size;
+	return ret;
 }
 
 /*

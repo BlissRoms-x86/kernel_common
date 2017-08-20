@@ -134,7 +134,7 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 	} else {
 		/* copy the data returned from DSP */
 		ret = snd_sof_dsp_rx_msg(sdev, msg);
-		if (ret > 0)
+		if (ret == 0)
 			memcpy(reply_data, msg->reply_data, msg->reply_size);
 	}
 
