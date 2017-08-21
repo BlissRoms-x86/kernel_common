@@ -380,9 +380,11 @@ struct sof_ipc_stream_params {
 	enum sof_ipc_buffer_format buffer_fmt;
 	uint32_t rate;
 	uint32_t channels;
-	uint32_t sample_size;
+	uint32_t sample_valid_bytes;
+	uint32_t sample_container_bytes;
 	/* for notifying host period has completed - 0 means no period IRQ */
 	uint32_t host_period_bytes;
+	enum sof_ipc_chmap chmap[SOF_IPC_MAX_CHANNELS];	/* channel map */
 } __attribute__((packed));
 
 /* PCM params info - SOF_IPC_STREAM_PCM_PARAMS */
@@ -516,7 +518,6 @@ struct sof_ipc_comp_config {
 	uint32_t periods_source;	/* 0 means variable */
 	uint32_t preload_count;	/* how many periods to preload */
 	enum sof_ipc_frame frame_fmt;
-	enum sof_ipc_chmap chmap[SOF_IPC_MAX_CHANNELS];	/* channel map */
 } __attribute__((packed));
 
 /* generic host component */
