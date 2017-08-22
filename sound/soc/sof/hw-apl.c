@@ -1333,6 +1333,7 @@ static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 			dev_err(sdev->dev, "error: reply expected 0x%lx got 0x%x bytes\n",
 				msg->reply_size, reply.hdr.size);
 			size = msg->reply_size;
+			ret = -EINVAL;
 		} else {
 			size = reply.hdr.size;
 		}
