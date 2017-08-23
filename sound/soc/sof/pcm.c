@@ -372,6 +372,9 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	// TODO: create IPC to get this from DSP pipeline
 	//runtime->hw.fifo_size = hw->fifo_size;
 
+	/* set wait time - TODO: come from topology */
+	snd_pcm_wait_time(substream, 100);
+
 	spcm->posn_valid[substream->stream] = false;
 	spcm->substream = substream;
 	mutex_unlock(&spcm->mutex);
