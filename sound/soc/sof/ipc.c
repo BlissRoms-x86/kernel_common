@@ -504,6 +504,7 @@ int snd_sof_ipc_put_mixer(struct snd_sof_ipc *ipc,
 {
 	struct snd_sof_dev *sdev = ipc->sdev;
 	struct sof_ipc_ctrl_values values;
+	struct sof_ipc_reply reply;
 	int err;
 
 	/* write firmware byte counters */
@@ -526,7 +527,8 @@ int snd_sof_ipc_put_mixer(struct snd_sof_ipc *ipc,
 
 		/* send IPC to the DSP */
  		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			values.hdr.cmd, &values, sizeof(values), NULL, 0);
+			values.hdr.cmd, &values, sizeof(values),
+			&reply, sizeof(reply));
 		if (err < 0) {
 			dev_err(sdev->dev, "error: failed to set control %d values\n",
 				values.comp_id);
@@ -565,7 +567,7 @@ int snd_sof_ipc_get_mixer(struct snd_sof_ipc *ipc,
 			get.hdr.cmd, &get, sizeof(get), 
 			&values, sizeof(values));
 		if (err < 0) {
-			dev_err(sdev->dev, "error: faild to get control %d values\n",
+			dev_err(sdev->dev, "error: failed to get control %d values\n",
 				values.comp_id);
 			return err;
 		}

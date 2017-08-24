@@ -519,7 +519,11 @@ static int sof_connect_dai_widget(struct snd_soc_component *scomp,
 
 	list_for_each_entry(rtd, &card->rtd_list, list) {
 
+		dev_dbg(sdev->dev, "tplg: check widget: %s stream: %s dai stream: %s\n",
+				 w->name,  w->sname, rtd->dai_link->stream_name);
+
 		if (!strcmp(rtd->dai_link->stream_name, w->sname)) {
+
 			switch (w->id) {
 			case snd_soc_dapm_dai_out:
 				rtd->cpu_dai->capture_widget = w;
@@ -893,7 +897,7 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 	/* check IPC reply */
 	if (ret < 0 || reply.rhdr.error < 0) {
 		dev_err(sdev->dev, "error: DSP failed to add widget id %d "
-			"type %d name : %s stream %s reply 0x%x\n",
+			"type %d name : %s stream %s reply %d\n",
 			tw->shift, tw->id, tw->name,
 			tw->sname ? tw->sname : "none", reply.rhdr.error);
 		return ret;
@@ -1275,7 +1279,7 @@ static int sof_route_load(struct snd_soc_component *scomp, int index,
 
 	/* check IPC reply */
 	if (reply.error < 0) {
-		dev_err(sdev->dev, "error: DSP failed to add route sink %s control %s source %s result 0x%x\n",
+		dev_err(sdev->dev, "error: DSP failed to add route sink %s control %s source %s result %d\n",
 			route->sink, route->control ? route->control : "none",
 			route->source, reply.error);
 		//return ret; // TODO:
