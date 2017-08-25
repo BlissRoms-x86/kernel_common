@@ -156,7 +156,7 @@ int snd_sof_dbg_init(struct snd_sof_dev *sdev)
 	int err = 0, i;
 
 	sdev->debugfs_root = debugfs_create_dir("sof", NULL);
-	if (IS_ERR(sdev->debugfs_root) || !sdev->debugfs_root) {
+	if (IS_ERR_OR_NULL(sdev->debugfs_root)) {
 		dev_err(sdev->dev, "error: failed to create debugfs directory\n");
 		return -EINVAL;
 	}
@@ -178,6 +178,6 @@ EXPORT_SYMBOL(snd_sof_dbg_init);
 
 void snd_sof_free_debug(struct snd_sof_dev *sdev)
 {
-
+	debugfs_remove_recursive(sdev->debugfs_root);
 }
 EXPORT_SYMBOL(snd_sof_free_debug);

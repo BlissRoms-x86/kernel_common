@@ -1426,11 +1426,11 @@ int snd_sof_load_topology(struct snd_sof_dev *sdev, const char *file)
 			&sof_tplg_ops, fw, SND_SOC_TPLG_INDEX_ALL);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: tplg component load failed %d\n", ret);
-		release_firmware(fw);
-		return -EINVAL;
+		ret = -EINVAL;
 	}
 
-	return 0;
+	release_firmware(fw);
+	return ret;
 }
 EXPORT_SYMBOL(snd_sof_load_topology);
 
