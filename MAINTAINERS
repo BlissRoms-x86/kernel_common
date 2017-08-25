@@ -3406,6 +3406,7 @@ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/gregkh/char-misc.git
 S:	Supported
 F:	drivers/char/
 F:	drivers/misc/
+F:	drivers/virt/
 F:	include/linux/miscdevice.h
 
 CHECKPATCH
