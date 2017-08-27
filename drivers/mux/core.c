@@ -423,14 +423,8 @@ static struct mux_chip *of_find_mux_chip_by_node(struct device_node *np)
 	return dev ? to_mux_chip(dev) : NULL;
 }
 
-/**
- * mux_control_get() - Get the mux-control for a device.
- * @dev: The device that needs a mux-control.
- * @mux_name: The name identifying the mux-control.
- *
- * Return: A pointer to the mux-control, or an ERR_PTR with a negative errno.
- */
-struct mux_control *mux_control_get(struct device *dev, const char *mux_name)
+static struct mux_control *of_mux_control_get(struct device *dev,
+					      const char *mux_name)
 {
 	struct device_node *np = dev->of_node;
 	struct of_phandle_args args;
@@ -483,6 +477,22 @@ struct mux_control *mux_control_get(struct device *dev, const char *mux_name)
 	}
 
 	return &mux_chip->mux[controller];
+}
+
+/**
+ * mux_control_get() - Get the mux-control for a device.
+ * @dev: The device that needs a mux-control.
+ * @mux_name: The name identifying the mux-control.
+ *
+ * Return: A pointer to the mux-control, or an ERR_PTR with a negative errno.
+ */
+struct mux_control *mux_control_get(struct device *dev, const char *mux_name)
+{
+	/* look up via DT first */
+	if (IS_ENABLED(CONFIG_OF) && dev->of_node)
+		return of_mux_control_get(dev, mux_name);
+
+	return ERR_PTR(-ENODEV);
 }
 EXPORT_SYMBOL_GPL(mux_control_get);
 
