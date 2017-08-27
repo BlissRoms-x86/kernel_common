@@ -24,6 +24,9 @@
 #include <linux/of_platform.h>
 #include <linux/slab.h>
 
+static DEFINE_MUTEX(mux_lookup_lock);
+static LIST_HEAD(mux_lookup_list);
+
 /*
  * The idle-as-is "state" is not an actual state that may be selected, it
  * only implies that the state should not be changed. So, use that state
@@ -408,6 +411,23 @@ int mux_control_deselect(struct mux_control *mux)
 }
 EXPORT_SYMBOL_GPL(mux_control_deselect);
 
+static int parent_name_match(struct device *dev, const void *data)
+{
+	const char *parent_name = dev_name(dev->parent);
+	const char *name = data;
+
+	return strcmp(parent_name, name) == 0;
+}
+
+static struct mux_chip *mux_chip_get_by_name(const char *name)
+{
+	struct device *dev;
+
+	dev = class_find_device(&mux_class, NULL, name, parent_name_match);
+
+	return dev ? to_mux_chip(dev) : NULL;
+}
+
 static int of_dev_node_match(struct device *dev, const void *data)
 {
 	return dev->of_node == data;
@@ -480,6 +500,42 @@ static struct mux_control *of_mux_control_get(struct device *dev,
 }
 
 /**
+ * mux_add_table() - register PWM device consumers
+ * @table: array of consumers to register
+ * @num: number of consumers in table
+ */
+void mux_add_table(struct mux_lookup *table, size_t num)
+{
+	mutex_lock(&mux_lookup_lock);
+
+	while (num--) {
+		list_add_tail(&table->list, &mux_lookup_list);
+		table++;
+	}
+
+	mutex_unlock(&mux_lookup_lock);
+}
+EXPORT_SYMBOL_GPL(mux_add_table);
+
+/**
+ * mux_remove_table() - unregister PWM device consumers
+ * @table: array of consumers to unregister
+ * @num: number of consumers in table
+ */
+void mux_remove_table(struct mux_lookup *table, size_t num)
+{
+	mutex_lock(&mux_lookup_lock);
+
+	while (num--) {
+		list_del(&table->list);
+		table++;
+	}
+
+	mutex_unlock(&mux_lookup_lock);
+}
+EXPORT_SYMBOL_GPL(mux_remove_table);
+
+/**
  * mux_control_get() - Get the mux-control for a device.
  * @dev: The device that needs a mux-control.
  * @mux_name: The name identifying the mux-control.
@@ -488,11 +544,49 @@ static struct mux_control *of_mux_control_get(struct device *dev,
  */
 struct mux_control *mux_control_get(struct device *dev, const char *mux_name)
 {
+	struct mux_lookup *m, *chosen = NULL;
+	const char *dev_id = dev_name(dev);
+	struct mux_chip *mux_chip;
+
 	/* look up via DT first */
 	if (IS_ENABLED(CONFIG_OF) && dev->of_node)
 		return of_mux_control_get(dev, mux_name);
 
-	return ERR_PTR(-ENODEV);
+	/*
+	 * For non DT we look up the provider in the static table typically
+	 * provided by board setup code.
+	 *
+	 * If a match is found, the provider mux chip is looked up by name
+	 * and a mux-control is requested using the table provided index.
+	 */
+	mutex_lock(&mux_lookup_lock);
+	list_for_each_entry(m, &mux_lookup_list, list) {
+		if (WARN_ON(!m->dev_id || !m->mux_name || !m->provider))
+			continue;
+
+		if (strcmp(m->dev_id, dev_id) == 0 &&
+		    strcmp(m->mux_name, mux_name) == 0) {
+			chosen = m;
+			break;
+		}
+	}
+	mutex_unlock(&mux_lookup_lock);
+
+	if (!chosen)
+		return ERR_PTR(-ENODEV);
+
+	mux_chip = mux_chip_get_by_name(chosen->provider);
+	if (!mux_chip)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	if (chosen->index >= mux_chip->controllers) {
+		dev_err(dev, "Mux lookup table index out of bounds %u >= %u\n",
+			chosen->index, mux_chip->controllers);
+		put_device(&mux_chip->dev);
+		return ERR_PTR(-EINVAL);
+	}
+
+	return &mux_chip->mux[chosen->index];
 }
 EXPORT_SYMBOL_GPL(mux_control_get);
 

@@ -18,6 +18,17 @@
 struct device;
 struct mux_control;
 
+struct mux_lookup {
+	struct list_head list;
+	const char *provider;
+	unsigned int index;
+	const char *dev_id;
+	const char *mux_name;
+};
+
+void mux_add_table(struct mux_lookup *table, size_t num);
+void mux_remove_table(struct mux_lookup *table, size_t num);
+
 unsigned int mux_control_states(struct mux_control *mux);
 int __must_check mux_control_select(struct mux_control *mux,
 				    unsigned int state);
