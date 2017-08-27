@@ -752,11 +752,11 @@ static int tcpm_set_roles(struct tcpm_port *port, bool attached,
 	int ret;
 
 	if (data == TYPEC_HOST)
-		ret = tcpm_mux_set(port, TYPEC_MUX_USB,
+		ret = tcpm_mux_set(port, TYPEC_MUX_USB_HOST,
 				   TCPC_USB_SWITCH_CONNECT);
 	else
-		ret = tcpm_mux_set(port, TYPEC_MUX_NONE,
-				   TCPC_USB_SWITCH_DISCONNECT);
+		ret = tcpm_mux_set(port, TYPEC_MUX_USB_DEVICE,
+				   TCPC_USB_SWITCH_CONNECT);
 	if (ret < 0)
 		return ret;
 
@@ -2025,6 +2025,7 @@ static void tcpm_reset_port(struct tcpm_port *port)
 	tcpm_init_vconn(port);
 	tcpm_set_current_limit(port, 0, 0);
 	tcpm_set_polarity(port, TYPEC_POLARITY_CC1);
+	tcpm_mux_set(port, TYPEC_MUX_NONE, TCPC_USB_SWITCH_DISCONNECT);
 	tcpm_set_attached_state(port, false);
 	port->try_src_count = 0;
 	port->try_snk_count = 0;

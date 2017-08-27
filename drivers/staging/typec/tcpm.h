@@ -83,17 +83,23 @@ enum tcpc_usb_switch {
 };
 
 /* Mux state attributes */
-#define TCPC_MUX_USB_ENABLED		BIT(0)	/* USB enabled */
-#define TCPC_MUX_DP_ENABLED		BIT(1)	/* DP enabled */
-#define TCPC_MUX_POLARITY_INVERTED	BIT(2)	/* Polarity inverted */
+#define TCPC_MUX_USB_DEVICE_ENABLED		BIT(0)	/* USB device enabled */
+#define TCPC_MUX_USB_HOST_ENABLED		BIT(1)	/* USB host enabled */
+#define TCPC_MUX_DP_SRC_ENABLED			BIT(2)	/* DP enabled */
+#define TCPC_MUX_POLARITY_INVERTED		BIT(3)	/* Polarity inverted */
 
 /* Mux modes, decoded to attributes */
 enum tcpc_mux_mode {
-	TYPEC_MUX_NONE	= 0,				/* Open switch */
-	TYPEC_MUX_USB	= TCPC_MUX_USB_ENABLED,		/* USB only */
-	TYPEC_MUX_DP	= TCPC_MUX_DP_ENABLED,		/* DP only */
-	TYPEC_MUX_DOCK	= TCPC_MUX_USB_ENABLED |	/* Both USB and DP */
-			  TCPC_MUX_DP_ENABLED,
+	/* Open switch */
+	TYPEC_MUX_NONE = 0,
+	/* USB device only */
+	TYPEC_MUX_USB_DEVICE = TCPC_MUX_USB_DEVICE_ENABLED,
+	/* USB host only */
+	TYPEC_MUX_USB_HOST = TCPC_MUX_USB_HOST_ENABLED,
+	/* DP source only */
+	TYPEC_MUX_DP = TCPC_MUX_DP_SRC_ENABLED,
+	/* Both USB host and DP source */
+	TYPEC_MUX_DOCK = TCPC_MUX_USB_HOST_ENABLED | TCPC_MUX_DP_SRC_ENABLED,
 };
 
 struct tcpc_mux_dev {
