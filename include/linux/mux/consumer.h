@@ -15,6 +15,22 @@
 
 #include <linux/compiler.h>
 
+/*
+ * Mux state values for USB muxes, used for both USB device/host role muxes
+ * as well as for Type-C polarity/role/altmode muxes.
+ *
+ * MUX_USB_POLARITY_INV may be or-ed together with any other mux-state as
+ * inverted-polarity (Type-C plugged in upside down) can happen with any
+ * other mux-state.
+ */
+#define MUX_USB_POLARITY_INV	BIT(0)   /* Polarity inverted bit */
+#define MUX_USB_NONE		(1 << 1) /* Mux open / not connected */
+#define MUX_USB_DEVICE		(2 << 1) /* USB device mode */
+#define MUX_USB_HOST		(3 << 1) /* USB host mode */
+#define MUX_USB_HOST_AND_DP_SRC	(4 << 1) /* USB host + 2 lanes Display Port */
+#define MUX_USB_DP_SRC		(5 << 1) /* 4 lanes Display Port source */
+#define MUX_USB_STATES		(6 << 1)
+
 struct device;
 struct mux_control;
 
