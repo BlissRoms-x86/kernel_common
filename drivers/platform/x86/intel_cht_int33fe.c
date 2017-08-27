@@ -24,6 +24,7 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/mux/consumer.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
@@ -33,6 +34,19 @@ struct cht_int33fe_data {
 	struct i2c_client *max17047;
 	struct i2c_client *fusb302;
 	struct i2c_client *pi3usb30532;
+};
+
+static struct mux_lookup cht_int33fe_mux_lookup[] = {
+	{
+		.provider = "i2c-pi3usb30532",
+		.dev_id   = "i2c-fusb302",
+		.mux_name = "type-c-mode-mux",
+	},
+	{
+		.provider = "intel_cht_usb_mux",
+		.dev_id   = "i2c-fusb302",
+		.mux_name = "usb-role-mux",
+	},
 };
 
 /*
@@ -170,6 +184,9 @@ static int cht_int33fe_probe(struct i2c_client *client)
 	board_info.properties = fusb302_props;
 	board_info.irq = fusb302_irq;
 
+	mux_add_table(cht_int33fe_mux_lookup,
+		      ARRAY_SIZE(cht_int33fe_mux_lookup));
+
 	data->fusb302 = i2c_acpi_new_device(dev, 2, &board_info);
 	if (!data->fusb302)
 		goto out_unregister_max17047;
@@ -193,6 +210,9 @@ out_unregister_max17047:
 	if (data->max17047)
 		i2c_unregister_device(data->max17047);
 
+	mux_remove_table(cht_int33fe_mux_lookup,
+		      ARRAY_SIZE(cht_int33fe_mux_lookup));
+
 	return -EPROBE_DEFER; /* Wait for the i2c-adapter to load */
 }
 
@@ -204,6 +224,9 @@ static int cht_int33fe_remove(struct i2c_client *i2c)
 	i2c_unregister_device(data->fusb302);
 	if (data->max17047)
 		i2c_unregister_device(data->max17047);
+
+	mux_remove_table(cht_int33fe_mux_lookup,
+		      ARRAY_SIZE(cht_int33fe_mux_lookup));
 
 	return 0;
 }
