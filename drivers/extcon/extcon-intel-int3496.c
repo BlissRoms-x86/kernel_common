@@ -23,7 +23,11 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/mux/consumer.h>
 #include <linux/platform_device.h>
+
+#include <asm/cpu_device_id.h>
+#include <asm/intel-family.h>
 
 #define INT3496_GPIO_USB_ID	0
 #define INT3496_GPIO_VBUS_EN	1
@@ -37,6 +41,8 @@ struct int3496_data {
 	struct gpio_desc *gpio_usb_id;
 	struct gpio_desc *gpio_vbus_en;
 	struct gpio_desc *gpio_usb_mux;
+	struct mux_control *usb_mux;
+	bool usb_mux_set;
 	int usb_id_irq;
 };
 
@@ -56,11 +62,31 @@ static const struct acpi_gpio_mapping acpi_int3496_default_gpios[] = {
 	{ },
 };
 
+static struct mux_lookup acpi_int3496_cht_mux_lookup[] = {
+	{
+		.provider = "intel_cht_usb_mux",
+		.dev_id   = "INT3496:00",
+		.mux_name = "usb-role-mux",
+	},
+};
+
+#define ICPU(model)	{ X86_VENDOR_INTEL, 6, model, X86_FEATURE_ANY, }
+
+static const struct x86_cpu_id cht_cpu_ids[] = {
+	ICPU(INTEL_FAM6_ATOM_AIRMONT),		/* Braswell, Cherry Trail */
+	{}
+};
+
+static bool int3496_soc_has_mux(void)
+{
+	return x86_match_cpu(cht_cpu_ids);
+}
+
 static void int3496_do_usb_id(struct work_struct *work)
 {
 	struct int3496_data *data =
 		container_of(work, struct int3496_data, work.work);
-	int id = gpiod_get_value_cansleep(data->gpio_usb_id);
+	int ret, id = gpiod_get_value_cansleep(data->gpio_usb_id);
 
 	/* id == 1: PERIPHERAL, id == 0: HOST */
 	dev_dbg(data->dev, "Connected %s cable\n", id ? "PERIPHERAL" : "HOST");
@@ -71,6 +97,22 @@ static void int3496_do_usb_id(struct work_struct *work)
 	 */
 	if (!IS_ERR(data->gpio_usb_mux))
 		gpiod_direction_output(data->gpio_usb_mux, id);
+
+	if (data->usb_mux) {
+		/*
+		 * The mux framework expects multiple competing users, we must
+		 * release our previous setting before applying the new one.
+		 */
+		if (data->usb_mux_set)
+			mux_control_deselect(data->usb_mux);
+
+		ret = mux_control_select(data->usb_mux,
+					 id ? MUX_USB_DEVICE : MUX_USB_HOST);
+		if (ret)
+			dev_err(data->dev, "Error setting mux: %d\n", ret);
+
+		data->usb_mux_set = ret == 0;
+	}
 
 	if (!IS_ERR(data->gpio_vbus_en))
 		gpiod_direction_output(data->gpio_vbus_en, !id);
@@ -106,6 +148,21 @@ static int int3496_probe(struct platform_device *pdev)
 
 	data->dev = dev;
 	INIT_DELAYED_WORK(&data->work, int3496_do_usb_id);
+
+	if (int3496_soc_has_mux()) {
+		mux_add_table(acpi_int3496_cht_mux_lookup,
+			      ARRAY_SIZE(acpi_int3496_cht_mux_lookup));
+		data->usb_mux = devm_mux_control_get(dev, "usb-role-mux");
+		/* Doing this here keeps our error handling clean. */
+		mux_remove_table(acpi_int3496_cht_mux_lookup,
+				 ARRAY_SIZE(acpi_int3496_cht_mux_lookup));
+		if (IS_ERR(data->usb_mux)) {
+			ret = PTR_ERR(data->usb_mux);
+			if (ret != -EPROBE_DEFER)
+				dev_err(dev, "can't get mux: %d\n", ret);
+			return ret;
+		}
+	}
 
 	data->gpio_usb_id = devm_gpiod_get(dev, "id", GPIOD_IN);
 	if (IS_ERR(data->gpio_usb_id)) {
