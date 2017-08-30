@@ -1132,6 +1132,8 @@ static int sof_link_load(struct snd_soc_component *scomp, int index,
 	config.num_slots = hw_config->tdm_slots;
 	config.sample_container_bits = hw_config->tdm_slot_width;
 	config.mclk_master = hw_config->mclk_direction;
+	config.rx_slot_mask = hw_config->rx_slots;
+	config.tx_slot_mask = hw_config->tx_slots;
 
 	/* clock directions wrt codec */
 	if (hw_config->bclk_master) {
