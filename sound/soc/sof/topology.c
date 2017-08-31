@@ -723,7 +723,7 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 	if (tw->num_kcontrols != 1) {
 		dev_err(sdev->dev, "error: invalid kcontrol count %d for volume\n",
 			tw->num_kcontrols);
-		//return -EINVAL;
+		return -EINVAL;
 	}
 
 	/* configure dai IPC message */
