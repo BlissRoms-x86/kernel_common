@@ -148,6 +148,18 @@ struct snd_sof_dsp_ops {
 	int debug_map_count;
 	void (*dbg_dump)(struct snd_sof_dev *sof_dev, u32 flags);
 
+	/* connect pcm substream to a host stream */
+	int (*host_stream_open)(struct snd_sof_dev *sdev,
+		struct snd_pcm_substream *substream);
+
+	/* host stream prepare */
+	int (*host_stream_prepare)(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params);
+
+	/* host stream trigger */
+	int (*host_stream_trigger)(struct snd_sof_dev *sdev,
+		struct snd_pcm_substream *substream, int cmd);
+
 	/* FW loading */
 	int (*load_firmware)(struct snd_sof_dev *sof_dev, const struct firmware *fw);
 	int (*load_module)(struct snd_sof_dev *sof_dev,
