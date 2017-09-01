@@ -164,4 +164,6 @@ void tcpm_pd_transmit_complete(struct tcpm_port *port,
 void tcpm_pd_hard_reset(struct tcpm_port *port);
 void tcpm_tcpc_reset(struct tcpm_port *port);
 
+struct tcpc_mux_dev *devm_tcpc_gen_mux_create(struct device *dev);
+
 #endif /* __LINUX_USB_TCPM_H */
