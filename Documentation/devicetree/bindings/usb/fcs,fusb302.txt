@@ -6,6 +6,9 @@ Required properties :
 - interrupts             : Interrupt specifier
 
 Optional properties :
+- mux-controls           : List of mux-ctrl-specifiers containing 1 or 2 muxes
+- mux-names              : "type-c-mode-mux" when using 1 mux, or
+                           "type-c-mode-mux", "usb-role-mux" when using 2 muxes
 - fcs,max-sink-microvolt : Maximum voltage to negotiate when configured as sink
 - fcs,max-sink-microamp  : Maximum current to negotiate when configured as sink
 - fcs,max-sink-microwatt : Maximum power to negotiate when configured as sink
