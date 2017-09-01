@@ -467,8 +467,8 @@ static struct mux_control *of_mux_control_get(struct device *dev,
 					 "mux-controls", "#mux-control-cells",
 					 index, &args);
 	if (ret) {
-		dev_err(dev, "%pOF: failed to get mux-control %s(%i)\n",
-			np, mux_name ?: "", index);
+		dev_err(dev, "%s: failed to get mux-control %s(%i)\n",
+			np->full_name, mux_name ?: "", index);
 		return ERR_PTR(ret);
 	}
 
@@ -479,8 +479,8 @@ static struct mux_control *of_mux_control_get(struct device *dev,
 
 	if (args.args_count > 1 ||
 	    (!args.args_count && (mux_chip->controllers > 1))) {
-		dev_err(dev, "%pOF: wrong #mux-control-cells for %pOF\n",
-			np, args.np);
+		dev_err(dev, "%s: wrong #mux-control-cells for %s\n",
+			np->full_name, args.np->full_name);
 		put_device(&mux_chip->dev);
 		return ERR_PTR(-EINVAL);
 	}
@@ -490,8 +490,8 @@ static struct mux_control *of_mux_control_get(struct device *dev,
 		controller = args.args[0];
 
 	if (controller >= mux_chip->controllers) {
-		dev_err(dev, "%pOF: bad mux controller %u specified in %pOF\n",
-			np, controller, args.np);
+		dev_err(dev, "%s: bad mux controller %u specified in %s\n",
+			np->full_name, controller, args.np->full_name);
 		put_device(&mux_chip->dev);
 		return ERR_PTR(-EINVAL);
 	}
