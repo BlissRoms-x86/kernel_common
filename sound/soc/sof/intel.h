@@ -300,4 +300,66 @@ enum skl_cl_dma_wake_states {
 	APL_CL_DMA_ERR,	/* TODO: Expand the error states */
 };
 
+struct stream_sample_format {
+	uint32_t sample_rate;
+	uint8_t code;
+};
+
+static struct stream_sample_format sample_format[] = {
+	{8000, 0x5},
+	{9600, 0x4},
+	{11025, 0x43},
+	{16000, 0x2},
+	{22050, 0x41},
+	{24000, 0x1},
+	{32000, 0xa},
+	{44100, 0x40},
+	{48000, 0x0},
+	{88200, 0x48},
+	{96000, 0x8},
+	{144000, 0x10},
+	{176400, 0x58},
+	{192000, 0x18},
+};
+
+static inline uint8_t get_sample_code(uint32_t sample_rate)
+{
+	int i;
+
+	for (i = 0; i < sizeof(sample_format)
+		/ sizeof(struct stream_sample_format); i++) {
+		if (sample_format[i].sample_rate == sample_rate)
+			return sample_format[i].code;
+	}
+
+	return 0; /* use 48KHz if not found */
+}
+
+struct stream_bits_format {
+	uint32_t bits;
+	uint8_t code;
+};
+
+static struct stream_bits_format bits_format[] = {
+	{8, 0x0},
+	{16, 0x1},
+	{20, 0x2},
+	{24, 0x3},
+	{32, 0x4},
+};
+
+/* get code for BITS(Bits per Sample) */
+static inline uint8_t get_bits_code(uint32_t bits)
+{
+	int i;
+
+	for (i = 0; i < sizeof(bits_format)
+		/ sizeof(struct stream_bits_format); i++) {
+		if (bits_format[i].bits == bits)
+			return bits_format[i].code;
+	}
+
+	return 1; /* use 16bits format if not found */
+}
+
 #endif
