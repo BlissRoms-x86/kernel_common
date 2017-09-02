@@ -54,7 +54,7 @@
  *
  * Author: Liam Girdwood <liam.r.girdwood@linux.intel.com>
  */
-
+#define DEBUG 
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
@@ -186,6 +186,13 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 	/* copy offset */
 	//spcm->posn_offset[substream->stream] = ipc_params_reply.posn_offset;
 
+	/* firmware already configured host stream */
+	if (ops && ops->host_stream_prepare) {
+		pcm.params.stream_tag =
+			ops->host_stream_prepare(sdev, substream, params);
+		dev_dbg(sdev->dev, "stream_tag %d", pcm.params.stream_tag);
+	}
+
 	return ret;
 }
 
@@ -226,6 +233,8 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct sof_ipc_stream stream;
 	struct sof_ipc_reply reply;
+	const struct snd_sof_dsp_ops *ops = sdev->ops;
+	int ret = 0;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
@@ -260,8 +269,13 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	}
 
 	/* send IPC to the DSP */
-	return sof_ipc_tx_message(sdev->ipc, stream.hdr.cmd, &stream,
+	ret = sof_ipc_tx_message(sdev->ipc, stream.hdr.cmd, &stream,
 		sizeof(stream), &reply, sizeof(reply));
+
+	if (ops && ops->host_stream_trigger)
+		ret = ops->host_stream_trigger(sdev, substream, cmd);
+
+	return ret;
 }
 
 static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
@@ -269,8 +283,10 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
+	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
 	snd_pcm_uframes_t host = 0, dai = 0;
+	int err;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
@@ -298,6 +314,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct snd_soc_tplg_stream_caps *caps = 
 		&spcm->pcm.caps[substream->stream];
+	const struct snd_sof_dsp_ops *ops = sdev->ops;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
@@ -348,6 +365,10 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	spcm->stream[substream->stream].posn.host_posn = 0;
 	spcm->stream[substream->stream].posn.dai_posn = 0;
 	spcm->stream[substream->stream].substream = substream;
+
+	if (ops && ops->host_stream_open)
+		ops->host_stream_open(sdev, substream);
+
 	mutex_unlock(&spcm->mutex);
 	return 0;
 }
@@ -395,6 +416,7 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	int ret = 0, stream = SNDRV_PCM_STREAM_PLAYBACK;
 
 	spcm = snd_sof_find_spcm_dai(sdev, rtd);
+
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",
 			rtd->dai_link->id);

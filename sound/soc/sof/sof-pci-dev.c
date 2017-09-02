@@ -72,16 +72,16 @@
 static struct snd_soc_acpi_mach sof_bxt_machines[] = {
 	{
 		.id = "INT343A",
-		.drv_name = "bxt_alc298s_i2s",
-		.sof_fw_filename = "intel/reef-bxt.ri",
-		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.drv_name = "sof-nocodec",
+		.sof_fw_filename = "intel/reef-apl.ri",
+		.sof_tplg_filename = "intel/reef-apl-nocodec.tplg",
 		.asoc_plat_name = "0000:00:0e.0",
 	},
 	{
 		.id = "DLGS7219",
 		.drv_name = "bxt_da7219_max98357a_i2s",
-		.sof_fw_filename = "intel/reef-bxt.ri",
-		.sof_tplg_filename = "intel/reef-bxt.tplg",
+		.sof_fw_filename = "intel/reef-apl.ri",
+		.sof_tplg_filename = "intel/reef-apl.tplg",
 		.asoc_plat_name = "0000:00:0e.0",
 	},
 };
@@ -93,8 +93,8 @@ static struct sof_dev_desc bxt_desc = {
 	.resindex_imr_base	= -1,
 	.irqindex_host_ipc	= -1,
 	.resindex_dma_base	= -1,
-	.nocodec_fw_filename = "intel/reef-bxt.ri",
-	.nocodec_tplg_filename = "intel/reef-bxt.tplg"
+	.nocodec_fw_filename = "intel/reef-apl.ri",
+	.nocodec_tplg_filename = "intel/reef-apl-nocodec.tplg"
 };
 #endif
 
