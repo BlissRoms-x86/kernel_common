@@ -513,6 +513,23 @@ static int apl_trigger(struct snd_sof_dev *sdev,
 	return ret;
 }
 
+static int apl_transfer_fw(struct snd_sof_dev *sdev, int stream_tag);
+static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
+	unsigned int size, struct snd_dma_buffer *dmab, int direction,
+	int stream_tags);
+static int apl_stream_prepare(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params);
+
+int apl_stream_trigger(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream, int cmd)
+{
+	struct snd_sof_pdata *plat_data = dev_get_platdata(sdev->dev);
+	struct snd_sof_hda_stream *stream = substream->runtime->private_data;
+	int ret = 0, stream_tag = 0;
+
+	return apl_trigger(sdev, stream, cmd);
+}
+
 static int apl_transfer_fw(struct snd_sof_dev *sdev, int stream_tag)
 {
 	struct snd_sof_hda_stream *stream = NULL;
@@ -586,7 +603,8 @@ static int apl_cl_setup_bdl(struct snd_sof_dev *sdev,
 		bdl[APL_BDL_ARRAY_ADDR_U] = cpu_to_le32(upper_32_bits(addr));
 
 		/* program BDL size */
-		chunk = snd_sgbuf_get_chunk_size(dmab, offset, size);	
+//		chunk = snd_sgbuf_get_chunk_size(dmab, offset, size);
+		chunk = 4096; /* need make sure we have at least 2 BDL items */
 
 		bdl[APL_BDL_ARRAY_SIZE] = cpu_to_le32(chunk);
 
@@ -601,14 +619,210 @@ static int apl_cl_setup_bdl(struct snd_sof_dev *sdev,
 		bdl += 4;
 		stream->frags++;
 		offset += chunk;
+		dev_dbg(sdev->dev, "bdl, frags:%d, chunk size:0x%x;\n",
+				stream->frags, chunk);
 	}
 
 	*bdlp = bdl;
 	return offset;
 }
 
+int apl_pcm_open(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream)
+{
+	struct snd_sof_hda_stream *stream = NULL;
+	struct snd_sof_hda_dev *hdev = &sdev->hda;
+	int i;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		/* get an unused playback stream */
+		for (i = 0; i < hdev->num_playback; i++) {
+			if (!hdev->pstream[i].open) {
+				hdev->pstream[i].open = true;
+				stream = &hdev->pstream[i];
+				break;
+			}
+		}
+	} else {
+		/* get an unused capture stream */
+		for (i = 0; i < hdev->num_capture; i++) {
+			if (!hdev->cstream[i].open) {
+				hdev->cstream[i].open = true;
+				stream = &hdev->cstream[i];
+				break;
+			}
+		}
+	}
+
+	if (stream == NULL) {
+		dev_err(sdev->dev, "error: no stream available\n");
+		return -ENODEV;
+	} else {
+		/* binding pcm substream to hda stream */
+		substream->runtime->private_data = stream;
+		return 0;
+	}
+
+}
+
+static int apl_stream_prepare(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params)
+{
+	struct snd_sof_hda_stream *stream = substream->runtime->private_data;
+	struct snd_sof_hda_dev *hdev = &sdev->hda;
+	struct pci_dev *pci = sdev->pci;
+	struct snd_dma_buffer *dmab;// = substream->runtime->dma_buffer_p;
+	int direction = substream->stream;
+	int ret, timeout = APL_STREAM_RESET_TIMEOUT, i;
+	u32 val, mask;
+	u32 *bdl, size = params_buffer_bytes(params);
+
+	if (stream == NULL) {
+		dev_err(sdev->dev, "error: no stream available\n");
+		return -ENODEV;
+	}
+
+	/* decouple host and link DMA */
+	mask = 0x1 << stream->index;
+	snd_sof_dsp_update_bits(sdev, APL_PP_BAR, SOF_HDA_REG_PP_PPCTL,
+			mask, mask);
+
+	dmab = substream->runtime->dma_buffer_p;
+
+	stream->format_val = (get_sample_code(params_rate(params)) << 8) |
+		(get_bits_code(params_width(params)) << 4) |
+		(params_channels(params) - 1);
+	stream->bufsize = size;
+
+	/* clear stream status */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset,
+		SOF_HDA_CL_DMA_SD_INT_MASK | SOF_HDA_SD_CTL_DMA_START, 0);
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_STS,
+		SOF_HDA_CL_DMA_SD_INT_MASK, SOF_HDA_CL_DMA_SD_INT_MASK);
+
+	/* stream reset */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset, 0x1, 0x1);
+	udelay(3);
+	do {
+		val = snd_sof_dsp_read(sdev, APL_HDA_BAR, stream->sd_offset);
+		if (val & 0x1)
+			break;
+	} while (--timeout);
+	if (timeout == 0) {
+		dev_err(sdev->dev, "error: stream reset failed\n");
+		return -EINVAL;
+	}
+
+	timeout = APL_STREAM_RESET_TIMEOUT;
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset, 0x1, 0x0);
+
+	/* wait for hardware to report that stream is out of reset */
+	udelay(3);
+	do {
+		val = snd_sof_dsp_read(sdev, APL_HDA_BAR, stream->sd_offset);
+		if ((val & 0x1) == 0)
+			break;
+	} while (--timeout);
+	if (timeout == 0) {
+		dev_err(sdev->dev, "error: timeout waiting for stream reset\n");
+		return -EINVAL;
+	}
+
+	if (stream->posbuf)
+		*stream->posbuf = 0;
+
+	/* reset BDL address */
+	snd_sof_dsp_write(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_BDLPL, 0x0);
+	snd_sof_dsp_write(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_BDLPU, 0x0);
+
+	/* clear stream status */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset,
+		SOF_HDA_CL_DMA_SD_INT_MASK | SOF_HDA_SD_CTL_DMA_START, 0);
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_STS,
+		SOF_HDA_CL_DMA_SD_INT_MASK, SOF_HDA_CL_DMA_SD_INT_MASK);
+
+	stream->frags = 0;
+
+	bdl = (u32 *)stream->bdl.area;
+	ret = apl_cl_setup_bdl(sdev, dmab, stream, &bdl, size);
+	if (ret < 0) {
+		dev_dbg(sdev->dev, "error: set up bdl fail\n");
+		goto error;
+	}
+
+	/* set up stream descriptor for DMA */
+	/* program stream tag */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset,
+		SOF_HDA_CL_SD_CTL_STREAM_TAG_MASK,
+		stream->stream_tag << SOF_HDA_CL_SD_CTL_STREAM_TAG_SHIFT);
+
+	/* program cyclic buffer length */
+	snd_sof_dsp_write(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_CBL,
+		stream->bufsize);
+
+	/* program stream format */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_FORMAT,
+		0xffff, stream->format_val);
+
+	/* program last valid index */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_LVI,
+		0xffff, (stream->frags - 1));
+
+	/* program BDL address */
+	snd_sof_dsp_write(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_BDLPL,
+		(u32)stream->bdl.addr);
+	snd_sof_dsp_write(sdev, APL_HDA_BAR,
+		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_BDLPU,
+		upper_32_bits(stream->bdl.addr));
+
+	/* enable position buffer */
+	if (!(snd_sof_dsp_read(sdev, APL_HDA_BAR, SOF_HDA_ADSP_DPLBASE)
+				& SOF_HDA_ADSP_DPLBASE_ENABLE))
+		snd_sof_dsp_write(sdev, APL_HDA_BAR, SOF_HDA_ADSP_DPLBASE,
+			(u32)hdev->posbuffer.addr |
+			SOF_HDA_ADSP_DPLBASE_ENABLE);
+
+	/* set interrupt enable bits */
+	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset,
+		SOF_HDA_CL_DMA_SD_INT_MASK, SOF_HDA_CL_DMA_SD_INT_MASK);
+
+	/* read FIFO size */
+	if (stream->direction == SNDRV_PCM_STREAM_PLAYBACK) {
+		stream->fifo_size = snd_sof_dsp_read(sdev, APL_HDA_BAR,
+			stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_FIFOSIZE)
+			& 0xffff;
+		stream->fifo_size += 1;
+	} else
+		stream->fifo_size = 0;
+
+	apl_spib_config(sdev, stream, APL_SPIB_ENABLE, size);
+
+	snd_sof_dsp_write(sdev, APL_HDA_BAR, stream->sd_offset +
+			SOF_HDA_PPHC_BASE + SOF_HDA_PPHC_INTERVAL *
+			(7 + stream->stream_tag - 1), (u32)0x4);
+
+	snd_sof_dsp_write(sdev, APL_HDA_BAR, stream->sd_offset +
+			SOF_HDA_PPHC_BASE + 0x08 + SOF_HDA_PPHC_INTERVAL *
+			(7 + stream->stream_tag - 1), (u32)0x10000);
+
+	return stream->stream_tag;
+
+error:
+	snd_dma_free_pages(dmab);
+	return ret;
+}
+
 static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
-	unsigned int size, struct snd_dma_buffer *dmab, int direction)
+		unsigned int size, struct snd_dma_buffer *dmab,
+		int direction, int stream_tag)
 {
 	struct snd_sof_hda_stream *stream = NULL;
 	struct snd_sof_hda_dev *hdev = &sdev->hda;
@@ -641,10 +855,6 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 		dev_err(sdev->dev, "error: no stream available\n");
 		return -ENODEV;
 	}
-	
-	/* decouple host and link DMA */
-	mask = 0x1 << stream->index;
-	snd_sof_dsp_update_bits(sdev, APL_PP_BAR, SOF_HDA_REG_PP_PPCTL, mask, mask);
 
 	/* allocate DMA buffer */
 	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV_SG, &pci->dev, size, dmab);
@@ -653,8 +863,14 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 		return ret;
 	}
 
+has_stream:
 	stream->format_val = format;
 	stream->bufsize = size;
+
+	/* decouple host and link DMA */
+	mask = 0x1 << stream->index;
+	snd_sof_dsp_update_bits(sdev, APL_PP_BAR, SOF_HDA_REG_PP_PPCTL,
+			mask, mask);
 
 	/* clear stream status */
 	snd_sof_dsp_update_bits(sdev, APL_HDA_BAR, stream->sd_offset,
@@ -708,7 +924,7 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 		stream->sd_offset + SOF_HDA_ADSP_REG_CL_SD_STS,
 	 	SOF_HDA_CL_DMA_SD_INT_MASK, SOF_HDA_CL_DMA_SD_INT_MASK); 
 
-	stream->frags = 0;		
+	stream->frags = 0;
 
 	bdl = (u32 *)stream->bdl.area;
 	ret = apl_cl_setup_bdl(sdev, dmab, stream, &bdl, size);
@@ -960,6 +1176,11 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		/* handle messages from DSP */
 		snd_sof_ipc_msgs_rx(sdev);
 
+		/* clear busy interrupt */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
+			APL_DSP_REG_HIPCT, APL_DSP_REG_HIPCT_BUSY, 
+			APL_DSP_REG_HIPCT_BUSY);
+
 		ret = IRQ_HANDLED;
 	}
 
@@ -979,18 +1200,6 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 	return ret;
 }
 
-static int apl_cmd_done(struct snd_sof_dev *sdev)
-{
-	/* clear busy interrupt */
-	snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
-		APL_DSP_REG_HIPCT, APL_DSP_REG_HIPCT_BUSY,
-		APL_DSP_REG_HIPCT_BUSY);
-
-	/* TODO: do we need to ack DSP ?? */
-
-	return 0;
-}
-
 static irqreturn_t cnl_irq_thread(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
@@ -1002,6 +1211,7 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 		return ret;
 
 	hipcida = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDA);
+	hipctdr = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCTDR);
 
 	/* reply message from DSP */
 	if (hipcida & CNL_DSP_REG_HIPCIDA_DONE) {
@@ -1047,6 +1257,16 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 
 		/* handle messages from DSP */
 		snd_sof_ipc_msgs_rx(sdev);
+
+		/* clear busy interrupt */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCTDR, CNL_DSP_REG_HIPCTDR_BUSY,
+			CNL_DSP_REG_HIPCTDR_BUSY);
+
+		/* set done bit to ack dsp */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCTDA, CNL_DSP_REG_HIPCTDA_DONE,
+			CNL_DSP_REG_HIPCTDA_DONE);
 
 		ret = IRQ_HANDLED;
 	}
@@ -1824,7 +2044,7 @@ static int apl_init(struct snd_sof_dev *sdev,
 
 	// prepare DMA for code loader use
 	stream_tag = apl_prepare(sdev, 0x40, fwsize, &sdev->dmab, 
-			SNDRV_PCM_STREAM_PLAYBACK);
+			SNDRV_PCM_STREAM_PLAYBACK, 0);
 
 	if (stream_tag <= 0) {
 		dev_err(sdev->dev, "error: dma prepare for fw loading err: %x\n",
@@ -2205,52 +2425,6 @@ static int apl_remove(struct snd_sof_dev *sdev)
 	return 0;
 }
 
-/* broxton ops */
-struct snd_sof_dsp_ops snd_sof_bxt_ops = {
-
-	/* probe and remove */
-	.probe		= apl_probe,
-	.remove		= apl_remove,
-
-	/* Register IO */
-	.write		= apl_write,
-	.read		= apl_read,
-	.write64	= apl_write64,
-	.read64		= apl_read64,
-
-	/* Block IO */
-	.block_read	= apl_block_read,
-	.block_write	= apl_block_write,
-
-	/* doorbell */
-	.irq_handler	= apl_irq_handler,
-	.irq_thread	= apl_irq_thread,
-
-	/* mailbox */
-	.mailbox_read	= apl_mailbox_read,
-	.mailbox_write	= apl_mailbox_write,
-
-	/* ipc */
-	.send_msg	= apl_send_msg,
-	.get_reply	= apl_get_reply,
-	.fw_ready	= apl_fw_ready,
-	.is_ready	= apl_is_ready,
-	.cmd_done	= apl_cmd_done,
-
-	/* debug */
-	.debug_map	= apl_debugfs,
-	.debug_map_count	= ARRAY_SIZE(apl_debugfs),
-	.dbg_dump	= apl_dump,
-	
-	/* firmware loading */
-	.load_firmware = apl_load_firmware,
-
-	/* firmware run */
-	.run = apl_run_firmware,
-
-};
-EXPORT_SYMBOL(snd_sof_bxt_ops);
-
 /* appololake ops */
 struct snd_sof_dsp_ops snd_sof_apl_ops = {
 
@@ -2288,9 +2462,16 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 	.debug_map_count	= ARRAY_SIZE(apl_debugfs),
 	.dbg_dump	= apl_dump,
 
+	/* stream callbacks */
+	.host_stream_open = apl_pcm_open,
+	.host_stream_prepare = apl_stream_prepare,
+	.host_stream_trigger = apl_stream_trigger,
+
 	/* firmware loading */
 	.load_firmware = apl_load_firmware,
 
+	/* firmware run */
+	.run = apl_run_firmware,
 };
 EXPORT_SYMBOL(snd_sof_apl_ops);
 
@@ -2330,6 +2511,12 @@ struct snd_sof_dsp_ops snd_sof_cnl_ops = {
 	.debug_map	= apl_debugfs,
 	.debug_map_count	= ARRAY_SIZE(apl_debugfs),
 	.dbg_dump	= apl_dump,
+
+	/* stream callbacks */
+	.host_stream_open = apl_pcm_open,
+	.host_stream_prepare = apl_stream_prepare,
+	.host_stream_trigger = apl_stream_trigger,
+
 
 	/* firmware loading */
 	.load_firmware = apl_load_firmware,

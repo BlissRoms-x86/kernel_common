@@ -216,7 +216,7 @@ static int sof_pci_probe(struct pci_dev *pci,
 	if (0) ;
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
 	else if (desc == &bxt_desc) {
-		ops = &snd_sof_bxt_ops;
+		ops = &snd_sof_apl_ops;
 	}
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
