@@ -133,14 +133,28 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_soc_tplg_mixer_control *mc =
 		(struct snd_soc_tplg_mixer_control *)hdr;
+	struct sof_ipc_ctrl_data *cdata;
 	struct sof_ipc_comp_volume v;
+	int size;
 	//int i;
 
 	/* validate topology data */
 	if (mc->num_channels >= SND_SOC_TPLG_MAX_CHAN)
 		return -EINVAL;
 
-	/* init the volume control IPC */
+	/* init the volume get/put data */
+	size = sizeof(struct sof_ipc_ctrl_data) +
+		sizeof(struct sof_ipc_ctrl_value_chan) * mc->num_channels;
+	cdata = scontrol->control_data = kzalloc(size, GFP_KERNEL);
+	if (scontrol->control_data == NULL)
+		return -ENOMEM;
+
+	cdata->hdr.size = size;
+	cdata->comp_id = sdev->next_comp_id;
+	cdata->cmd = SOF_CTRL_CMD_VOLUME;
+	cdata->num_elems = mc->num_channels;
+
+	/* init the volume new IPC */
 	memset(&v, 0, sizeof(v));
 	v.comp.hdr.size = sizeof(v);
 	v.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
@@ -1352,6 +1366,8 @@ static int sof_manifest(struct snd_soc_component *scomp, int index,
 /* vendor specific kcontrol handlers available for binding */
 static const struct snd_soc_tplg_kcontrol_ops sof_io_ops[] = {
 	{SOF_TPLG_KCTL_VOL_ID, snd_sof_volume_get, snd_sof_volume_put},
+	{SOF_TPLG_KCTL_ENUM_ID, snd_sof_enum_get, snd_sof_enum_put},
+	{SOF_TPLG_KCTL_BYTES_ID, snd_sof_bytes_get, snd_sof_bytes_put},
 };
 
 /* vendor specific bytes ext handlers available for binding */

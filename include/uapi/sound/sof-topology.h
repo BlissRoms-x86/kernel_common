@@ -69,6 +69,8 @@
  * Kcontrol IDs
  */
 #define SOF_TPLG_KCTL_VOL_ID	256
+#define SOF_TPLG_KCTL_ENUM_ID	257
+#define SOF_TPLG_KCTL_BYTES_ID	258
 
 
 /*

@@ -499,39 +499,36 @@ int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
 }
 EXPORT_SYMBOL(snd_sof_ipc_stream_posn);
 
-int snd_sof_ipc_put_mixer(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol)
+int snd_sof_ipc_set_comp_data(struct snd_sof_ipc *ipc,
+	struct snd_sof_control *scontrol, u32 ipc_cmd,
+	enum sof_ipc_ctrl_type ctrl_type,
+	enum sof_ipc_ctrl_cmd ctrl_cmd)
 {
 	struct snd_sof_dev *sdev = ipc->sdev;
-	struct sof_ipc_ctrl_values values;
-	struct sof_ipc_reply reply;
+	struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
 	int err;
 
-	/* write firmware byte counters */
+	/* read firmware volume */
 	if (scontrol->readback_offset != 0) {
 
 		/* we can read value header via mmaped region */
 		snd_sof_dsp_block_write(sdev, scontrol->readback_offset,
-			scontrol->values, sizeof(scontrol->values));
+			cdata->chanv,
+			sizeof(struct sof_ipc_ctrl_value_chan) * cdata->num_elems);
 
 	} else {
-		/* read position via slower IPC */
-		values.hdr.size = sizeof(values);
-		values.hdr.cmd = SOF_IPC_GLB_COMP_MSG | SOF_IPC_COMP_SET_VOLUME;
-		values.comp_id = scontrol->comp_id;
-		values.num_values = scontrol->num_channels;
-
-		/* now copy the values */
-		memcpy(values.values, scontrol->values,
-			sizeof(scontrol->values));
+		/* write value via slower IPC */
+		cdata->hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
+		cdata->cmd = ctrl_cmd;
+		cdata->type = ctrl_type;
 
 		/* send IPC to the DSP */
  		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			values.hdr.cmd, &values, sizeof(values),
-			&reply, sizeof(reply));
+			cdata->hdr.cmd, cdata, cdata->hdr.size,
+			cdata, cdata->hdr.size);
 		if (err < 0) {
 			dev_err(sdev->dev, "error: failed to set control %d values\n",
-				values.comp_id);
+				cdata->comp_id);
 			return err;
 		}
 
@@ -539,14 +536,15 @@ int snd_sof_ipc_put_mixer(struct snd_sof_ipc *ipc,
 
 	return 0;
 }
-EXPORT_SYMBOL(snd_sof_ipc_put_mixer);
+EXPORT_SYMBOL(snd_sof_ipc_set_comp_data);
 
-int snd_sof_ipc_get_mixer(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol)
+int snd_sof_ipc_get_comp_data(struct snd_sof_ipc *ipc,
+	struct snd_sof_control *scontrol, u32 ipc_cmd,
+	enum sof_ipc_ctrl_type ctrl_type,
+	enum sof_ipc_ctrl_cmd ctrl_cmd)
 {
 	struct snd_sof_dev *sdev = ipc->sdev;
-	struct sof_ipc_ctrl_values values;
-	struct sof_ipc_ctrl_get_values get;
+	struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
 	int err;
 
 	/* read firmware byte counters */
@@ -554,52 +552,30 @@ int snd_sof_ipc_get_mixer(struct snd_sof_ipc *ipc,
 
 		/* we can read values via mmaped region */
 		snd_sof_dsp_block_read(sdev, scontrol->readback_offset,
-			scontrol->values, sizeof(scontrol->values));
+			cdata->chanv,
+			sizeof(struct sof_ipc_ctrl_value_chan) * cdata->num_elems);
 
 	} else {
 		/* read position via slower IPC */
-		get.hdr.size = sizeof(values);
-		get.hdr.cmd = SOF_IPC_GLB_COMP_MSG | SOF_IPC_COMP_GET_VOLUME;
-		get.comp_id = scontrol->comp_id;
+		cdata->hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
+		cdata->cmd = ctrl_cmd;
+		cdata->type = ctrl_type;
 
 		/* send IPC to the DSP */
  		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			get.hdr.cmd, &get, sizeof(get), 
-			&values, sizeof(values));
+			cdata->hdr.cmd, cdata, cdata->hdr.size,
+			cdata, cdata->hdr.size);
 		if (err < 0) {
 			dev_err(sdev->dev, "error: failed to get control %d values\n",
-				values.comp_id);
+				cdata->comp_id);
 			return err;
 		}
-
-		/* copy to local values */
-		memcpy(scontrol->values, values.values,
-			sizeof(scontrol->values));
 	}
 
 	return 0;
 }
-EXPORT_SYMBOL(snd_sof_ipc_get_mixer);
+EXPORT_SYMBOL(snd_sof_ipc_get_comp_data);
 
-int snd_sof_ipc_put_mixer_chan(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol, int chan, long value)
-{
-	if (chan >= SOF_IPC_MAX_CHANNELS)
-		return -EINVAL;
-
-	scontrol->values[chan].value = value;
-	return 0;
-}
-EXPORT_SYMBOL(snd_sof_ipc_put_mixer_chan);
-
-long snd_sof_ipc_get_mixer_chan(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol, int chan)
-{
-	if (chan >= SOF_IPC_MAX_CHANNELS)
-		return 0;
-	return scontrol->values[chan].value;
-}
-EXPORT_SYMBOL(snd_sof_ipc_get_mixer_chan);
 
 
 #if 0

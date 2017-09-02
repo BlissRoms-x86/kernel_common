@@ -188,7 +188,8 @@ struct snd_sof_control {
 	int comp_id;
 	int num_channels;
 	uint32_t readback_offset; /* offset to mmaped data if used */
-	struct sof_ipc_ctrl_chan values[SOF_IPC_MAX_CHANNELS];
+	struct sof_ipc_ctrl_data *control_data;
+	enum sof_ipc_ctrl_cmd cmd;
 
 	struct mutex mutex;
 	struct list_head list;	/* list in sdev control list */
@@ -419,14 +420,14 @@ int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
 /*
  * Mixer IPC
  */
-int snd_sof_ipc_put_mixer(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol);
-int snd_sof_ipc_get_mixer(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol);
-int snd_sof_ipc_put_mixer_chan(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol, int chan, long value);
-long snd_sof_ipc_get_mixer_chan(struct snd_sof_ipc *ipc,
-	struct snd_sof_control *scontrol, int chan);
+int snd_sof_ipc_set_comp_data(struct snd_sof_ipc *ipc,
+	struct snd_sof_control *scontrol, u32 ipc_cmd,
+	enum sof_ipc_ctrl_type ctrl_type,
+	enum sof_ipc_ctrl_cmd ctrl_cmd);
+int snd_sof_ipc_get_comp_data(struct snd_sof_ipc *ipc,
+	struct snd_sof_control *scontrol, u32 ipc_cmd,
+	enum sof_ipc_ctrl_type ctrl_type,
+	enum sof_ipc_ctrl_cmd ctrl_cmd);
 
 /*
  * Topology.
@@ -469,6 +470,14 @@ extern struct snd_compr_ops sof_compressed_ops;
 int snd_sof_volume_get(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol);
 int snd_sof_volume_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol);
+int snd_sof_enum_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol);
+int snd_sof_enum_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol);
+int snd_sof_bytes_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol);
+int snd_sof_bytes_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol);
 
 #endif
