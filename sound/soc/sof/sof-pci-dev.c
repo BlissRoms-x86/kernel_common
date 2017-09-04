@@ -267,6 +267,24 @@ static void sof_pci_remove(struct pci_dev *pci)
 }
 
 
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
+static const struct snd_sof_machine sof_cnl_machines[] = {
+	{ "INT34C2", "cnl_alc700_i2s", "intel/dsp_fw_cnl.bin",
+		"intel/sof-cnl.tplg", "0000:00:0e.0", &snd_sof_cnl_ops },
+};
+
+static const struct sof_dev_desc cnl_desc = {
+	.machines		= sof_cnl_machines,
+	.resindex_lpe_base	= 0,
+	.resindex_pcicfg_base	= -1,
+	.resindex_imr_base	= -1,
+	.irqindex_host_ipc	= -1,
+	.resindex_dma_base	= -1,
+	.nocodec_fw_filename = "intel/dsp_fw_cnl.bin",
+	.nocodec_tplg_filename = "intel/sof-cnl.tplg"
+};
+#endif
+
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
@@ -279,6 +297,10 @@ static const struct pci_device_id sof_pci_ids[] = {
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_BAYTRAIL)
 	{ PCI_DEVICE(0x8086, 0x119a),
 		.driver_data = (unsigned long)&byt_desc},
+#endif
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
+	{ PCI_DEVICE(0x8086, 0x9dc8),
+		.driver_data = (unsigned long)&cnl_desc},
 #endif
 	{ 0, }
 };

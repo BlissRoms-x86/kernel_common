@@ -468,6 +468,7 @@ extern struct snd_sof_dsp_ops snd_sof_cht_ops;
 extern struct snd_sof_dsp_ops snd_sof_hsw_ops;
 extern struct snd_sof_dsp_ops snd_sof_bdw_ops;
 extern struct snd_sof_dsp_ops snd_sof_bxt_ops;
+extern struct snd_sof_dsp_ops snd_sof_cnl_ops;
 extern struct snd_compr_ops sof_compressed_ops;
 
 /*
