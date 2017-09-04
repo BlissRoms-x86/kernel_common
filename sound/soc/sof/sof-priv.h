@@ -149,6 +149,18 @@ struct snd_sof_dsp_ops {
 
 };
 
+struct snd_sof_chip_info{
+	int id ;
+	int cores_num;
+	int cores_mask;
+	int ipc_req;
+	int ipc_req_mask;
+	int ipc_ack;
+	int ipc_ack_mask;
+
+	irqreturn_t (*irq_thread)(int irq, void *context);
+};
+
 struct snd_sof_dfsentry {
 	struct dentry *dfsentry;
 	size_t size;

@@ -55,10 +55,11 @@
  * Authors: Liam Girdwood <liam.r.girdwood@linux.intel.com>
  *	    Ranjani Sridharan <ranjani.sridharan@linux.intel.com>
  *	    Jeeja KP <jeeja.kp@intel.com>
+ *	    Rander Wang <rander.wang@intel.com>
  */
 
 /*
- * Hardware interface for audio DSP on Apollolake.
+ * Hardware interface for audio DSP on Apollolake and Cannonlake.
  */
 
 #define DEBUG
@@ -219,6 +220,38 @@
  */
 #define SOF_DSP_CORES_MASK(nc)	GENMASK((nc - 1), 0)
 
+
+/* Intel HD Audio Inter-Processor Communication Registers for Cannonlake*/
+#define CNL_DSP_IPC_BASE		0xc0
+#define CNL_DSP_REG_HIPCTDR		(CNL_DSP_IPC_BASE + 0x00)
+#define CNL_DSP_REG_HIPCTDA		(CNL_DSP_IPC_BASE + 0x04)
+#define CNL_DSP_REG_HIPCTDD		(CNL_DSP_IPC_BASE + 0x08)
+#define CNL_DSP_REG_HIPCIDR		(CNL_DSP_IPC_BASE + 0x10)
+#define CNL_DSP_REG_HIPCIDA		(CNL_DSP_IPC_BASE + 0x14)
+#define CNL_DSP_REG_HIPCCTL		(CNL_DSP_IPC_BASE + 0x28)
+
+/*  HIPCI */
+#define CNL_DSP_REG_HIPCIDR_BUSY		BIT(31)
+#define CNL_DSP_REG_HIPCIDR_MSG_MASK	0x7FFFFFFF
+
+/* HIPCIE */
+#define CNL_DSP_REG_HIPCIDA_DONE	BIT(31)
+#define CNL_DSP_REG_HIPCIDA_MSG_MASK	0x7FFFFFFF
+
+/* HIPCCTL */
+#define CNL_DSP_REG_HIPCCTL_DONE	BIT(1)
+#define CNL_DSP_REG_HIPCCTL_BUSY	BIT(0)
+
+/* HIPCT */
+#define CNL_DSP_REG_HIPCTDR_BUSY		BIT(31)
+#define CNL_DSP_REG_HIPCTDR_MSG_MASK	0x7FFFFFFF
+
+/* HIPCTDA */
+#define CNL_DSP_REG_HIPCTDA_DONE	BIT(31)
+#define CNL_DSP_REG_HIPCTDA_MSG_MASK	0x7FFFFFFF
+
+/* HIPCTDD */
+#define CNL_DSP_REG_HIPCTDD_MSG_MASK	0x7FFFFFFF
 
 static bool is_apl_core_enable(struct snd_sof_dev *sdev,
 	unsigned int core_mask);
@@ -951,6 +984,91 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 	return ret;
 }
 
+static irqreturn_t cnl_irq_thread(int irq, void *context)
+{
+	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
+	u32 hipci, hipcida, hipctdr, hipctdd, msg = 0, msg_ext = 0;
+	irqreturn_t ret = IRQ_NONE;
+
+	/* here we handle IPC interrupts only */
+	if (!(sdev->irq_status & APL_ADSPIS_IPC))
+		return ret;
+
+	hipcida = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDA);
+	hipctdr = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCTDR);
+
+	/* reply message from DSP */
+	if (hipcida & CNL_DSP_REG_HIPCIDA_DONE) {
+
+		hipci = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDR);
+		msg_ext = hipci & CNL_DSP_REG_HIPCIDR_MSG_MASK;
+		msg = hipcida & CNL_DSP_REG_HIPCIDA_MSG_MASK;
+		dev_dbg(sdev->dev, "ipc: firmware response, msg:0x%x, msg_ext:0x%x\n",
+			msg, msg_ext);
+
+		/* mask Done interrupt */
+		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCCTL, CNL_DSP_REG_HIPCCTL_DONE, 0);
+
+		/* handle immediate reply from DSP core */
+		snd_sof_ipc_reply(sdev, msg);
+
+		/* clear DONE bit - tell DSP we have completed the operation */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCIDA, CNL_DSP_REG_HIPCIDA_DONE,
+			CNL_DSP_REG_HIPCIDA_DONE);
+
+		/* unmask Done interrupt */
+		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCCTL, CNL_DSP_REG_HIPCCTL_DONE,
+			CNL_DSP_REG_HIPCCTL_DONE);
+
+		ret = IRQ_HANDLED;
+	}
+
+	/* new message from DSP */
+	if (hipctdr & CNL_DSP_REG_HIPCTDR_BUSY) {
+
+		hipctdd = snd_sof_dsp_read(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCTDD);
+		msg = hipctdr & CNL_DSP_REG_HIPCTDR_MSG_MASK;
+		msg_ext = hipctdd & CNL_DSP_REG_HIPCTDD_MSG_MASK;
+
+		dev_dbg(sdev->dev, "ipc: firmware initiated, msg:0x%x, msg_ext:0x%x\n",
+			msg, msg_ext);
+
+		/* handle messages from DSP */
+		snd_sof_ipc_msgs_rx(sdev, msg);
+
+		/* clear busy interrupt */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCTDR, CNL_DSP_REG_HIPCTDR_BUSY,
+			CNL_DSP_REG_HIPCTDR_BUSY);
+
+		/* set done bit to ack dsp */
+		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+			CNL_DSP_REG_HIPCTDA, CNL_DSP_REG_HIPCTDA_DONE,
+			CNL_DSP_REG_HIPCTDA_DONE);
+
+		ret = IRQ_HANDLED;
+	}
+
+	if (ret == IRQ_HANDLED) {
+		/* reenable IPC interrupt */
+		snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, APL_DSP_REG_ADSPIC,
+			APL_ADSPIC_IPC, APL_ADSPIC_IPC);
+		/* continue to send any remaining messages... */
+		snd_sof_ipc_msgs_tx(sdev);
+	}
+
+	if (sdev->code_loading)	{
+		sdev->code_loading = 0;
+		wake_up(&sdev->waitq);
+	}
+
+	return ret;
+}
+
 static irqreturn_t skl_interrupt(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
@@ -1315,6 +1433,29 @@ static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	return 0;
 }
 
+static int cnl_tx_busy(struct snd_sof_dev *sdev)
+{
+	uint64_t val;
+
+	val = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDR);
+	if (val & CNL_DSP_REG_HIPCIDR_BUSY)
+		return 1;
+
+	return 0;
+}
+
+static int cnl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+{
+	u32 cmd = msg->header;
+
+	/* send the message */
+	apl_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data,
+		 msg->msg_size);
+	snd_sof_dsp_write(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDR,
+		cmd | CNL_DSP_REG_HIPCIDR_BUSY);
+
+	return 0;
+}
 
 static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
@@ -1598,6 +1739,54 @@ static int apl_stream_init(struct snd_sof_dev *sdev)
 	return 0;
 }
 
+static const struct snd_sof_chip_info chip_info[] = {
+	{
+		.id = 0x5a98,
+		.cores_num = 2,
+		.cores_mask = APL_DSP_CORE_MASK(0) |APL_DSP_CORE_MASK(1),
+		.ipc_req = APL_DSP_REG_HIPCI,
+		.ipc_req_mask = APL_DSP_REG_HIPCI_BUSY,
+		.ipc_ack = APL_DSP_REG_HIPCIE,
+		.ipc_ack_mask = APL_DSP_REG_HIPCIE_DONE,
+		.irq_thread = apl_irq_thread
+	},
+	{
+		.id = 0x1a98,
+		.cores_num = 2,
+		.cores_mask = APL_DSP_CORE_MASK(0) |APL_DSP_CORE_MASK(1),
+		.ipc_req = APL_DSP_REG_HIPCI,
+		.ipc_req_mask = APL_DSP_REG_HIPCI_BUSY,
+		.ipc_ack = APL_DSP_REG_HIPCIE,
+		.ipc_ack_mask = APL_DSP_REG_HIPCIE_DONE,
+		.irq_thread = apl_irq_thread
+	},
+	{
+		.id = 0x9dc8,
+		.cores_num = 4,
+		.cores_mask = APL_DSP_CORE_MASK(0) |
+					APL_DSP_CORE_MASK(1) |
+					APL_DSP_CORE_MASK(2) |
+					APL_DSP_CORE_MASK(3),
+		.ipc_req = CNL_DSP_REG_HIPCIDR,
+		.ipc_req_mask = CNL_DSP_REG_HIPCIDR_BUSY,
+		.ipc_ack = CNL_DSP_REG_HIPCIDA,
+		.ipc_ack_mask = CNL_DSP_REG_HIPCIDA_DONE,
+		.irq_thread = cnl_irq_thread
+	},
+};
+
+const struct snd_sof_chip_info *sof_get_chip_info(int pci_id)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(chip_info); i++) {
+		if (chip_info[i].id == pci_id)
+			return &chip_info[i];
+	}
+
+	return NULL;
+}
+
 /*
  * first boot sequence has some extra steps. core 0 waits for power
  * status on core 1, so power up core 1 also momentarily, keep it in
@@ -1608,6 +1797,14 @@ static int apl_init(struct snd_sof_dev *sdev,
 {
 	int stream_tag, ret, i;
 	u32 hipcie;
+	const struct snd_sof_chip_info *chip;
+
+	chip = sof_get_chip_info(sdev->pci->device);
+	if(chip == NULL) {
+		dev_err(sdev->dev, "no such device supported, chip id:%x\n", sdev->pci->device);
+		ret = -EIO;
+		goto err;
+	}
 
 	// prepare DMA for code loader use
 	stream_tag = apl_prepare(sdev, 0x40, fwsize, &sdev->dmab, 
@@ -1621,17 +1818,16 @@ static int apl_init(struct snd_sof_dev *sdev,
 
 	memcpy(sdev->dmab.area, fwdata, fwsize);
 
-	/* step 1: power up core 0 and core 1 */
-	ret = apl_core_power_up(sdev, APL_DSP_CORE_MASK(0) |
-		APL_DSP_CORE_MASK(1));
+	/* step 1: power up corex */
+	ret = apl_core_power_up(sdev, chip->cores_mask);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: dsp core 0/1 power up failed\n");
 		goto err;
 	}
 
 	/* step 2: purge FW request */
-	snd_sof_dsp_write(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI,
-		APL_DSP_REG_HIPCI_BUSY | (APL_IPC_PURGE_FW | 
+	snd_sof_dsp_write(sdev, APL_DSP_BAR, chip->ipc_req,
+		chip->ipc_req_mask | (APL_IPC_PURGE_FW |
 		((stream_tag - 1) << 9)));
 
 	/* step 3: unset core 0 reset state & unstall/run core 0 */
@@ -1646,13 +1842,13 @@ static int apl_init(struct snd_sof_dev *sdev,
 	for (i = APL_INIT_TIMEOUT; i > 0; i--) {
 
 		hipcie = snd_sof_dsp_read(sdev, APL_DSP_BAR,
-			APL_DSP_REG_HIPCIE);
+			chip->ipc_ack);
 
-		if (hipcie & APL_DSP_REG_HIPCIE_DONE) {
+		if (hipcie & chip->ipc_ack_mask) {
 			snd_sof_dsp_update_bits(sdev, APL_DSP_BAR,
-				APL_DSP_REG_HIPCIE,
-				APL_DSP_REG_HIPCIE_DONE,
-				APL_DSP_REG_HIPCIE_DONE);
+				chip->ipc_ack,
+				chip->ipc_ack_mask,
+				chip->ipc_ack_mask);
 			goto step5;
 		}
 		mdelay(1);
@@ -1663,10 +1859,10 @@ static int apl_init(struct snd_sof_dev *sdev,
 	goto err;
 
 step5:
-	/* step 5: power down core1 */
-	ret = apl_core_power_down(sdev, APL_DSP_CORE_MASK(1));
+	/* step 5: power down corex */
+	ret = apl_core_power_down(sdev, chip->cores_mask & ~(APL_DSP_CORE_MASK(0)));
 	if (ret < 0) {
-		dev_err(sdev->dev, "error: dsp core 1 power down failed\n");
+		dev_err(sdev->dev, "error: dsp core x power down failed\n");
 		goto err;
 	}
 
@@ -1962,8 +2158,11 @@ err:
 
 static int apl_remove(struct snd_sof_dev *sdev)
 {
+	const struct snd_sof_chip_info *chip;
+	chip = sof_get_chip_info(sdev->pci->device);
+
 	/* disable cores */
-	apl_disable_core(sdev, APL_DSP_CORE_MASK(0) | APL_DSP_CORE_MASK(1));
+	apl_disable_core(sdev, chip->cores_mask);
 
 	/* disable DSP IRQ */
 	snd_sof_dsp_update_bits(sdev, APL_PP_BAR, SOF_HDA_REG_PP_PPCTL,
@@ -2072,5 +2271,53 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 
 };
 EXPORT_SYMBOL(snd_sof_apl_ops);
+
+/* cannonlake ops */
+struct snd_sof_dsp_ops snd_sof_cnl_ops = {
+
+	/* probe and remove */
+	.probe		= apl_probe,
+	.remove		= apl_remove,
+
+	/* DSP core boot / reset */
+//	.run		= cnl_run,
+//	.reset		= cnl_reset,
+
+	/* Register IO */
+	.write		= apl_write,
+	.read		= apl_read,
+	.write64		= apl_write64,
+	.read64		= apl_read64,
+
+	/* Block IO */
+	.block_read	= apl_block_read,
+	.block_write	= apl_block_write,
+
+	/* doorbell */
+	.irq_handler	= apl_irq_handler,
+	.irq_thread	= cnl_irq_thread,
+
+	/* mailbox */
+	.mailbox_read	= apl_mailbox_read,
+	.mailbox_write	= apl_mailbox_write,
+
+	/* ipc */
+	.tx_msg		= cnl_tx_msg,
+	.fw_ready		= apl_fw_ready,
+	.rx_msg		= apl_rx_msg,
+	.tx_busy		= cnl_tx_busy,
+
+	/* debug */
+	.debug_map	= apl_debugfs,
+	.debug_map_count	= ARRAY_SIZE(apl_debugfs),
+	.dbg_dump	= apl_dump,
+
+	/* firmware loading */
+	.load_firmware = apl_load_firmware,
+
+	/* firmware run */
+	.run = apl_run_firmware
+};
+EXPORT_SYMBOL(snd_sof_cnl_ops);
 
 MODULE_LICENSE("Dual BSD/GPL");
