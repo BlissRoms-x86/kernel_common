@@ -296,13 +296,13 @@ void snd_sof_ipc_reply(struct snd_sof_dev *sdev, u32 msg_id)
 }
 EXPORT_SYMBOL(snd_sof_ipc_reply);
 
-int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 inbox,
-		size_t inbox_size, u32 outbox, size_t outbox_size)
+int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 dspbox,
+		size_t dspbox_size, u32 hostbox, size_t hostbox_size)
 {
-	sdev->inbox.offset = inbox;
-	sdev->inbox.size = inbox_size;
-	sdev->outbox.offset = outbox;
-	sdev->outbox.size = outbox_size;
+	sdev->dsp_box.offset = dspbox;
+	sdev->dsp_box.size = dspbox_size;
+	sdev->host_box.offset = hostbox;
+	sdev->host_box.size = hostbox_size;
 	return 0;
 }
 EXPORT_SYMBOL(snd_sof_dsp_mailbox_init);
@@ -314,8 +314,8 @@ static void ipc_period_elapsed(struct snd_sof_dev *sdev, u32 msg_id)
 	struct sof_ipc_stream_posn posn;
 
 	/* read back full message */
-	snd_sof_dsp_mailbox_read(sdev, 0, &posn, sizeof(posn));
-	dev_dbg(sdev->dev,  "posn: host %llx dai %llx wall %llx\n",
+	snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &posn, sizeof(posn));
+	dev_dbg(sdev->dev,  "posn: host 0x%llx dai 0x%llx wall 0x%llx\n",
 		posn.host_posn, posn.dai_posn, posn.wallclock);
 
 	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id);
@@ -336,17 +336,19 @@ static void ipc_xrun(struct snd_sof_dev *sdev, u32 msg_id)
 	struct sof_ipc_stream_posn posn;
 
 	/* read back full message */
-	snd_sof_dsp_mailbox_read(sdev, 0, &posn, sizeof(posn));
+	snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &posn, sizeof(posn));
 
 	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id);
 	if (spcm == NULL) {
-		dev_err(sdev->dev, "error: period elapsed for unknown component %d\n",
+		dev_err(sdev->dev, "error: XRUN for unknown component %d\n",
 			posn.comp_id);
 		return;
 	}
 
 	dev_dbg(sdev->dev,  "posn XRUN: host %llx comp %d size %d\n",
 		posn.host_posn, posn.xrun_comp_id, posn.xrun_size);
+
+	return; /* TODO: dont do anything yet until preload is working */
 
 	memcpy(&spcm->posn[0], &posn, sizeof(posn));
 	spcm->posn_valid[0] = true;
@@ -370,13 +372,17 @@ static void ipc_stream_message(struct snd_sof_dev *sdev, u32 msg_id)
 }
 
 /* DSP firmware has sent host a message */
-void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id)
+void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev)
 {
+	struct sof_ipc_hdr hdr;
 	uint32_t cmd, type;
 	int err = -EINVAL;
 
-	cmd = msg_id & SOF_GLB_TYPE_MASK;
-	type = msg_id & SOF_CMD_TYPE_MASK;
+	/* read back header */
+	snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &hdr, sizeof(hdr));
+
+	cmd = hdr.cmd & SOF_GLB_TYPE_MASK;
+	type = hdr.cmd & SOF_CMD_TYPE_MASK;
 
 	switch (cmd) {
 	case SOF_IPC_GLB_REPLY:
@@ -386,7 +392,7 @@ void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id)
 		/* check for FW boot completion */
 		if (!sdev->boot_complete) {
 			if (sdev->ops->fw_ready)
-				err = sdev->ops->fw_ready(sdev, msg_id);
+				err = sdev->ops->fw_ready(sdev, cmd);
 			if (err < 0) {
 				dev_err(sdev->dev, "DSP firmware boot timeout %d\n",
 					err);

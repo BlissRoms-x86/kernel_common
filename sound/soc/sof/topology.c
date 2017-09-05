@@ -267,7 +267,7 @@ static const struct sof_topology_token volume_tokens[] = {
 static const struct sof_topology_token src_tokens[] = {
 	{SOF_TKN_SRC_RATE_IN, SND_SOC_TPLG_TUPLE_TYPE_WORD, get_token_u32,
 		offsetof(struct sof_ipc_comp_src, source_rate), 0},
-	{SOF_TKN_SRC_RATE_OUT, SND_SOC_TPLG_TUPLE_TYPE_WORD,get_token_u32,
+	{SOF_TKN_SRC_RATE_OUT, SND_SOC_TPLG_TUPLE_TYPE_WORD, get_token_u32,
 		offsetof(struct sof_ipc_comp_src, sink_rate), 0},
 };
 

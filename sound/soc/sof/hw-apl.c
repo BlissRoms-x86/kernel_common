@@ -958,7 +958,7 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 			msg, msg_ext);
 
 		/* handle messages from DSP */
-		snd_sof_ipc_msgs_rx(sdev, msg);
+		snd_sof_ipc_msgs_rx(sdev);
 
 		/* clear busy interrupt */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
@@ -1038,7 +1038,7 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 			msg, msg_ext);
 
 		/* handle messages from DSP */
-		snd_sof_ipc_msgs_rx(sdev, msg);
+		snd_sof_ipc_msgs_rx(sdev);
 
 		/* clear busy interrupt */
 		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
@@ -1425,7 +1425,7 @@ static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u32 cmd = msg->header;
 
 	/* send the message */
-	apl_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data,
+	apl_mailbox_write(sdev, sdev->host_box.offset, msg->msg_data,
 		 msg->msg_size);
 	snd_sof_dsp_write(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI,
 		cmd | APL_DSP_REG_HIPCI_BUSY);
@@ -1449,7 +1449,7 @@ static int cnl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u32 cmd = msg->header;
 
 	/* send the message */
-	apl_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data,
+	apl_mailbox_write(sdev, sdev->host_box.offset, msg->msg_data,
 		 msg->msg_size);
 	snd_sof_dsp_write(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDR,
 		cmd | CNL_DSP_REG_HIPCIDR_BUSY);
@@ -1464,7 +1464,7 @@ static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u32 size;
 
 	/* get reply */
-	apl_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	apl_mailbox_read(sdev, sdev->host_box.offset, &reply, sizeof(reply));
 	if (reply.error < 0) {
 		size = sizeof(reply);
 		ret = reply.error;
@@ -1482,7 +1482,7 @@ static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 
 	/* read the message */
 	if (msg->msg_data && size > 0)
-		apl_mailbox_read(sdev, 0, msg->reply_data, size);
+		apl_mailbox_read(sdev, sdev->host_box.offset, msg->reply_data, size);
 
 	return ret;
 }

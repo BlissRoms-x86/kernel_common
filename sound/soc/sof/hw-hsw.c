@@ -421,7 +421,7 @@ static irqreturn_t hsw_irq_thread(int irq, void *context)
 	if (ipcd & SHIM_IPCD_BUSY) {
 
 		/* Handle messages from DSP Core */
-		snd_sof_ipc_msgs_rx(sdev, ipcd);
+		snd_sof_ipc_msgs_rx(sdev);
 
 		/* clear BUSY bit and set DONE bit - accept new messages */
 		snd_sof_dsp_update_bits64_unlocked(sdev, HSW_DSP_BAR, SHIM_IPCD,
@@ -459,14 +459,14 @@ static int hsw_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 	/* copy data from the DSP FW ready offset */
 	hsw_block_read(sdev, offset, fw_ready, sizeof(*fw_ready));
 
-	snd_sof_dsp_mailbox_init(sdev, fw_ready->inbox_offset,
-		fw_ready->inbox_size, fw_ready->outbox_offset,
-		fw_ready->outbox_size);
+	snd_sof_dsp_mailbox_init(sdev, fw_ready->dspbox_offset,
+		fw_ready->dspbox_size, fw_ready->hostbox_offset,
+		fw_ready->hostbox_size);
 
-	dev_dbg(sdev->dev, " mailbox upstream 0x%x - size 0x%x\n",
-		fw_ready->inbox_offset, fw_ready->inbox_size);
-	dev_dbg(sdev->dev, " mailbox downstream 0x%x - size 0x%x\n",
-		fw_ready->outbox_offset, fw_ready->outbox_size);
+	dev_dbg(sdev->dev, " mailbox DSP initiated 0x%x - size 0x%x\n",
+		fw_ready->dspbox_offset, fw_ready->dspbox_size);
+	dev_dbg(sdev->dev, " mailbox Host initiated 0x%x - size 0x%x\n",
+		fw_ready->hostbox_offset, fw_ready->hostbox_size);
 	
 	dev_info(sdev->dev, " Firmware info: version %d:%d-%s build %d on %s:%s\n", 
 		v->major, v->minor, v->tag, v->build, v->date, v->time);
@@ -510,7 +510,7 @@ static int hsw_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u64 cmd = msg->header;
 
 	/* send the message */
-	hsw_mailbox_write(sdev, sdev->outbox.offset, msg->msg_data, 
+	hsw_mailbox_write(sdev, sdev->host_box.offset, msg->msg_data, 
 		msg->msg_size);
 	snd_sof_dsp_write64(sdev, HSW_DSP_BAR, SHIM_IPCX, cmd | SHIM_IPCX_BUSY);
 
@@ -524,7 +524,7 @@ static int hsw_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u32 size;
 
 	/* get reply */
-	hsw_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	hsw_mailbox_read(sdev, sdev->host_box.offset, &reply, sizeof(reply));
 	if (reply.error < 0) {
 		size = sizeof(reply);
 		ret = reply.error;
@@ -542,7 +542,7 @@ static int hsw_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 
 	/* read the message */
 	if (msg->msg_data && size > 0)
-		hsw_mailbox_read(sdev, 0, msg->reply_data, size);
+		hsw_mailbox_read(sdev, sdev->host_box.offset, msg->reply_data, size);
 	return ret;
 }
 

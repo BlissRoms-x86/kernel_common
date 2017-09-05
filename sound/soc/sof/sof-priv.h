@@ -323,8 +323,8 @@ struct snd_sof_dev {
 
 	/* IPC */
 	struct snd_sof_ipc *ipc;
-	struct snd_sof_mailbox inbox;
-	struct snd_sof_mailbox outbox;
+	struct snd_sof_mailbox dsp_box;		/* DSP initiated IPC */
+	struct snd_sof_mailbox host_box;	/* Host initiated IPC */
 	u64 irq_status;
 	int ipc_irq;
 	u32 next_comp_id; /* monotonic - reset during S3 */
@@ -403,12 +403,12 @@ int snd_sof_fw_parse_ext_data(struct snd_sof_dev *sdev, u32 offset);
 struct snd_sof_ipc *snd_sof_ipc_init(struct snd_sof_dev *sdev);
 void snd_sof_ipc_free(struct snd_sof_dev *sdev);
 void snd_sof_ipc_reply(struct snd_sof_dev *sdev, u32 msg_id);
-void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev, u32 msg_id);
+void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev);
 void snd_sof_ipc_msgs_tx(struct snd_sof_dev *sdev);
 int snd_sof_ipc_stream_pcm_params(struct snd_sof_dev *sdev,
 	struct sof_ipc_pcm_params *params);
-int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 inbox,
-		size_t inbox_size, u32 outbox, size_t outbox_size);
+int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 dspbox,
+		size_t dspbox_size, u32 hostbox, size_t hostbox_size);
 int sof_ipc_tx_message_wait(struct snd_sof_ipc *ipc, u32 header,
 	void *tx_data, size_t tx_bytes, void *rx_data, size_t rx_bytes);
 int sof_ipc_tx_message_nowait(struct snd_sof_ipc *ipc, u32 header,

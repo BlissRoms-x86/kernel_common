@@ -264,14 +264,14 @@ static int byt_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 	/* copy data from the DSP FW ready offset */
 	byt_block_read(sdev, offset, fw_ready, sizeof(*fw_ready));
 
-	snd_sof_dsp_mailbox_init(sdev, fw_ready->inbox_offset,
-		fw_ready->inbox_size, fw_ready->outbox_offset,
-		fw_ready->outbox_size);
+	snd_sof_dsp_mailbox_init(sdev, fw_ready->dspbox_offset,
+		fw_ready->dspbox_size, fw_ready->hostbox_offset,
+		fw_ready->hostbox_size);
 
-	dev_dbg(sdev->dev, " mailbox upstream 0x%x - size 0x%x\n",
-		fw_ready->inbox_offset, fw_ready->inbox_size);
-	dev_dbg(sdev->dev, " mailbox downstream 0x%x - size 0x%x\n",
-		fw_ready->outbox_offset, fw_ready->outbox_size);
+	dev_dbg(sdev->dev, " mailbox DSP initiated 0x%x - size 0x%x\n",
+		fw_ready->dspbox_offset, fw_ready->dspbox_size);
+	dev_dbg(sdev->dev, " mailbox Host initiated 0x%x - size 0x%x\n",
+		fw_ready->hostbox_offset, fw_ready->hostbox_size);
 	
 	dev_info(sdev->dev, " Firmware info: version %d:%d-%s build %d on %s:%s\n", 
 		v->major, v->minor, v->tag, v->build, v->date, v->time);
@@ -286,8 +286,7 @@ static int byt_fw_ready(struct snd_sof_dev *sdev, u32 msg_id)
 static void byt_mailbox_write(struct snd_sof_dev *sdev, u32 offset,
 	void *message, size_t bytes)
 {
-	void __iomem *dest = sdev->bar[sdev->mailbox_bar] + sdev->outbox.offset
-		+ offset;
+	void __iomem *dest = sdev->bar[sdev->mailbox_bar] + offset;
 
 	memcpy_toio(dest, message, bytes);
 }
@@ -295,8 +294,7 @@ static void byt_mailbox_write(struct snd_sof_dev *sdev, u32 offset,
 static void byt_mailbox_read(struct snd_sof_dev *sdev, u32 offset,
 	void *message, size_t bytes)
 {
-	void __iomem *src = sdev->bar[sdev->mailbox_bar] + sdev->inbox.offset
-		+ offset;
+	void __iomem *src = sdev->bar[sdev->mailbox_bar] + offset;
 
 	memcpy_fromio(message, src, bytes);
 }
@@ -365,7 +363,7 @@ static irqreturn_t byt_irq_thread(int irq, void *context)
 	if (ipcd & SHIM_BYT_IPCD_BUSY) {
 
 		/* Handle messages from DSP Core */
-		snd_sof_ipc_msgs_rx(sdev, ipcd);
+		snd_sof_ipc_msgs_rx(sdev);
 
 		/* clear BUSY bit and set DONE bit - accept new messages */
 		snd_sof_dsp_update_bits64_unlocked(sdev, BYT_DSP_BAR, SHIM_IPCD,
@@ -401,7 +399,7 @@ static int byt_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u64 cmd = msg->header;
 
 	/* send the message */
-	byt_mailbox_write(sdev, 0, msg->msg_data, msg->msg_size);
+	byt_mailbox_write(sdev, sdev->host_box.offset, msg->msg_data, msg->msg_size);
 	snd_sof_dsp_write64(sdev, BYT_DSP_BAR, SHIM_IPCX,
 		cmd | SHIM_BYT_IPCX_BUSY);
 
@@ -415,7 +413,7 @@ static int byt_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	u32 size;
 
 	/* get reply */
-	byt_mailbox_read(sdev, 0, &reply, sizeof(reply));
+	byt_mailbox_read(sdev, sdev->host_box.offset, &reply, sizeof(reply));
 	if (reply.error < 0) {
 		size = sizeof(reply);
 		ret = reply.error;
@@ -433,7 +431,7 @@ static int byt_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 
 	/* read the message */
 	if (msg->msg_data && size > 0)
-		byt_mailbox_read(sdev, 0, msg->reply_data, size);
+		byt_mailbox_read(sdev, sdev->host_box.offset, msg->reply_data, size);
 
 	return ret;
 }
@@ -607,6 +605,9 @@ irq:
 	/* set BARS */
 	sdev->cl_bar = BYT_DSP_BAR;
 
+	/* set default mailbox offset for FW ready message */
+	sdev->dsp_box.offset = MBOX_OFFSET;
+
 	return ret;
 
 irq_err:
@@ -687,6 +688,9 @@ irq:
 
 	/* set BARS */
 	sdev->cl_bar = BYT_DSP_BAR;
+
+	/* set default mailbox offset for FW ready message */
+	sdev->dsp_box.offset = MBOX_OFFSET;
 
 	return ret;
 
