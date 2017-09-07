@@ -103,7 +103,7 @@ struct sof_frame_types {
 
 static const struct sof_frame_types sof_frames[] = {
 	{"s16le", SOF_IPC_FRAME_S16_LE},
-	{"s24_4le", SOF_IPC_FRAME_S24_4LE},
+	{"s24le", SOF_IPC_FRAME_S24_4LE},
 	{"s32le", SOF_IPC_FRAME_S32_LE},
 	{"float", SOF_IPC_FRAME_FLOAT},
 };
