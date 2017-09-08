@@ -978,6 +978,8 @@ struct snd_soc_platform_driver {
 
 	/* this platform uses topology and ignore machine driver FEs */
 	const char *ignore_machine;
+	int (*be_hw_params_fixup)(struct snd_soc_pcm_runtime *rtd,
+			struct snd_pcm_hw_params *params);
 };
 
 struct snd_soc_dai_link_component {

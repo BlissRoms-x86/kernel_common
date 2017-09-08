@@ -2164,6 +2164,10 @@ static void soc_check_tplg_fes(struct snd_soc_card *card)
 			dai_link->no_pcm = 1;
 			dai_link->dpcm_playback = 1;
 			dai_link->dpcm_capture = 1;
+
+			/* override any BE fixups */
+			dai_link->be_hw_params_fixup =
+				platform->driver->be_hw_params_fixup;
 		}
 
 	}
