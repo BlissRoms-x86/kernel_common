@@ -135,24 +135,17 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 		(struct snd_soc_tplg_mixer_control *)hdr;
 	struct sof_ipc_ctrl_data *cdata;
 	struct sof_ipc_comp_volume v;
-	int size;
-	//int i;
 
 	/* validate topology data */
 	if (mc->num_channels >= SND_SOC_TPLG_MAX_CHAN)
 		return -EINVAL;
 
 	/* init the volume get/put data */
-	size = sizeof(struct sof_ipc_ctrl_data) +
+	scontrol->size = sizeof(struct sof_ipc_ctrl_data) +
 		sizeof(struct sof_ipc_ctrl_value_chan) * mc->num_channels;
-	cdata = scontrol->control_data = kzalloc(size, GFP_KERNEL);
+	cdata = scontrol->control_data = kzalloc(scontrol->size, GFP_KERNEL);
 	if (scontrol->control_data == NULL)
 		return -ENOMEM;
-
-	cdata->hdr.size = size;
-	cdata->comp_id = sdev->next_comp_id;
-	cdata->cmd = SOF_CTRL_CMD_VOLUME;
-	cdata->num_elems = mc->num_channels;
 
 	/* init the volume new IPC */
 	memset(&v, 0, sizeof(v));
@@ -166,7 +159,8 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	// TODO: TLV
 	//v.step_size = 
 
-	dev_dbg(sdev->dev, "tplg: load kcontrol index %d\n", scontrol->comp_id);
+	dev_dbg(sdev->dev, "tplg: load kcontrol index %d chans %d\n",
+		scontrol->comp_id, scontrol->num_channels);
 
 	/* configure channel IDs */
 	//for (i = 0; i < mc->num_channels; i++) {
@@ -579,9 +573,9 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 	sof_parse_tokens(scomp, &dai.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
 
-	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d type %d index %d\n",
+	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d type %d index %d fmt %d\n",
 		swidget->widget->name, dai.dmac_id, dai.dmac_chan,
-		dai.type, dai.index);
+		dai.type, dai.index, dai.config.frame_fmt);
 
 	return sof_ipc_tx_message_wait(sdev->ipc, 
 		dai.comp.hdr.cmd, &dai, sizeof(dai), r, sizeof(*r));

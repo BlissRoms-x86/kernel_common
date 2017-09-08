@@ -66,6 +66,48 @@
 #include <uapi/sound/sof-ipc.h>
 #include "sof-priv.h"
 
+#define SOF_VOLUME(x)		(1 << x)	/* x== 16 is 0dB */
+
+/* simple volume table TODO: to be replaced by coefficients from topology */
+static const u32 volume_map[] = {
+	SOF_VOLUME(18),
+	SOF_VOLUME(17),
+	SOF_VOLUME(16),	/* 0dB */
+	SOF_VOLUME(15),
+	SOF_VOLUME(14),
+	SOF_VOLUME(13),
+	SOF_VOLUME(12),
+	SOF_VOLUME(11),
+	SOF_VOLUME(10),
+	SOF_VOLUME(9),
+	SOF_VOLUME(8),
+	SOF_VOLUME(7),
+	SOF_VOLUME(6),
+	SOF_VOLUME(5),
+	SOF_VOLUME(4),
+	SOF_VOLUME(3),
+};
+
+static inline u32 mixer_to_ipc(unsigned int value)
+{
+	if (value >= ARRAY_SIZE(volume_map))
+		return volume_map[0];
+	else
+		return volume_map[value];
+}
+
+static inline u32 ipc_to_mixer(u32 value)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(volume_map); i++) {
+		if (volume_map[i] >= value)
+			return i;
+	}
+
+	return i - 1;
+}
+
 int snd_sof_volume_get(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
@@ -84,7 +126,8 @@ int snd_sof_volume_get(struct snd_kcontrol *kcontrol,
 
 	/* read back each channel */
 	for (i = 0; i < channels; i++)
-		ucontrol->value.integer.value[i] = cdata->chanv[i].value;
+		ucontrol->value.integer.value[i] =
+			ipc_to_mixer(cdata->chanv[i].value);
 
 	pm_runtime_mark_last_busy(sdev->dev);
 	pm_runtime_put_autosuspend(sdev->dev);
@@ -105,7 +148,8 @@ int snd_sof_volume_put(struct snd_kcontrol *kcontrol,
 
 	/* update each channel */
 	for (i = 0; i < channels; i++)
-		cdata->chanv[i].value = ucontrol->value.integer.value[i];
+		cdata->chanv[i].value =
+			mixer_to_ipc(ucontrol->value.integer.value[i]);
 
 	/* notify DSP of mixer updates */
 	snd_sof_ipc_set_comp_data(sdev->ipc, scontrol, SOF_IPC_COMP_SET_VALUE,
@@ -173,8 +217,8 @@ int snd_sof_bytes_get(struct snd_kcontrol *kcontrol,
 		(struct soc_bytes_ext *)kcontrol->private_value;
 	struct snd_sof_control *scontrol = be->dobj.private;
 	struct snd_sof_dev *sdev = scontrol->sdev;
-	struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
-	unsigned int i, channels = scontrol->num_channels;
+	//struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
+	//unsigned int i, channels = scontrol->num_channels;
 
 	pm_runtime_get_sync(sdev->dev);
 
@@ -196,8 +240,8 @@ int snd_sof_bytes_put(struct snd_kcontrol *kcontrol,
 		(struct soc_bytes_ext *)kcontrol->private_value;
 	struct snd_sof_control *scontrol = be->dobj.private;
 	struct snd_sof_dev *sdev = scontrol->sdev;
-	struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
-	unsigned int i, channels = scontrol->num_channels;
+	//struct sof_ipc_ctrl_data *cdata = scontrol->control_data;
+	//unsigned int i, channels = scontrol->num_channels;
 
 	pm_runtime_get_sync(sdev->dev);
 

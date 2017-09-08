@@ -137,8 +137,8 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 		if (msg->reply_size)
 			memcpy(reply_data, msg->reply_data, msg->reply_size);
 		if (ret < 0)
-			dev_err(sdev->dev, "error: ipc error for 0x%x size 0x%x\n",
-				hdr->cmd, hdr->size);
+			dev_err(sdev->dev, "error: ipc error for 0x%x size 0x%lx\n",
+				hdr->cmd, msg->reply_size);
 	}
 
 	/* return message body to empty list */
@@ -524,14 +524,17 @@ int snd_sof_ipc_set_comp_data(struct snd_sof_ipc *ipc,
 
 	} else {
 		/* write value via slower IPC */
-		cdata->hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
+		cdata->rhdr.hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
 		cdata->cmd = ctrl_cmd;
 		cdata->type = ctrl_type;
+		cdata->rhdr.hdr.size = scontrol->size;
+		cdata->comp_id = scontrol->comp_id;
+		cdata->num_elems = scontrol->num_channels;
 
 		/* send IPC to the DSP */
  		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			cdata->hdr.cmd, cdata, cdata->hdr.size,
-			cdata, cdata->hdr.size);
+			cdata->rhdr.hdr.cmd, cdata, cdata->rhdr.hdr.size,
+			cdata, cdata->rhdr.hdr.size);
 		if (err < 0) {
 			dev_err(sdev->dev, "error: failed to set control %d values\n",
 				cdata->comp_id);
@@ -563,14 +566,17 @@ int snd_sof_ipc_get_comp_data(struct snd_sof_ipc *ipc,
 
 	} else {
 		/* read position via slower IPC */
-		cdata->hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
+		cdata->rhdr.hdr.cmd = SOF_IPC_GLB_COMP_MSG | ipc_cmd;
 		cdata->cmd = ctrl_cmd;
 		cdata->type = ctrl_type;
+		cdata->rhdr.hdr.size = scontrol->size;
+		cdata->comp_id = scontrol->comp_id;
+		cdata->num_elems = scontrol->num_channels;
 
 		/* send IPC to the DSP */
  		err = sof_ipc_tx_message_wait(sdev->ipc, 
-			cdata->hdr.cmd, cdata, cdata->hdr.size,
-			cdata, cdata->hdr.size);
+			cdata->rhdr.hdr.cmd, cdata, cdata->rhdr.hdr.size,
+			cdata, cdata->rhdr.hdr.size);
 		if (err < 0) {
 			dev_err(sdev->dev, "error: failed to get control %d values\n",
 				cdata->comp_id);

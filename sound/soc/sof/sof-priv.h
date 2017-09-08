@@ -201,6 +201,7 @@ struct snd_sof_control {
 	int num_channels;
 	uint32_t readback_offset; /* offset to mmaped data if used */
 	struct sof_ipc_ctrl_data *control_data;
+	uint32_t size;	/* cdata size */
 	enum sof_ipc_ctrl_cmd cmd;
 
 	struct mutex mutex;
