@@ -122,6 +122,30 @@ static const struct sof_dev_desc byt_desc = {
 };
 #endif
 
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
+static struct snd_soc_acpi_mach sof_cnl_machines[] = {
+	{
+		.id = "INT34C2",
+		.drv_name = "cnl_alc700_i2s",
+		.sof_fw_filename = "intel/dsp_fw_cnl.bin",
+		.sof_tplg_filename = "intel/sof-cnl.tplg",
+		.asoc_plat_name = "0000:00:0e.0",
+	},
+	{}
+};
+
+static const struct sof_dev_desc cnl_desc = {
+	.machines		= sof_cnl_machines,
+	.resindex_lpe_base	= 0,
+	.resindex_pcicfg_base	= -1,
+	.resindex_imr_base	= -1,
+	.irqindex_host_ipc	= -1,
+	.resindex_dma_base	= -1,
+	.nocodec_fw_filename = "intel/dsp_fw_cnl.bin",
+	.nocodec_tplg_filename = "intel/sof-cnl.tplg"
+};
+#endif
+
 struct sof_pci_priv {
 	struct snd_sof_pdata *sof_pdata;
 	struct platform_device *pdev_pcm;
@@ -199,6 +223,11 @@ static int sof_pci_probe(struct pci_dev *pci,
 		ops = &snd_sof_byt_ops;
 	}
 #endif
+#if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
+	else if (desc == &cnl_desc) {
+	  ops = &snd_sof_cnl_ops;
+	}
+#endif
 	else return -ENODEV;
 
 	/* TODO: read NHLT */
@@ -265,25 +294,6 @@ static void sof_pci_remove(struct pci_dev *pci)
 	release_firmware(sof_pdata->fw);
 	pci_release_regions(pci);
 }
-
-
-#if IS_ENABLED(CONFIG_SND_SOC_SOF_CANNONLAKE)
-static const struct snd_sof_machine sof_cnl_machines[] = {
-	{ "INT34C2", "cnl_alc700_i2s", "intel/dsp_fw_cnl.bin",
-		"intel/sof-cnl.tplg", "0000:00:0e.0", &snd_sof_cnl_ops },
-};
-
-static const struct sof_dev_desc cnl_desc = {
-	.machines		= sof_cnl_machines,
-	.resindex_lpe_base	= 0,
-	.resindex_pcicfg_base	= -1,
-	.resindex_imr_base	= -1,
-	.irqindex_host_ipc	= -1,
-	.resindex_dma_base	= -1,
-	.nocodec_fw_filename = "intel/dsp_fw_cnl.bin",
-	.nocodec_tplg_filename = "intel/sof-cnl.tplg"
-};
-#endif
 
 /* PCI IDs */
 static const struct pci_device_id sof_pci_ids[] = {
