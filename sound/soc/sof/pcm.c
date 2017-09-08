@@ -350,9 +350,6 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 			  SNDRV_PCM_INFO_RESUME |
 			  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP |
 			  SNDRV_PCM_INFO_DRAIN_TRIGGER,
-	runtime->hw.formats = SNDRV_PCM_FMTBIT_S16_LE |
-		SNDRV_PCM_FMTBIT_S24_LE |
-		SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_FLOAT;
 	runtime->hw.formats = caps->formats;
 	runtime->hw.period_bytes_min = caps->period_size_min;
 	runtime->hw.period_bytes_max = caps->period_size_max;
@@ -529,6 +526,22 @@ static void sof_pcm_free(struct snd_pcm *pcm)
 #endif
 }
 
+static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,
+			struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+			SNDRV_PCM_HW_PARAM_RATE);
+	struct snd_interval *channels = hw_param_interval(params,
+						SNDRV_PCM_HW_PARAM_CHANNELS);
+
+	/*  tmp hard code to 48k, stereo, 24bits. TODO: read this from topology */
+	rate->min = rate->max = 48000;
+	channels->min = channels->max = 2;
+	params_set_format(params, SNDRV_PCM_FORMAT_S24_LE);
+
+	return 0;
+}
+
 static int sof_pcm_probe(struct snd_soc_platform *platform)
 {
 	struct snd_sof_dev *sdev =
@@ -578,6 +591,7 @@ void snd_sof_new_platform_drv(struct snd_sof_dev *sdev)
 	pd->pcm_new = sof_pcm_new;
 	pd->pcm_free = sof_pcm_free;
 	pd->ignore_machine = plat_data->machine->drv_name;
+	pd->be_hw_params_fixup = sof_pcm_dai_link_fixup;
 }
 
 static const struct snd_soc_dai_ops sof_dai_ops = {
@@ -601,7 +615,7 @@ static const struct snd_soc_component_driver sof_dai_component = {
 };
 
 #define SOF_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE | \
-	SNDRV_PCM_FMTBIT_S32_LE)
+	SNDRV_PCM_FMTBIT_S32_LE | SNDRV_PCM_FMTBIT_FLOAT)
 
 void snd_sof_new_dai_drv(struct snd_sof_dev *sdev)
 {
@@ -610,11 +624,11 @@ void snd_sof_new_dai_drv(struct snd_sof_dev *sdev)
 
 	sdev->cmpnt_drv = &sof_dai_component;
 	dd->playback.channels_min = 1;
-	dd->playback.channels_max = 8;
+	dd->playback.channels_max = 16;
 	dd->playback.rates = SNDRV_PCM_RATE_8000_192000;
 	dd->playback.formats = SOF_FORMATS;
 	dd->capture.channels_min = 1;
-	dd->capture.channels_max = 8;
+	dd->capture.channels_max = 16;
 	dd->capture.rates = SNDRV_PCM_RATE_8000_192000;
 	dd->capture.formats = SOF_FORMATS;
 	dd->ops = &sof_dai_ops;
