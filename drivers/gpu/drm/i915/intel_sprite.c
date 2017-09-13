@@ -146,12 +146,11 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
 	 * This means we must not write any registers on the first
 	 * line of vblank (since not the whole line is actually in
 	 * vblank). And unfortunately we can't use the interrupt to
-	 * wait here since it may have already fired before we check
-	 * the scanline. We could use the frame start interrupt instead
-	 * since it will fire after the critical scanline, but that would
-	 * require more changes in the interrupt code. So for now we'll
-	 * just do the nasty thing and poll for the bad scanline to
-	 * pass us by.
+	 * wait here since it will fire too soon. We could use the
+	 * frame start interrupt instead since it will fire after the
+	 * critical scanline, but that would require more changes
+	 * in the interrupt code. So for now we'll just do the nasty
+	 * thing and poll for the bad scanline to pass us by.
 	 *
 	 * FIXME figure out if BXT+ DSI suffers from this as well
 	 */
