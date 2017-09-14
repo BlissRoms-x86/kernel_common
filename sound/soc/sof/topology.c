@@ -247,6 +247,8 @@ static const struct sof_topology_token sched_tokens[] = {
 		offsetof(struct sof_ipc_pipe_new, core), 0},
 	{SOF_TKN_SCHED_FRAMES, SND_SOC_TPLG_TUPLE_TYPE_WORD, get_token_u32,
 		offsetof(struct sof_ipc_pipe_new, frames_per_sched), 0},
+	{SOF_TKN_SCHED_TIMER, SND_SOC_TPLG_TUPLE_TYPE_WORD, get_token_u32,
+		offsetof(struct sof_ipc_pipe_new, timer), 0},
 };
 
 /* volume */
