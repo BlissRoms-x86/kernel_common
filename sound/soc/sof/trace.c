@@ -64,8 +64,11 @@
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
 #include <linux/firmware.h>
+#include <linux/debugfs.h>
 #include <uapi/sound/sof-ipc.h>
+#include <uapi/sound/sof-fw.h>
 #include "sof-priv.h"
+#include "ops.h"
 
 #if 0
 struct dma_trace_buffer {
@@ -189,9 +192,145 @@ static const struct file_operations sst_dma_trace_fops = {
 };
 #endif
 
-int snd_sof_init_trace(struct snd_sof_dev *sof_dev)
+static int sof_dfsentry_trace_open(struct inode *inode, struct file *file)
 {
+	file->private_data = inode->i_private;
+
+	return 0;
+}
+
+static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
+				 size_t count, loff_t *ppos)
+{
+	struct snd_sof_dfsentry *dfse = file->private_data;
+	int size;
+	loff_t pos = *ppos;
+	size_t ret;
+
+	size = dfse->size;
+
+	if (pos < 0)
+		return -EINVAL;
+	if (pos >= size || !count)
+		return 0;
+	if (count > size - pos)
+		count = size - pos;
+
+	size = (count + 3) & ~3;
+
+	ret = copy_to_user(buffer, dfse->buf + pos, count);
+
+	if (ret == count)
+		return -EFAULT;
+	count -= ret;
+	*ppos = pos + count;
+
+	return count;
+}
+
+static const struct file_operations sof_dfs_trace_fops = {
+	.open = sof_dfsentry_trace_open,
+	.read = sof_dfsentry_trace_read,
+	.llseek = default_llseek,
+};
+
+static int trace_debugfs_create(struct snd_sof_dev *sdev)
+{
+	struct snd_sof_dfsentry *dfse;
+
+	if (!sdev)
+		return -EINVAL;
+
+	dfse = kzalloc(sizeof(*dfse), GFP_KERNEL);
+	if (!dfse)
+		return -ENOMEM;
+
+	dfse->buf = sdev->dmatb.area;
+	dfse->size = sdev->dmatb.bytes;
+	dfse->sdev = sdev;
+
+	dfse->dfsentry = debugfs_create_file("trace", 0444, sdev->debugfs_root,
+					     dfse, &sof_dfs_trace_fops);
+	if (!dfse->dfsentry) {
+		dev_err(sdev->dev,
+			"error: cannot create debugfs entry for trace\n");
+		kfree(dfse);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+int snd_sof_init_trace(struct snd_sof_dev *sdev)
+{
+	int ret = 0;
+	struct sof_ipc_dma_trace_params params;
+	struct sof_ipc_reply ipc_reply;
+	struct sof_ipc_hdr hdr;
+	dev_dbg(sdev->dev, "snd_sof_init_trace() start!!!\n");
+
+	/* allocate trace page table buffer */
+	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
+		PAGE_SIZE, &sdev->dmatp);
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: cant alloc page table for trace %d\n", ret);
+		return ret;
+	}
+
+	/* allocate trace data buffer */
+	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV_SG, sdev->parent,
+		DMA_BUF_SIZE_FOR_TRACE, &sdev->dmatb);
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: cant alloc buffer for trace%d\n", ret);
+		return ret;
+	}
+
+	/* craete compressed page table for audio firmware */
+	ret = snd_sof_create_page_table(sdev, &sdev->dmatb, sdev->dmatp.area,
+		sdev->dmatb.bytes);
+	if (ret < 0)
+		return ret;
+
+	sdev->dma_trace_pages = ret;
+	dev_dbg(sdev->dev, "dma_trace_pages: %d\n", sdev->dma_trace_pages);
+
+	ret = trace_debugfs_create(sdev);
+	if (ret < 0)
+		return ret;
+
+	/* set IPC parameters */
+	hdr.size = sizeof(hdr);
+	hdr.cmd = SOF_IPC_GLB_TRACE_MSG | SOF_IPC_TRACE_DMA_INIT;
+
+	params.hdr.size = sizeof(params);
+	params.hdr.cmd = SOF_IPC_GLB_TRACE_MSG | SOF_IPC_TRACE_DMA_PARAMS;
+	params.buffer.phy_addr = sdev->dmatp.addr;
+	params.buffer.size = sdev->dmatb.bytes;
+	params.buffer.offset = 0;
+	params.buffer.pages = sdev->dma_trace_pages;
+
+	/* send IPC to the DSP */
+	ret = sof_ipc_tx_message_wait(sdev->ipc,
+		hdr.cmd, &hdr, sizeof(hdr),
+		&ipc_reply, sizeof(ipc_reply));
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: cant initialize DMA for Trace%d\n", ret);
+		return ret;
+	}
+
+	ret = sof_ipc_tx_message_wait(sdev->ipc,
+		params.hdr.cmd, &params, sizeof(params),
+		&ipc_reply, sizeof(ipc_reply));
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: cant set params for DMA for Trace%d\n", ret);
+		return ret;
+	}
+
+	dev_dbg(sdev->dev, "snd_sof_init_trace() end!!!\n");
 	return 0;
 }
 EXPORT_SYMBOL(snd_sof_init_trace);
-

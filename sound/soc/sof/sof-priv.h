@@ -82,6 +82,9 @@
 /* time in ms for runtime suspend delay */
 #define SND_SOF_SUSPEND_DELAY	2000
 
+/* DMA buffer size for trace */
+#define DMA_BUF_SIZE_FOR_TRACE (PAGE_SIZE * 16)
+
 struct snd_sof_dev;
 struct snd_sof_ipc_msg;
 struct snd_sof_ipc;
@@ -366,6 +369,11 @@ struct snd_sof_dev {
 	wait_queue_head_t waitq;
 	int code_loading;
 
+	/* DMA for Trace */
+	struct snd_dma_buffer dmatb;
+	struct snd_dma_buffer dmatp;
+	int dma_trace_pages;
+
 	void *private;			/* core does not touch this */
 };
 
@@ -382,6 +390,9 @@ int snd_sof_suspend_late(struct device *dev);
 
 void snd_sof_new_platform_drv(struct snd_sof_dev *sdev);
 void snd_sof_new_dai_drv(struct snd_sof_dev *sdev);
+
+int snd_sof_create_page_table(struct snd_sof_dev *sdev,
+	struct snd_dma_buffer *dmab, unsigned char *page_table, size_t size);
 
 /*
  * Firmware loading.

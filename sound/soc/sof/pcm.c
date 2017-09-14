@@ -83,29 +83,10 @@ static int create_page_table(struct snd_pcm_substream *substream,
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct snd_dma_buffer *dmab = snd_pcm_get_dma_buf(substream);
-	int i, pages, stream = substream->stream;
+	int stream = substream->stream;
 
-	pages = snd_sgbuf_aligned_pages(size);
-
-	dev_dbg(sdev->dev, "generating page table for %p size 0x%zx pages %d\n",
-		dma_area, size, pages);
-
-	for (i = 0; i < pages; i++) {
-		u32 idx = (((i << 2) + i)) >> 1;
-		u32 pfn = snd_sgbuf_get_addr(dmab, i * PAGE_SIZE) >> PAGE_SHIFT;
-		u32 *pg_table;
-
-		dev_dbg(rtd->dev, "pfn i %i idx %d pfn %x\n", i, idx, pfn);
-
-		pg_table = (u32 *)(spcm->page_table[stream].area + idx);
-
-		if (i & 1)
-			*pg_table |= (pfn << 4);
-		else
-			*pg_table |= pfn;
-	}
-
-	return 0;
+	return snd_sof_create_page_table(sdev, dmab,
+		spcm->page_table[stream].area, size);
 }
 
 /* this may get called several times by oss emulation */

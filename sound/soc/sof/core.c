@@ -219,6 +219,13 @@ static int sof_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	ret = snd_sof_init_trace(sdev);
+	if (ret < 0) {
+		dev_err(sdev->dev,
+			"error: failed to initialize trace %d\n", ret);
+		goto err;
+	}
+
 	/* we return 0 on error if debug is defined as this allows DSP
 	 * memories to and peripherals to be inspected. */
 err:
@@ -248,6 +255,34 @@ void snd_sof_shutdown(struct device *dev)
 {
 }
 EXPORT_SYMBOL(snd_sof_shutdown);
+
+int snd_sof_create_page_table(struct snd_sof_dev *sdev,
+	struct snd_dma_buffer *dmab, unsigned char *page_table, size_t size)
+{
+	int i, pages;
+
+	pages = snd_sgbuf_aligned_pages(size);
+
+	dev_dbg(sdev->dev, "generating page table for %p size 0x%zx pages %d\n",
+		dmab->area, size, pages);
+
+	for (i = 0; i < pages; i++) {
+		u32 idx = (((i << 2) + i)) >> 1;
+		u32 pfn = snd_sgbuf_get_addr(dmab, i * PAGE_SIZE) >> PAGE_SHIFT;
+		u32 *pg_table;
+
+		dev_dbg(sdev->dev, "pfn i %i idx %d pfn %x\n", i, idx, pfn);
+
+		pg_table = (u32 *)(page_table + idx);
+
+		if (i & 1)
+			*pg_table |= (pfn << 4);
+		else
+			*pg_table |= pfn;
+	}
+
+	return pages;
+}
 
 static struct platform_driver sof_driver = {
 	.driver = {
