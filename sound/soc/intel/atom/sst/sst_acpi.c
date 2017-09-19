@@ -303,6 +303,8 @@ static int sst_acpi_probe(struct platform_device *pdev)
 		dev_err(dev, "No matching machine driver found\n");
 		return -ENODEV;
 	}
+	if (mach->machine_quirk)
+		mach = mach->machine_quirk(mach);
 
 	pdata = mach->pdata;
 
