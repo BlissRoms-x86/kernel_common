@@ -192,13 +192,6 @@ static const struct file_operations sst_dma_trace_fops = {
 };
 #endif
 
-static int sof_dfsentry_trace_open(struct inode *inode, struct file *file)
-{
-	file->private_data = inode->i_private;
-
-	return 0;
-}
-
 static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 				 size_t count, loff_t *ppos)
 {
@@ -229,7 +222,7 @@ static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 }
 
 static const struct file_operations sof_dfs_trace_fops = {
-	.open = sof_dfsentry_trace_open,
+	.open = simple_open,
 	.read = sof_dfsentry_trace_read,
 	.llseek = default_llseek,
 };
