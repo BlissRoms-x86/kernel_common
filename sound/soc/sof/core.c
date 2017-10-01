@@ -77,6 +77,7 @@ struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,
 	struct snd_sof_pcm *spcm = NULL;
 
 	list_for_each_entry(spcm, &sdev->pcm_list, list) {
+
 		if (spcm->pcm.dai_id == rtd->dai_link->id)
 			return spcm;
 	}
@@ -90,20 +91,47 @@ struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
 	struct snd_sof_pcm *spcm = NULL;
 
 	list_for_each_entry(spcm, &sdev->pcm_list, list) {
+
 		if (strcmp(spcm->pcm.dai_name, name) == 0)
 			return spcm;
+
+		if (strcmp(spcm->pcm.caps[0].name, name) == 0)
+			return spcm;
+
+		if (strcmp(spcm->pcm.caps[1].name, name) == 0)
+			return spcm;
+
 	}
 
 	return NULL;
 }
 
 struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
-	unsigned int comp_id)
+	unsigned int comp_id, int *direction)
 {
 	struct snd_sof_pcm *spcm = NULL;
 
 	list_for_each_entry(spcm, &sdev->pcm_list, list) {
-		if (spcm->comp_id == comp_id)
+		if (spcm->stream[SNDRV_PCM_STREAM_PLAYBACK].comp_id == comp_id) {
+			*direction = SNDRV_PCM_STREAM_PLAYBACK;
+			return spcm;
+		}
+		if (spcm->stream[SNDRV_PCM_STREAM_CAPTURE].comp_id == comp_id) {
+			*direction = SNDRV_PCM_STREAM_CAPTURE;
+			return spcm;
+		}
+	}
+
+	return NULL;
+}
+
+struct snd_sof_pcm *snd_sof_find_spcm_pcm_id(struct snd_sof_dev *sdev,
+	unsigned int pcm_id)
+{
+	struct snd_sof_pcm *spcm = NULL;
+
+	list_for_each_entry(spcm, &sdev->pcm_list, list) {
+		if (spcm->pcm.pcm_id == pcm_id)
 			return spcm;
 	}
 
@@ -116,6 +144,7 @@ struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
 	struct snd_sof_widget *swidget = NULL;
 
 	list_for_each_entry(swidget, &sdev->widget_list, list) {
+
 		if (strcmp(name, swidget->widget->name) == 0)
 			return swidget;
 	}

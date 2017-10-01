@@ -312,33 +312,35 @@ static void ipc_period_elapsed(struct snd_sof_dev *sdev, u32 msg_id)
 {
 	struct snd_sof_pcm *spcm;
 	struct sof_ipc_stream_posn posn;
+	int direction;
 
 	/* read back full message */
 	snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &posn, sizeof(posn));
 	dev_dbg(sdev->dev,  "posn: host 0x%llx dai 0x%llx wall 0x%llx\n",
 		posn.host_posn, posn.dai_posn, posn.wallclock);
 
-	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id);
+	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id, &direction);
 	if (spcm == NULL) {
 		dev_err(sdev->dev, "error: period elapsed for unknown component %d\n",
 			posn.comp_id);
 		return;
 	}
 
-	memcpy(&spcm->posn[0], &posn, sizeof(posn));
-	spcm->posn_valid[0] = true;
-	snd_pcm_period_elapsed(spcm->substream);
+	memcpy(&spcm->stream[direction].posn, &posn, sizeof(posn));
+	spcm->stream[direction].posn_valid = true;
+	snd_pcm_period_elapsed(spcm->stream[direction].substream);
 }
 
 static void ipc_xrun(struct snd_sof_dev *sdev, u32 msg_id)
 {
 	struct snd_sof_pcm *spcm;
 	struct sof_ipc_stream_posn posn;
+	int direction;
 
 	/* read back full message */
 	snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &posn, sizeof(posn));
 
-	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id);
+	spcm = snd_sof_find_spcm_comp(sdev, posn.comp_id, &direction);
 	if (spcm == NULL) {
 		dev_err(sdev->dev, "error: XRUN for unknown component %d\n",
 			posn.comp_id);
@@ -350,9 +352,9 @@ static void ipc_xrun(struct snd_sof_dev *sdev, u32 msg_id)
 
 	return; /* TODO: dont do anything yet until preload is working */
 
-	memcpy(&spcm->posn[0], &posn, sizeof(posn));
-	spcm->posn_valid[0] = true;
-	snd_pcm_stop_xrun(spcm->substream);
+	memcpy(&spcm->stream[direction].posn, &posn, sizeof(posn));
+	spcm->stream[direction].posn_valid = true;
+	snd_pcm_stop_xrun(spcm->stream[direction].substream);
 }
 
 static void ipc_stream_message(struct snd_sof_dev *sdev, u32 msg_id)
@@ -481,7 +483,8 @@ void snd_sof_ipc_free(struct snd_sof_dev *sdev)
 EXPORT_SYMBOL(snd_sof_ipc_free);
 
 int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
-	struct snd_sof_pcm *spcm, struct sof_ipc_stream_posn *posn)
+	struct snd_sof_pcm *spcm, int direction,
+	struct sof_ipc_stream_posn *posn)
 {
 	struct sof_ipc_stream stream;
 	int err;
@@ -489,7 +492,7 @@ int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
 	/* read position via slower IPC */
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_POSITION;
-	stream.comp_id = spcm->comp_id;
+	stream.comp_id = spcm->stream[direction].comp_id;
 
 	/* send IPC to the DSP */
 	err = sof_ipc_tx_message_wait(sdev->ipc, 

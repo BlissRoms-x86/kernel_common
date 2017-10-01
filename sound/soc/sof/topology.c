@@ -1218,14 +1218,20 @@ static int spcm_bind(struct snd_soc_component *scomp, struct snd_sof_pcm *spcm,
 
 	switch (host_widget->id) {
 	case snd_soc_dapm_aif_in:
+		spcm->stream[SNDRV_PCM_STREAM_PLAYBACK].comp_id =
+			host_widget->comp_id;
+		break;
 	case snd_soc_dapm_aif_out:
-		spcm->comp_id = host_widget->comp_id;
-		return 0;
+		spcm->stream[SNDRV_PCM_STREAM_CAPTURE].comp_id =
+			host_widget->comp_id;
+		break;
 	default:
 		dev_err(sdev->dev, "error: host is wrong type %d\n",
 			host_widget->id);
 		return -EINVAL;
 	}
+
+	return 0;
 }
 
 /* DAI link - used for any driver specific init */

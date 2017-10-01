@@ -170,7 +170,7 @@ static int sof_compressed_trigger(struct snd_compr_stream *cstream, int cmd)
 
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG;
-	stream.comp_id = spcm->comp_id;
+	stream.comp_id = spcm->stream[cstream->direction].comp_id;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -209,7 +209,7 @@ static int sof_compressed_pointer(struct snd_compr_stream *cstream,
 	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
 
-	snd_sof_ipc_stream_posn(sdev, spcm, &posn);
+	snd_sof_ipc_stream_posn(sdev, spcm, cstream->direction, &posn);
 
 	dev_vdbg(sdev->dev, "CPCM: DMA position %llu DAI position %llu\n",
 		posn.host_posn, posn.dai_posn);

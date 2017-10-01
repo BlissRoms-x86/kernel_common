@@ -2145,6 +2145,9 @@ static int apl_probe(struct snd_sof_dev *sdev)
 	/* inititalize waitq for code loading */
 	init_waitqueue_head(&sdev->waitq);
 
+	/* set default mailbox offset for FW ready message */
+	sdev->dsp_box.offset = APL_MBOX_UPLINK_OFFSET;
+
 	return 0;		
 
 irq_err:

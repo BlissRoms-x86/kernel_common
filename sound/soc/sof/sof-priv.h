@@ -153,7 +153,7 @@ struct snd_sof_dsp_ops {
 };
 
 struct snd_sof_chip_info{
-	int id ;
+	int id;
 	int cores_num;
 	int cores_mask;
 	int ipc_req;
@@ -183,17 +183,18 @@ struct snd_sof_mailbox {
 	size_t size;
 };
 
+struct snd_sof_pcm_stream {
+	u32 comp_id;
+	struct snd_dma_buffer page_table;
+	struct sof_ipc_stream_posn posn;
+	bool posn_valid;
+	struct snd_pcm_substream *substream;
+};
+
 struct snd_sof_pcm {
 	struct snd_sof_dev *sdev;
-	int comp_id;
 	struct snd_soc_tplg_pcm pcm;
-	struct snd_dma_buffer page_table[2];	/* playback and capture */
-
-	/* offset to mmaped sof_ipc_stream_posn if used */
-	struct sof_ipc_stream_posn posn[2];
-	bool posn_valid[2];
-	struct snd_pcm_substream *substream;
-
+	struct snd_sof_pcm_stream stream[2];
 	struct mutex mutex;
 	struct list_head list;	/* list in sdev pcm list */
 };
@@ -432,14 +433,16 @@ struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,
 struct snd_sof_pcm *snd_sof_find_spcm_name(struct snd_sof_dev *sdev,
 	char *name);
 struct snd_sof_pcm *snd_sof_find_spcm_comp(struct snd_sof_dev *sdev,
-	unsigned int comp_id);
-
+	unsigned int comp_id, int *direction);
+struct snd_sof_pcm *snd_sof_find_spcm_pcm_id(struct snd_sof_dev *sdev,
+	unsigned int pcm_id);
 
 /*
  * Stream IPC
  */
 int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
-	struct snd_sof_pcm *spcm, struct sof_ipc_stream_posn *posn);
+	struct snd_sof_pcm *spcm, int direction,
+	struct sof_ipc_stream_posn *posn);
 
 /*
  * Mixer IPC

@@ -86,7 +86,7 @@ static int create_page_table(struct snd_pcm_substream *substream,
 	int stream = substream->stream;
 
 	return snd_sof_create_page_table(sdev, dmab,
-		spcm->page_table[stream].area, size);
+		spcm->stream[stream].page_table.area, size);
 }
 
 /* this may get called several times by oss emulation */
@@ -131,8 +131,8 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 	/* set IPC PCM parameters */
 	pcm.hdr.size = sizeof(pcm);
 	pcm.hdr.cmd = SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_PCM_PARAMS;
-	pcm.comp_id = spcm->comp_id;
-	pcm.params.buffer.phy_addr = spcm->page_table[substream->stream].addr;
+	pcm.comp_id = spcm->stream[substream->stream].comp_id;
+	pcm.params.buffer.phy_addr = spcm->stream[substream->stream].page_table.addr;
 	pcm.params.buffer.size = runtime->dma_bytes;
 	pcm.params.buffer.offset = 0;
 	pcm.params.direction = substream->stream;
@@ -202,7 +202,7 @@ static int sof_pcm_hw_free(struct snd_pcm_substream *substream)
 
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_PCM_FREE;
-	stream.comp_id = spcm->comp_id;
+	stream.comp_id = spcm->stream[substream->stream].comp_id;
 
 	/* send IPC to the DSP */
  	ret = sof_ipc_tx_message_wait(sdev->ipc, stream.hdr.cmd, &stream,
@@ -227,7 +227,7 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG;
-	stream.comp_id = spcm->comp_id;
+	stream.comp_id = spcm->stream[substream->stream].comp_id;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -273,17 +273,18 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 
 	/* TODO force local readback atm */
 	/* can we read the position locally ? */
-	if (1 || spcm->posn_valid[substream->stream]) {
+	if (1 || spcm->stream[substream->stream].posn_valid) {
 		host = bytes_to_frames(substream->runtime,
-			spcm->posn[substream->stream].host_posn);
+			spcm->stream[substream->stream].posn.host_posn);
 		dai = bytes_to_frames(substream->runtime,
-			spcm->posn[substream->stream].dai_posn);
-		spcm->posn_valid[substream->stream] = false;
+			spcm->stream[substream->stream].posn.dai_posn);
+		spcm->stream[substream->stream].posn_valid = false;
 
 		dev_dbg(sdev->dev, "PCM: local DMA position %lu DAI position %lu\n",
 			host, dai);
 	} else {
-		err = snd_sof_ipc_stream_posn(sdev, spcm, &posn);
+		err = snd_sof_ipc_stream_posn(sdev, spcm, substream->stream,
+			&posn);
 		if (err < 0) {
 			dev_err(sdev->dev, "error: cannot get stream position\n");
 		}
@@ -329,8 +330,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 			  SNDRV_PCM_INFO_INTERLEAVED |
 			  SNDRV_PCM_INFO_PAUSE |
 			  SNDRV_PCM_INFO_RESUME |
-			  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP |
-			  SNDRV_PCM_INFO_DRAIN_TRIGGER,
+			  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP,
 	runtime->hw.formats = caps->formats;
 	runtime->hw.period_bytes_min = caps->period_size_min;
 	runtime->hw.period_bytes_max = caps->period_size_max;
@@ -353,8 +353,10 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	/* set wait time - TODO: come from topology */
 	snd_pcm_wait_time(substream, 100);
 
-	spcm->posn_valid[substream->stream] = false;
-	spcm->substream = substream;
+	spcm->stream[substream->stream].posn_valid = false;
+	spcm->stream[substream->stream].posn.host_posn = 0;
+	spcm->stream[substream->stream].posn.dai_posn = 0;
+	spcm->stream[substream->stream].substream = substream;
 	mutex_unlock(&spcm->mutex);
 	return 0;
 }
@@ -395,10 +397,10 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm;
 	struct snd_pcm *pcm = rtd->pcm;
-	int ret = 0;
+	struct snd_soc_tplg_stream_caps *caps;
+	int ret = 0, stream = SNDRV_PCM_STREAM_PLAYBACK;
 
 	spcm = snd_sof_find_spcm_dai(sdev, rtd);
-
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",
 			rtd->dai_link->id);
@@ -412,66 +414,62 @@ static int sof_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	if (!spcm->pcm.playback)
 		goto capture;
 
+	caps = &spcm->pcm.caps[stream];
+
 	/* pre-allocate playback audio buffer pages */
 	dev_dbg(sdev->dev, "spcm: allocate %s playback DMA buffer size 0x%x max 0x%x\n",
-		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].name,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_min,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_max);
+		caps->name, caps->buffer_size_min, caps->buffer_size_max);
 
-	ret = snd_pcm_lib_preallocate_pages(
-		pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream,
+	ret = snd_pcm_lib_preallocate_pages(pcm->streams[stream].substream,
 		SNDRV_DMA_TYPE_DEV_SG, sdev->parent,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_min,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_max);
+		caps->buffer_size_min, caps->buffer_size_max);
 	if (ret) {
 		dev_err(sdev->dev, "error: cant alloc DMA buffer size 0x%x/0x%x for %s %d\n",
-			spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_min,
-			spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].buffer_size_max,
-			spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].name, ret);
+			caps->buffer_size_min, caps->buffer_size_max,
+			caps->name, ret);
 		return ret;
 	}
 
 	/* allocate playback page table buffer */
 	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
-		PAGE_SIZE, &spcm->page_table[SNDRV_PCM_STREAM_PLAYBACK]);
+		PAGE_SIZE, &spcm->stream[stream].page_table);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: cant alloc page table for %s %d\n",
-			spcm->pcm.caps[SNDRV_PCM_STREAM_PLAYBACK].name, ret);
+			caps->name, ret);
 		return ret;
 	}
 
 capture:
+	stream = SNDRV_PCM_STREAM_CAPTURE;
+
 	/* do we need to allocate capture PCM DMA pages */
 	if (!spcm->pcm.capture)
 		return ret;
 
+	caps = &spcm->pcm.caps[stream];
+
 	/* pre-allocate capture audio buffer pages */
 	dev_dbg(sdev->dev, "spcm: allocate %s capture DMA buffer size 0x%x max 0x%x\n",
-		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].name,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_min,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_max);
+		caps->name, caps->buffer_size_min, caps->buffer_size_max);
 
-	ret = snd_pcm_lib_preallocate_pages(
-		pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream,
+	ret = snd_pcm_lib_preallocate_pages(pcm->streams[stream].substream,
 		SNDRV_DMA_TYPE_DEV_SG, sdev->parent,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_min,
-		spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_max);
+		caps->buffer_size_min, caps->buffer_size_max);
 	if (ret) {
 		dev_err(sdev->dev, "error: cant alloc DMA buffer size 0x%x/0x%x for %s %d\n",
-			spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_min,
-			spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].buffer_size_max,
-			spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].name, ret);
-		snd_dma_free_pages(&spcm->page_table[SNDRV_PCM_STREAM_PLAYBACK]);
+			caps->buffer_size_min, caps->buffer_size_max,
+			caps->name, ret);
+		snd_dma_free_pages(&spcm->stream[stream].page_table);
 		return ret;
 	}
 
 	/* allocate capture page table buffer */
 	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
-		PAGE_SIZE, &spcm->page_table[SNDRV_PCM_STREAM_CAPTURE]);
+		PAGE_SIZE, &spcm->stream[stream].page_table);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: cant alloc page table for %s %d\n",
-			spcm->pcm.caps[SNDRV_PCM_STREAM_CAPTURE].name, ret);
-		snd_dma_free_pages(&spcm->page_table[SNDRV_PCM_STREAM_PLAYBACK]);
+			caps->name, ret);
+		snd_dma_free_pages(&spcm->stream[stream].page_table);
 		return ret;
 	}
 
