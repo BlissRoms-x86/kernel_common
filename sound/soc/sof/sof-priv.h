@@ -85,6 +85,9 @@
 /* DMA buffer size for trace */
 #define DMA_BUF_SIZE_FOR_TRACE (PAGE_SIZE * 16)
 
+/* max number of FE PCMs before BEs */
+#define SOF_BE_PCM_BASE		16
+
 struct snd_sof_dev;
 struct snd_sof_ipc_msg;
 struct snd_sof_ipc;

@@ -571,6 +571,8 @@ void snd_sof_new_platform_drv(struct snd_sof_dev *sdev)
 	pd->pcm_free = sof_pcm_free;
 	pd->ignore_machine = plat_data->machine->drv_name;
 	pd->be_hw_params_fixup = sof_pcm_dai_link_fixup;
+	pd->be_pcm_base = SOF_BE_PCM_BASE;
+	pd->use_dai_pcm_id = true;
 }
 
 static const struct snd_soc_dai_ops sof_dai_ops = {
