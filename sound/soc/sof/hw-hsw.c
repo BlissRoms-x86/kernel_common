@@ -395,12 +395,8 @@ static irqreturn_t hsw_irq_thread(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
 	u64 ipcx, ipcd;
-	unsigned long flags;
-
-	spin_lock_irqsave(&sdev->hw_lock, flags);
 
 	ipcx = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCX);
-	ipcd = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCD);
 
 	/* reply message from DSP */
 	if (ipcx & SHIM_IPCX_DONE) {
@@ -417,23 +413,14 @@ static irqreturn_t hsw_irq_thread(int irq, void *context)
 			SHIM_IMRX_DONE, 0);
 	}
 
+	ipcd = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCD);
+
 	/* new message from DSP */
 	if (ipcd & SHIM_IPCD_BUSY) {
 
 		/* Handle messages from DSP Core */
 		snd_sof_ipc_msgs_rx(sdev);
-
-		/* clear BUSY bit and set DONE bit - accept new messages */
-		snd_sof_dsp_update_bits64_unlocked(sdev, HSW_DSP_BAR, SHIM_IPCD,
-			SHIM_IPCD_BUSY | SHIM_IPCD_DONE,
-			SHIM_IPCD_DONE);
-
-		/* unmask busy interrupt */
-		snd_sof_dsp_update_bits64_unlocked(sdev, HSW_DSP_BAR, SHIM_IMRX,
-			SHIM_IMRX_BUSY, 0);
 	}
-
-	spin_unlock_irqrestore(&sdev->hw_lock, flags);
 
 	/* continue to send any remaining messages... */
 	snd_sof_ipc_msgs_tx(sdev);
@@ -494,18 +481,18 @@ static void hsw_mailbox_read(struct snd_sof_dev *sdev, u32 offset,
 	memcpy_fromio(message, src, bytes);
 }
 
-static int hsw_tx_busy(struct snd_sof_dev *sdev)
+static int hsw_is_ready(struct snd_sof_dev *sdev)
 {
 	uint64_t val;
 
 	val = snd_sof_dsp_read64(sdev, HSW_DSP_BAR, SHIM_IPCX);
 	if (val & SHIM_IPCX_BUSY)
-		return 1;
+		return 0;
 
-	return 0;
+	return 1;
 }
 
-static int hsw_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+static int hsw_send_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	u64 cmd = msg->header;
 
@@ -517,7 +504,7 @@ static int hsw_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	return 0;
 }
 
-static int hsw_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+static int hsw_get_reply(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	struct sof_ipc_reply reply;
 	int ret = 0;
@@ -544,6 +531,20 @@ static int hsw_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	if (msg->msg_data && size > 0)
 		hsw_mailbox_read(sdev, sdev->host_box.offset, msg->reply_data, size);
 	return ret;
+}
+
+static int hsw_cmd_done(struct snd_sof_dev *sdev)
+{
+	/* clear BUSY bit and set DONE bit - accept new messages */
+	snd_sof_dsp_update_bits64_unlocked(sdev, HSW_DSP_BAR, SHIM_IPCD,
+		SHIM_IPCD_BUSY | SHIM_IPCD_DONE,
+		SHIM_IPCD_DONE);
+
+	/* unmask busy interrupt */
+	snd_sof_dsp_update_bits64_unlocked(sdev, HSW_DSP_BAR, SHIM_IMRX,
+		SHIM_IMRX_BUSY, 0);
+
+	return 0;
 }
 
 /*
@@ -688,10 +689,11 @@ struct snd_sof_dsp_ops snd_sof_hsw_ops = {
 	.mailbox_write  = hsw_mailbox_write,
 
 	/* ipc */
-	.tx_msg     	= hsw_tx_msg,
+	.send_msg	= hsw_send_msg,
+	.get_reply	= hsw_get_reply,
 	.fw_ready	= hsw_fw_ready,
-	.rx_msg		= hsw_rx_msg,
-	.tx_busy	= hsw_tx_busy,
+	.is_ready	= hsw_is_ready,
+	.cmd_done	= hsw_cmd_done,
 
 	/* debug */
 	.debug_map  = hsw_debugfs,

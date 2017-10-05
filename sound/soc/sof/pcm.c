@@ -54,7 +54,7 @@
  *
  * Author: Liam Girdwood <liam.r.girdwood@linux.intel.com>
  */
-#define DEBUG 
+
 #include <linux/module.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
@@ -176,7 +176,7 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	/* send IPC to the DSP */
- 	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		pcm.hdr.cmd, &pcm, sizeof(pcm), 
 		&ipc_params_reply, sizeof(ipc_params_reply));
 
@@ -205,7 +205,7 @@ static int sof_pcm_hw_free(struct snd_pcm_substream *substream)
 	stream.comp_id = spcm->stream[substream->stream].comp_id;
 
 	/* send IPC to the DSP */
- 	ret = sof_ipc_tx_message_wait(sdev->ipc, stream.hdr.cmd, &stream,
+	ret = sof_ipc_tx_message(sdev->ipc, stream.hdr.cmd, &stream,
 		sizeof(stream), &reply, sizeof(reply));
 
 	snd_pcm_lib_free_pages(substream);
@@ -219,7 +219,7 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct sof_ipc_stream stream;
-
+	struct sof_ipc_reply reply;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
@@ -231,21 +231,19 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
-	case SNDRV_PCM_TRIGGER_RESUME:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_RELEASE;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_STOP;
 		break;		
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_PAUSE;
 		break;
-	case SNDRV_PCM_TRIGGER_DRAIN:
-		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_DRAIN;
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
 		break;
 	default:
 		dev_err(sdev->dev, "error: unhandled trigger cmd %d\n", cmd);
@@ -253,8 +251,8 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	}
 
 	/* send IPC to the DSP */
- 	return sof_ipc_tx_message_nowait(sdev->ipc, stream.hdr.cmd, &stream,
-		sizeof(stream));
+	return sof_ipc_tx_message(sdev->ipc, stream.hdr.cmd, &stream,
+		sizeof(stream), &reply, sizeof(reply));
 }
 
 static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
@@ -262,39 +260,21 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
-	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
 	snd_pcm_uframes_t host = 0, dai = 0;
-	int err;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
 		return 0;
 
-	/* TODO force local readback atm */
-	/* can we read the position locally ? */
-	if (1 || spcm->stream[substream->stream].posn_valid) {
-		host = bytes_to_frames(substream->runtime,
-			spcm->stream[substream->stream].posn.host_posn);
-		dai = bytes_to_frames(substream->runtime,
-			spcm->stream[substream->stream].posn.dai_posn);
-		spcm->stream[substream->stream].posn_valid = false;
+	/* TODO: call HW position callback */
+	host = bytes_to_frames(substream->runtime,
+		spcm->stream[substream->stream].posn.host_posn);
+	dai = bytes_to_frames(substream->runtime,
+		spcm->stream[substream->stream].posn.dai_posn);
 
-		dev_dbg(sdev->dev, "PCM: local DMA position %lu DAI position %lu\n",
-			host, dai);
-	} else {
-		err = snd_sof_ipc_stream_posn(sdev, spcm, substream->stream,
-			&posn);
-		if (err < 0) {
-			dev_err(sdev->dev, "error: cannot get stream position\n");
-		}
-
-		host = bytes_to_frames(substream->runtime, posn.host_posn);
-		dai = bytes_to_frames(substream->runtime, posn.dai_posn);
-
-		dev_dbg(sdev->dev, "PCM: IPC DMA position %lu DAI position %lu\n",
-			host, dai);
-	}
+	dev_dbg(sdev->dev, "PCM: local DMA position %lu DAI position %lu\n",
+		host, dai);
 
 	return host;
 }
@@ -330,7 +310,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 			  SNDRV_PCM_INFO_INTERLEAVED |
 			  SNDRV_PCM_INFO_PAUSE |
 			  SNDRV_PCM_INFO_RESUME |
-			  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP,
+			  SNDRV_PCM_INFO_NO_PERIOD_WAKEUP;
 	runtime->hw.formats = caps->formats;
 	runtime->hw.period_bytes_min = caps->period_size_min;
 	runtime->hw.period_bytes_max = caps->period_size_max;
@@ -353,7 +333,6 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	/* set wait time - TODO: come from topology */
 	snd_pcm_wait_time(substream, 100);
 
-	spcm->stream[substream->stream].posn_valid = false;
 	spcm->stream[substream->stream].posn.host_posn = 0;
 	spcm->stream[substream->stream].posn.dai_posn = 0;
 	spcm->stream[substream->stream].substream = substream;
@@ -487,22 +466,24 @@ capture:
 
 static void sof_pcm_free(struct snd_pcm *pcm)
 {
-#if 0
 	struct snd_sof_pcm *spcm;
+	struct snd_soc_pcm_runtime *rtd = pcm->private_data;
+	struct snd_sof_dev *sdev =
+		snd_soc_platform_get_drvdata(rtd->platform);
 
-	spcm = snd_sof_find_spcm(sdev, rtd);
+	spcm = snd_sof_find_spcm_dai(sdev, rtd);
 	if (spcm == NULL) {
 		dev_warn(sdev->dev, "warn: cant find PCM with DAI ID %d\n",
 			rtd->dai_link->id);
-		return 0;
+		return;
 	}
 
 	if (spcm->pcm.playback)
-		snd_dma_free_pages(&spcm->page_table[SNDRV_PCM_STREAM_PLAYBACK]);
+		snd_dma_free_pages(&spcm->stream[SNDRV_PCM_STREAM_PLAYBACK].page_table);
 
 	if (spcm->pcm.capture)
-		snd_dma_free_pages(&spcm->page_table[SNDRV_PCM_STREAM_CAPTURE]);
-#endif
+		snd_dma_free_pages(&spcm->stream[SNDRV_PCM_STREAM_CAPTURE].page_table);
+
 }
 
 static int sof_pcm_dai_link_fixup(struct snd_soc_pcm_runtime *rtd,

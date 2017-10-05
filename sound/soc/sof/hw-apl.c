@@ -960,11 +960,6 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 		/* handle messages from DSP */
 		snd_sof_ipc_msgs_rx(sdev);
 
-		/* clear busy interrupt */
-		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR, 
-			APL_DSP_REG_HIPCT, APL_DSP_REG_HIPCT_BUSY, 
-			APL_DSP_REG_HIPCT_BUSY);
-
 		ret = IRQ_HANDLED;
 	}
 
@@ -984,6 +979,18 @@ static irqreturn_t apl_irq_thread(int irq, void *context)
 	return ret;
 }
 
+static int apl_cmd_done(struct snd_sof_dev *sdev)
+{
+	/* clear busy interrupt */
+	snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+		APL_DSP_REG_HIPCT, APL_DSP_REG_HIPCT_BUSY,
+		APL_DSP_REG_HIPCT_BUSY);
+
+	/* TODO: do we need to ack DSP ?? */
+
+	return 0;
+}
+
 static irqreturn_t cnl_irq_thread(int irq, void *context)
 {
 	struct snd_sof_dev *sdev = (struct snd_sof_dev *) context;
@@ -995,7 +1002,6 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 		return ret;
 
 	hipcida = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDA);
-	hipctdr = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCTDR);
 
 	/* reply message from DSP */
 	if (hipcida & CNL_DSP_REG_HIPCIDA_DONE) {
@@ -1026,6 +1032,8 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 		ret = IRQ_HANDLED;
 	}
 
+	hipctdr = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCTDR);
+
 	/* new message from DSP */
 	if (hipctdr & CNL_DSP_REG_HIPCTDR_BUSY) {
 
@@ -1039,16 +1047,6 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 
 		/* handle messages from DSP */
 		snd_sof_ipc_msgs_rx(sdev);
-
-		/* clear busy interrupt */
-		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
-			CNL_DSP_REG_HIPCTDR, CNL_DSP_REG_HIPCTDR_BUSY,
-			CNL_DSP_REG_HIPCTDR_BUSY);
-
-		/* set done bit to ack dsp */
-		snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
-			CNL_DSP_REG_HIPCTDA, CNL_DSP_REG_HIPCTDA_DONE,
-			CNL_DSP_REG_HIPCTDA_DONE);
 
 		ret = IRQ_HANDLED;
 	}
@@ -1067,6 +1065,21 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 	}
 
 	return ret;
+}
+
+static int cnl_cmd_done(struct snd_sof_dev *sdev)
+{
+	/* clear busy interrupt */
+	snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+		CNL_DSP_REG_HIPCTDR, CNL_DSP_REG_HIPCTDR_BUSY,
+		CNL_DSP_REG_HIPCTDR_BUSY);
+
+	/* set done bit to ack dsp */
+	snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+		CNL_DSP_REG_HIPCTDA, CNL_DSP_REG_HIPCTDA_DONE,
+		CNL_DSP_REG_HIPCTDA_DONE);
+
+	return 0;
 }
 
 static irqreturn_t skl_interrupt(int irq, void *context)
@@ -1409,18 +1422,18 @@ static void apl_notify(struct snd_sof_dev *dsp)
 
 #endif
 
-static int apl_tx_busy(struct snd_sof_dev *sdev)
+static int apl_is_ready(struct snd_sof_dev *sdev)
 {
 	uint64_t val;
 
 	val = snd_sof_dsp_read(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCI);
 	if (val & APL_DSP_REG_HIPCI_BUSY)
-		return 1;
+		return 0;
 
-	return 0;
+	return 1;
 }
 
-static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+static int apl_send_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	u32 cmd = msg->header;
 
@@ -1433,18 +1446,18 @@ static int apl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	return 0;
 }
 
-static int cnl_tx_busy(struct snd_sof_dev *sdev)
+static int cnl_is_ready(struct snd_sof_dev *sdev)
 {
 	uint64_t val;
 
 	val = snd_sof_dsp_read(sdev, APL_DSP_BAR, CNL_DSP_REG_HIPCIDR);
 	if (val & CNL_DSP_REG_HIPCIDR_BUSY)
-		return 1;
+		return 0;
 
-	return 0;
+	return 1;
 }
 
-static int cnl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+static int cnl_send_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	u32 cmd = msg->header;
 
@@ -1457,7 +1470,7 @@ static int cnl_tx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 	return 0;
 }
 
-static int apl_rx_msg(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
+static int apl_get_reply(struct snd_sof_dev *sdev, struct snd_sof_ipc_msg *msg)
 {
 	struct sof_ipc_reply reply;
 	int ret = 0;
@@ -2187,10 +2200,6 @@ struct snd_sof_dsp_ops snd_sof_bxt_ops = {
 	.probe		= apl_probe,
 	.remove		= apl_remove,
 
-	/* DSP core boot / reset */
-//	.run		= apl_run,
-//	.reset		= apl_reset,
-
 	/* Register IO */
 	.write		= apl_write,
 	.read		= apl_read,
@@ -2210,10 +2219,11 @@ struct snd_sof_dsp_ops snd_sof_bxt_ops = {
 	.mailbox_write	= apl_mailbox_write,
 
 	/* ipc */
-	.tx_msg		= apl_tx_msg,
+	.send_msg	= apl_send_msg,
+	.get_reply	= apl_get_reply,
 	.fw_ready	= apl_fw_ready,
-	.rx_msg		= apl_rx_msg,
-	.tx_busy	= apl_tx_busy,
+	.is_ready	= apl_is_ready,
+	.cmd_done	= apl_cmd_done,
 
 	/* debug */
 	.debug_map	= apl_debugfs,
@@ -2236,10 +2246,6 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 	.probe		= apl_probe,
 	.remove		= apl_remove,
 
-	/* DSP core boot / reset */
-//	.run		= apl_run,
-//	.reset		= apl_reset,
-
 	/* Register IO */
 	.write		= apl_write,
 	.read		= apl_read,
@@ -2259,10 +2265,11 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 	.mailbox_write	= apl_mailbox_write,
 
 	/* ipc */
-	.tx_msg		= apl_tx_msg,
+	.send_msg	= apl_send_msg,
+	.get_reply	= apl_get_reply,
 	.fw_ready	= apl_fw_ready,
-	.rx_msg		= apl_rx_msg,
-	.tx_busy	= apl_tx_busy,
+	.is_ready	= apl_is_ready,
+	.cmd_done	= apl_cmd_done,
 
 	/* debug */
 	.debug_map	= apl_debugfs,
@@ -2282,14 +2289,10 @@ struct snd_sof_dsp_ops snd_sof_cnl_ops = {
 	.probe		= apl_probe,
 	.remove		= apl_remove,
 
-	/* DSP core boot / reset */
-//	.run		= cnl_run,
-//	.reset		= cnl_reset,
-
 	/* Register IO */
 	.write		= apl_write,
 	.read		= apl_read,
-	.write64		= apl_write64,
+	.write64	= apl_write64,
 	.read64		= apl_read64,
 
 	/* Block IO */
@@ -2305,10 +2308,11 @@ struct snd_sof_dsp_ops snd_sof_cnl_ops = {
 	.mailbox_write	= apl_mailbox_write,
 
 	/* ipc */
-	.tx_msg		= cnl_tx_msg,
-	.fw_ready		= apl_fw_ready,
-	.rx_msg		= apl_rx_msg,
-	.tx_busy		= cnl_tx_busy,
+	.send_msg	= cnl_send_msg,
+	.get_reply	= apl_get_reply,
+	.fw_ready	= apl_fw_ready,
+	.is_ready	= cnl_is_ready,
+	.cmd_done	= cnl_cmd_done,
 
 	/* debug */
 	.debug_map	= apl_debugfs,

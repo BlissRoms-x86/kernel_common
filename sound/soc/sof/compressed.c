@@ -167,6 +167,7 @@ static int sof_compressed_trigger(struct snd_compr_stream *cstream, int cmd)
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct sof_ipc_stream stream;
+	struct sof_ipc_reply reply;
 
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG;
@@ -176,28 +177,24 @@ static int sof_compressed_trigger(struct snd_compr_stream *cstream, int cmd)
 	case SNDRV_PCM_TRIGGER_START:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
 		break;
-	case SNDRV_PCM_TRIGGER_RESUME:
-		//stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
-		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_RELEASE;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_STOP;
-		break;
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-		//stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_START;
 		break;		
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		stream.hdr.cmd |= SOF_IPC_STREAM_TRIG_PAUSE;
 		break;
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_RESUME:
 	default:
 		break;
 	}
 
 	/* send IPC to the DSP */
- 	return sof_ipc_tx_message_nowait(sdev->ipc, stream.hdr.cmd, &stream,
-		sizeof(stream));
+	return sof_ipc_tx_message(sdev->ipc, stream.hdr.cmd, &stream,
+		sizeof(stream), & reply, sizeof(reply));
 }
 
 static int sof_compressed_pointer(struct snd_compr_stream *cstream,

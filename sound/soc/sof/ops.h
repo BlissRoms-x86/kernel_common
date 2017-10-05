@@ -202,28 +202,36 @@ static inline void snd_sof_dsp_mailbox_write(struct snd_sof_dev *sdev,
 }
 
 /* ipc */
-static inline int snd_sof_dsp_tx_msg(struct snd_sof_dev *sdev,
+static inline int snd_sof_dsp_send_msg(struct snd_sof_dev *sdev,
 	struct snd_sof_ipc_msg *msg)
 {
-	if (sdev->ops->tx_msg)
-		return sdev->ops->tx_msg(sdev, msg);
+	if (sdev->ops->send_msg)
+		return sdev->ops->send_msg(sdev, msg);
 	else
 		return 0;
 }
 
-static inline int snd_sof_dsp_rx_msg(struct snd_sof_dev *sdev,
+static inline int snd_sof_dsp_get_reply(struct snd_sof_dev *sdev,
 	struct snd_sof_ipc_msg *msg)
 {
-	if (sdev->ops->rx_msg)
-		return sdev->ops->rx_msg(sdev, msg);
+	if (sdev->ops->get_reply)
+		return sdev->ops->get_reply(sdev, msg);
 	else
 		return 0;
 }
 
-static inline int snd_sof_dsp_tx_busy(struct snd_sof_dev *sdev)
+static inline int snd_sof_dsp_is_ready(struct snd_sof_dev *sdev)
 {
-	if (sdev->ops->tx_busy)
-		return sdev->ops->tx_busy(sdev);
+	if (sdev->ops->is_ready)
+		return sdev->ops->is_ready(sdev);
+	else
+		return 0;
+}
+
+static inline int snd_sof_dsp_cmd_done(struct snd_sof_dev *sdev)
+{
+	if (sdev->ops->cmd_done)
+		return sdev->ops->cmd_done(sdev);
 	else
 		return 0;
 }

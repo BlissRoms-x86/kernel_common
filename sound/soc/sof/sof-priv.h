@@ -138,9 +138,10 @@ struct snd_sof_dsp_ops {
 		void __iomem *addr, size_t bytes);
 
 	/* ipc */
-	int (*tx_msg)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
-	int (*rx_msg)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
-	int (*tx_busy)(struct snd_sof_dev *sof_dev);
+	int (*send_msg)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
+	int (*get_reply)(struct snd_sof_dev *sof_dev, struct snd_sof_ipc_msg *msg);
+	int (*is_ready)(struct snd_sof_dev *sof_dev);
+	int (*cmd_done)(struct snd_sof_dev *sof_dev);
 
 	/* debug */
 	const struct snd_sof_debugfs_map *debug_map;
@@ -155,7 +156,7 @@ struct snd_sof_dsp_ops {
 
 };
 
-struct snd_sof_chip_info{
+struct snd_sof_chip_info {
 	int id;
 	int cores_num;
 	int cores_mask;
@@ -190,7 +191,6 @@ struct snd_sof_pcm_stream {
 	u32 comp_id;
 	struct snd_dma_buffer page_table;
 	struct sof_ipc_stream_posn posn;
-	bool posn_valid;
 	struct snd_pcm_substream *substream;
 };
 
@@ -238,7 +238,6 @@ struct snd_sof_ipc_msg {
 	size_t reply_size;
 
 	wait_queue_head_t waitq;
-	bool wait;
 	bool complete;
 };
 
@@ -425,10 +424,8 @@ int snd_sof_ipc_stream_pcm_params(struct snd_sof_dev *sdev,
 	struct sof_ipc_pcm_params *params);
 int snd_sof_dsp_mailbox_init(struct snd_sof_dev *sdev, u32 dspbox,
 		size_t dspbox_size, u32 hostbox, size_t hostbox_size);
-int sof_ipc_tx_message_wait(struct snd_sof_ipc *ipc, u32 header,
+int sof_ipc_tx_message(struct snd_sof_ipc *ipc, u32 header,
 	void *tx_data, size_t tx_bytes, void *rx_data, size_t rx_bytes);
-int sof_ipc_tx_message_nowait(struct snd_sof_ipc *ipc, u32 header,
-	void *tx_data, size_t tx_bytes);
 struct snd_sof_widget *snd_sof_find_swidget(struct snd_sof_dev *sdev,
 	char *name);
 struct snd_sof_pcm *snd_sof_find_spcm_dai(struct snd_sof_dev *sdev,

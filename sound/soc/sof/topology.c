@@ -168,7 +168,7 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	//}
 
 	/* send IPC to the DSP */
- 	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		v.comp.hdr.cmd, &v, sizeof(v), r, sizeof(*r));
 }
 
@@ -511,7 +511,7 @@ static int sof_control_unload(struct snd_soc_component *scomp,
 	fcomp.id = scontrol->comp_id;
 
 	/* send IPC to the DSP */
- 	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		fcomp.hdr.cmd, &fcomp, sizeof(fcomp), NULL, 0);
 }
 
@@ -579,7 +579,7 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 		swidget->widget->name, dai.dmac_id, dai.dmac_chan,
 		dai.type, dai.index, dai.config.frame_fmt);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		dai.comp.hdr.cmd, &dai, sizeof(dai), r, sizeof(*r));
 }
 
@@ -609,7 +609,7 @@ static int sof_widget_load_buffer(struct snd_soc_component *scomp, int index,
 	dev_dbg(sdev->dev, "buffer %s: size %d\n",
 		swidget->widget->name, buffer.size);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		buffer.comp.hdr.cmd, &buffer, sizeof(buffer), r, sizeof(*r));
 }
 
@@ -642,7 +642,7 @@ static int sof_widget_load_pcm(struct snd_soc_component *scomp, int index,
 	dev_dbg(sdev->dev, "host %s: dmac %d chan %d\n",
 		swidget->widget->name, host.dmac_id, host.dmac_chan);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		host.comp.hdr.cmd, &host, sizeof(host), r, sizeof(*r));
 }
 
@@ -685,7 +685,7 @@ static int sof_widget_load_pipeline(struct snd_soc_component *scomp,
 		swidget->widget->name, pipeline.deadline, pipeline.priority,
 		pipeline.mips, pipeline.core, pipeline.frames_per_sched);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		pipeline.hdr.cmd, &pipeline, sizeof(pipeline), r, sizeof(*r));
 }
 
@@ -714,7 +714,7 @@ static int sof_widget_load_mixer(struct snd_soc_component *scomp, int index,
 	sof_parse_tokens(scomp, &mixer.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		mixer.comp.hdr.cmd, &mixer, sizeof(mixer), r, sizeof(*r));
 }
 
@@ -749,7 +749,7 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 	sof_parse_tokens(scomp, &volume.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
 	
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		volume.comp.hdr.cmd, &volume, sizeof(volume), r, sizeof(*r));
 }
 
@@ -781,7 +781,7 @@ static int sof_widget_load_src(struct snd_soc_component *scomp, int index,
 	dev_dbg(sdev->dev, "src %s: source rate %d sink rate %d\n",
 		swidget->widget->name, src.source_rate, src.sink_rate);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		src.comp.hdr.cmd, &src, sizeof(src), r, sizeof(*r));
 }
 
@@ -814,7 +814,7 @@ static int sof_widget_load_siggen(struct snd_soc_component *scomp, int index,
 	dev_dbg(sdev->dev, "tone %s: frequency %d amplitude %d\n",
 		swidget->widget->name, tone.frequency, tone.amplitude);
 
-	return sof_ipc_tx_message_wait(sdev->ipc, 
+	return sof_ipc_tx_message(sdev->ipc,
 		tone.comp.hdr.cmd, &tone, sizeof(tone), r, sizeof(*r));
 }
 
@@ -998,7 +998,7 @@ static int sof_link_ssp_load(struct snd_soc_component *scomp, int index,
 
 
 	/* send message to DSP */
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		config->hdr.cmd, config, size, &reply, sizeof(reply));
 
 	if (ret < 0)
@@ -1041,7 +1041,7 @@ static int sof_link_dmic_load(struct snd_soc_component *scomp, int index,
 
 
 	/* send message to DSP */
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		config->hdr.cmd, config, size, &reply, sizeof(reply));
 
 	if (ret < 0)
@@ -1084,7 +1084,7 @@ static int sof_link_hda_load(struct snd_soc_component *scomp, int index,
 
 
 	/* send message to DSP */
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		config->hdr.cmd, config, size, &reply, sizeof(reply));
 
 	if (ret < 0)
@@ -1106,6 +1106,7 @@ static int sof_link_load(struct snd_soc_component *scomp, int index,
 	int ret = 0;
 
 	link->platform_name = "sof-audio";
+	link->nonatomic = true;
 
 	/* send BE configurations to DSP */
 	if (!link->no_pcm)
@@ -1283,7 +1284,7 @@ static int sof_route_load(struct snd_soc_component *scomp, int index,
 	} else
 		connect.sink_id = sink_swidget->comp_id;
 
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		connect.hdr.cmd, &connect, sizeof(connect), &reply,
 		sizeof(reply));
 
@@ -1328,7 +1329,7 @@ static int sof_complete_pipeline(struct snd_soc_component *scomp,
 	ready.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_PIPE_COMPLETE;
 	ready.comp_id = swidget->comp_id;
 
-	ret = sof_ipc_tx_message_wait(sdev->ipc, 
+	ret = sof_ipc_tx_message(sdev->ipc,
 		ready.hdr.cmd, &ready, sizeof(ready), &reply, sizeof(reply));
 	if (ret < 0)
 		return ret;

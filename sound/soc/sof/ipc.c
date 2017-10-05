@@ -53,8 +53,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define DEBUG
-
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -87,15 +85,17 @@
 struct snd_sof_ipc {
 	struct snd_sof_dev *sdev;
 
-	/* message work and status */
+	/* TX message work and status */
 	wait_queue_head_t wait_txq;
-	struct task_struct *tx_thread;
-	struct work_struct kwork;
+	struct work_struct tx_kwork;
 	bool msg_pending;
+
+	/* Rx Message work and status */
+	struct work_struct rx_kwork;
 
 	/* lists */
 	struct list_head tx_list;
-	struct list_head rx_list;
+	struct list_head reply_list;
 	struct list_head empty_list;
 };
 
@@ -126,6 +126,7 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 		msecs_to_jiffies(IPC_TIMEOUT_MSECS));
 
 	spin_lock_irqsave(&sdev->ipc_lock, flags);
+
 	if (ret == 0) {
 		dev_err(sdev->dev, "error: ipc timed out for 0x%x size 0x%x\n",
 			hdr->cmd, hdr->size);
@@ -133,12 +134,14 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 		ret = -ETIMEDOUT;
 	} else {
 		/* copy the data returned from DSP */
-		ret = snd_sof_dsp_rx_msg(sdev, msg);
+		ret = snd_sof_dsp_get_reply(sdev, msg);
 		if (msg->reply_size)
 			memcpy(reply_data, msg->reply_data, msg->reply_size);
 		if (ret < 0)
 			dev_err(sdev->dev, "error: ipc error for 0x%x size 0x%lx\n",
 				hdr->cmd, msg->reply_size);
+		else
+			dev_dbg(sdev->dev, "ipc: 0x%x suceeded\n", hdr->cmd);
 	}
 
 	/* return message body to empty list */
@@ -148,9 +151,9 @@ static int tx_wait_done(struct snd_sof_ipc *ipc, struct snd_sof_ipc_msg *msg,
 	return ret;
 }
 
-static int ipc_tx_message(struct snd_sof_ipc *ipc, u64 header,
+int sof_ipc_tx_message(struct snd_sof_ipc *ipc, u32 header,
 	void *msg_data, size_t msg_bytes, void *reply_data, 
-	size_t reply_bytes, int wait)
+	size_t reply_bytes)
 {
 	struct snd_sof_dev *sdev = ipc->sdev;
 	struct snd_sof_ipc_msg *msg;
@@ -167,7 +170,6 @@ static int ipc_tx_message(struct snd_sof_ipc *ipc, u64 header,
 	msg->header = header;
 	msg->msg_size = msg_bytes;
 	msg->reply_size = reply_bytes;
-	msg->wait = wait;
 	msg->complete = false;
 
 	if (msg_bytes)
@@ -176,21 +178,19 @@ static int ipc_tx_message(struct snd_sof_ipc *ipc, u64 header,
 	list_add_tail(&msg->list, &ipc->tx_list);
 
 	/* schedule the messgae if not busy */	
-	if (!snd_sof_dsp_tx_busy(sdev))
-		schedule_work(&ipc->kwork);
+	if (snd_sof_dsp_is_ready(sdev))
+		schedule_work(&ipc->tx_kwork);
 
 	spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 
-	if (wait)
-		return tx_wait_done(ipc, msg, reply_data);
-	else
-		return 0;
+	return tx_wait_done(ipc, msg, reply_data);
 }
+EXPORT_SYMBOL(sof_ipc_tx_message);
 
 static void ipc_tx_next_msg(struct work_struct *work)
 {
 	struct snd_sof_ipc *ipc =
-		container_of(work, struct snd_sof_ipc, kwork);
+		container_of(work, struct snd_sof_ipc, tx_kwork);
 	struct snd_sof_dev *sdev = ipc->sdev;
 	struct snd_sof_ipc_msg *msg;
 
@@ -200,9 +200,9 @@ static void ipc_tx_next_msg(struct work_struct *work)
 		goto out;
 
 	msg = list_first_entry(&ipc->tx_list, struct snd_sof_ipc_msg, list);
-	list_move(&msg->list, &ipc->rx_list);
+	list_move(&msg->list, &ipc->reply_list);
 
-	snd_sof_dsp_tx_msg(sdev, msg);
+	snd_sof_dsp_send_msg(sdev, msg);
 
 out:
 	spin_unlock_irq(&sdev->ipc_lock);
@@ -215,10 +215,10 @@ struct snd_sof_ipc_msg *sof_ipc_reply_find_msg(struct snd_sof_ipc *ipc, u32 head
 
 	header = SOF_IPC_MESSAGE_ID(header);
 
-	if (list_empty(&ipc->rx_list))
+	if (list_empty(&ipc->reply_list))
 		goto err;
 
-	list_for_each_entry(msg, &ipc->rx_list, list) {
+	list_for_each_entry(msg, &ipc->reply_list, list) {
 		if (SOF_IPC_MESSAGE_ID(msg->header) == header)
 			return msg;
 	}
@@ -235,11 +235,7 @@ void sof_ipc_tx_msg_reply_complete(struct snd_sof_ipc *ipc,
 	struct snd_sof_ipc_msg *msg)
 {
 	msg->complete = true;
-
-	if (!msg->wait)
-		list_move(&msg->list, &ipc->empty_list);
-	else
-		wake_up(&msg->waitq);
+	wake_up(&msg->waitq);
 }
 
 void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
@@ -256,7 +252,7 @@ void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
 		dev_err(sdev->dev, "error: dropped msg %d\n", msg->header);
 	}
 
-	list_for_each_entry_safe(msg, tmp, &ipc->rx_list, list) {
+	list_for_each_entry_safe(msg, tmp, &ipc->reply_list, list) {
 		list_move(&msg->list, &ipc->empty_list);
 		dev_err(sdev->dev, "error: dropped reply %d\n", msg->header);
 	}
@@ -264,21 +260,6 @@ void sof_ipc_drop_all(struct snd_sof_ipc *ipc)
 	spin_unlock_irqrestore(&sdev->ipc_lock, flags);
 }
 EXPORT_SYMBOL(sof_ipc_drop_all);
-
-int sof_ipc_tx_message_wait(struct snd_sof_ipc *ipc, u32 header,
-	void *tx_data, size_t tx_bytes, void *rx_data, size_t rx_bytes)
-{
-	return ipc_tx_message(ipc, header, tx_data, tx_bytes,
-		rx_data, rx_bytes, 1);
-}
-EXPORT_SYMBOL(sof_ipc_tx_message_wait);
-
-int sof_ipc_tx_message_nowait(struct snd_sof_ipc *ipc, u32 header,
-	void *tx_data, size_t tx_bytes)
-{
-	return ipc_tx_message(ipc, header, tx_data, tx_bytes, NULL, 0, 0);
-}
-EXPORT_SYMBOL(sof_ipc_tx_message_nowait);
 
 void snd_sof_ipc_reply(struct snd_sof_dev *sdev, u32 msg_id)
 {
@@ -327,7 +308,6 @@ static void ipc_period_elapsed(struct snd_sof_dev *sdev, u32 msg_id)
 	}
 
 	memcpy(&spcm->stream[direction].posn, &posn, sizeof(posn));
-	spcm->stream[direction].posn_valid = true;
 	snd_pcm_period_elapsed(spcm->stream[direction].substream);
 }
 
@@ -353,7 +333,6 @@ static void ipc_xrun(struct snd_sof_dev *sdev, u32 msg_id)
 	return; /* TODO: dont do anything yet until preload is working */
 
 	memcpy(&spcm->stream[direction].posn, &posn, sizeof(posn));
-	spcm->stream[direction].posn_valid = true;
 	snd_pcm_stop_xrun(spcm->stream[direction].substream);
 }
 
@@ -373,9 +352,12 @@ static void ipc_stream_message(struct snd_sof_dev *sdev, u32 msg_id)
 	}
 }
 
-/* DSP firmware has sent host a message */
-void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev)
+/* DSP firmware has sent host a message  */
+static void ipc_msgs_rx(struct work_struct *work)
 {
+	struct snd_sof_ipc *ipc =
+		container_of(work, struct snd_sof_ipc, rx_kwork);
+	struct snd_sof_dev *sdev = ipc->sdev;
 	struct sof_ipc_hdr hdr;
 	uint32_t cmd, type;
 	int err = -EINVAL;
@@ -398,14 +380,12 @@ void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev)
 			if (err < 0) {
 				dev_err(sdev->dev, "DSP firmware boot timeout %d\n",
 					err);
-				return;
+			} else {
+				/* firware boot completed OK */
+				sdev->boot_complete = true;
+				dev_dbg(sdev->dev, "booting DSP firmware completed\n");
+				wake_up(&sdev->boot_wait);
 			}
-
-			/* firware boot completed OK */
-			sdev->boot_complete = true;
-			dev_dbg(sdev->dev, "booting DSP firmware completed\n");
-			wake_up(&sdev->boot_wait);
-			return;
 		}
 		break;
 	case SOF_IPC_GLB_COMPOUND:
@@ -420,14 +400,23 @@ void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev)
 		dev_err(sdev->dev, "unknown DSP message 0x%x\n", cmd);
 		break;
 	}
+
+	dev_dbg(sdev->dev, "ipc rx: 0x%x done\n", hdr.cmd);
+
+	snd_sof_dsp_cmd_done(sdev);
 }
-EXPORT_SYMBOL(snd_sof_ipc_msgs_rx);
 
 void snd_sof_ipc_msgs_tx(struct snd_sof_dev *sdev)
 {
-	schedule_work(&sdev->ipc->kwork);
+	schedule_work(&sdev->ipc->tx_kwork);
 }
 EXPORT_SYMBOL(snd_sof_ipc_msgs_tx);
+
+void snd_sof_ipc_msgs_rx(struct snd_sof_dev *sdev)
+{
+	schedule_work(&sdev->ipc->rx_kwork);
+}
+EXPORT_SYMBOL(snd_sof_ipc_msgs_rx);
 
 struct snd_sof_ipc *snd_sof_ipc_init(struct snd_sof_dev *sdev)
 {
@@ -440,10 +429,11 @@ struct snd_sof_ipc *snd_sof_ipc_init(struct snd_sof_dev *sdev)
 		return NULL; 
 
 	INIT_LIST_HEAD(&ipc->tx_list);
-	INIT_LIST_HEAD(&ipc->rx_list);
+	INIT_LIST_HEAD(&ipc->reply_list);
 	INIT_LIST_HEAD(&ipc->empty_list);
 	init_waitqueue_head(&ipc->wait_txq);
-	INIT_WORK(&ipc->kwork, ipc_tx_next_msg);
+	INIT_WORK(&ipc->tx_kwork, ipc_tx_next_msg);
+	INIT_WORK(&ipc->rx_kwork, ipc_msgs_rx);
 	ipc->sdev = sdev;
 
 	/* pre-allocate messages */
@@ -477,8 +467,8 @@ EXPORT_SYMBOL(snd_sof_ipc_init);
 void snd_sof_ipc_free(struct snd_sof_dev *sdev)
 {
 	/* TODO: send IPC to prepare DSP for shutdown */
-
-	cancel_work_sync(&sdev->ipc->kwork);
+	cancel_work_sync(&sdev->ipc->tx_kwork);
+	cancel_work_sync(&sdev->ipc->rx_kwork);
 }
 EXPORT_SYMBOL(snd_sof_ipc_free);
 
@@ -495,9 +485,8 @@ int snd_sof_ipc_stream_posn(struct snd_sof_dev *sdev,
 	stream.comp_id = spcm->stream[direction].comp_id;
 
 	/* send IPC to the DSP */
-	err = sof_ipc_tx_message_wait(sdev->ipc, 
-		stream.hdr.cmd, &stream, sizeof(stream), 
-		&posn, sizeof(*posn));
+	err = sof_ipc_tx_message(sdev->ipc,
+		stream.hdr.cmd, &stream, sizeof(stream), &posn, sizeof(*posn));
 	if (err < 0) {
 		dev_err(sdev->dev, "error: failed to get stream %d position\n",
 			stream.comp_id);
@@ -535,7 +524,7 @@ int snd_sof_ipc_set_comp_data(struct snd_sof_ipc *ipc,
 		cdata->num_elems = scontrol->num_channels;
 
 		/* send IPC to the DSP */
- 		err = sof_ipc_tx_message_wait(sdev->ipc, 
+		err = sof_ipc_tx_message(sdev->ipc,
 			cdata->rhdr.hdr.cmd, cdata, cdata->rhdr.hdr.size,
 			cdata, cdata->rhdr.hdr.size);
 		if (err < 0) {
@@ -577,7 +566,7 @@ int snd_sof_ipc_get_comp_data(struct snd_sof_ipc *ipc,
 		cdata->num_elems = scontrol->num_channels;
 
 		/* send IPC to the DSP */
- 		err = sof_ipc_tx_message_wait(sdev->ipc, 
+		err = sof_ipc_tx_message(sdev->ipc,
 			cdata->rhdr.hdr.cmd, cdata, cdata->rhdr.hdr.size,
 			cdata, cdata->rhdr.hdr.size);
 		if (err < 0) {
@@ -591,17 +580,3 @@ int snd_sof_ipc_get_comp_data(struct snd_sof_ipc *ipc,
 }
 EXPORT_SYMBOL(snd_sof_ipc_get_comp_data);
 
-
-
-#if 0
-
-static u64 hsw_reply_msg_match(u64 header, u64 *mask)
-{
-	/* clear reply bits & status bits */
-	header &= ~(IPC_STATUS_MASK | IPC_GLB_REPLY_MASK);
-	*mask = (u64)-1;
-
-	return header;
-}
-
-#endif
