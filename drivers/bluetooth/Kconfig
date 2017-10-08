@@ -172,6 +172,7 @@ config BT_HCIUART_BCM
 	depends on BT_HCIUART_SERDEV
 	select BT_HCIUART_H4
 	select BT_BCM
+	select SERIAL_DEV_CTRL_TTYPORT
 	help
 	  The Broadcom protocol support enables Bluetooth HCI over serial
 	  port interface for Broadcom Bluetooth controllers.
