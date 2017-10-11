@@ -56,6 +56,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"MIC1", NULL, "Headset Mic"},
 	{"MIC2", NULL, "Mic"},
 
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	/* SOC-codec link */
 	{"ssp2 Tx", NULL, "codec_out0"},
 	{"ssp2 Tx", NULL, "codec_out1"},
@@ -64,6 +65,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{"Playback", NULL, "ssp2 Tx"},
 	{"ssp2 Rx", NULL, "Capture"},
+#endif
 };
 
 static int codec_fixup(struct snd_soc_pcm_runtime *rtd,
@@ -207,7 +209,11 @@ static struct snd_soc_dai_link dailink[] = {
 
 /* SoC card */
 static struct snd_soc_card bytcht_da7213_card = {
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	.name = "bytcht-da7213",
+#else
+	.name = "bytcht_da7213", // FIXME
+#endif
 	.owner = THIS_MODULE,
 	.dai_link = dailink,
 	.num_links = ARRAY_SIZE(dailink),
