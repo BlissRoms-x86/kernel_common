@@ -532,22 +532,23 @@ static int sof_connect_dai_widget(struct snd_soc_component *scomp,
 		dev_dbg(sdev->dev, "tplg: check widget: %s stream: %s dai stream: %s\n",
 				 w->name,  w->sname, rtd->dai_link->stream_name);
 
-		if (!strcmp(rtd->dai_link->stream_name, w->sname)) {
+		if (w->sname && rtd->dai_link->stream_name &&
+		    strcmp(w->sname, rtd->dai_link->stream_name))
+			continue;
 
-			switch (w->id) {
-			case snd_soc_dapm_dai_out:
-				rtd->cpu_dai->capture_widget = w;
-				dev_dbg(sdev->dev, "tplg: connected widget %s -> DAI link %s\n",
+		switch (w->id) {
+		case snd_soc_dapm_dai_out:
+			rtd->cpu_dai->capture_widget = w;
+			dev_dbg(sdev->dev, "tplg: connected widget %s -> DAI link %s\n",
+				w->name, rtd->dai_link->name);
+			break;
+		case snd_soc_dapm_dai_in:
+			rtd->cpu_dai->playback_widget = w;
+			dev_dbg(sdev->dev, "tplg: connected widget %s -> DAI link %s\n",
 					w->name, rtd->dai_link->name);
-				break;
-			case snd_soc_dapm_dai_in:
-				rtd->cpu_dai->playback_widget = w;
-				dev_dbg(sdev->dev, "tplg: connected widget %s -> DAI link %s\n",
-					w->name, rtd->dai_link->name);
-				break;
-			default:
-				break;
-			}
+			break;
+		default:
+			break;
 		}
 	}
 
