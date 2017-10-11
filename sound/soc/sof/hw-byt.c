@@ -521,6 +521,7 @@ static int byt_acpi_probe(struct snd_sof_dev *sdev)
 	sdev->mmio_bar = BYT_DSP_BAR;
 	sdev->mailbox_bar = BYT_DSP_BAR;
 
+#if 0
 	/* PCI base */
 	mmio = platform_get_resource(pdev, IORESOURCE_MEM,
 		desc->resindex_pcicfg_base);
@@ -543,6 +544,7 @@ static int byt_acpi_probe(struct snd_sof_dev *sdev)
 		goto pci_err;
 	}
 	dev_dbg(sdev->dev, "PCI VADDR %p\n", sdev->bar[BYT_PCI_BAR]);
+#endif
 
 	/* IMR base - optional */
 	if (desc->resindex_imr_base == -1)
