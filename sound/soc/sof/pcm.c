@@ -106,6 +106,9 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 	if (rtd->dai_link->no_pcm)
 		return 0;
 
+	dev_dbg(sdev->dev, "pcm: hw params stream %d dir %d\n",
+		spcm->pcm.pcm_id, substream->stream);
+
 	memset(&pcm, 0, sizeof(pcm));
 
 	/* allocate audio buffer pages */
@@ -200,6 +203,9 @@ static int sof_pcm_hw_free(struct snd_pcm_substream *substream)
 	if (rtd->dai_link->no_pcm)
 		return 0;
 
+	dev_dbg(sdev->dev, "pcm: free stream %d dir %d\n", spcm->pcm.pcm_id,
+		substream->stream);
+
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG | SOF_IPC_STREAM_PCM_FREE;
 	stream.comp_id = spcm->stream[substream->stream].comp_id;
@@ -224,6 +230,9 @@ static int sof_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
 		return 0;
+
+	dev_dbg(sdev->dev, "pcm: trigger stream %d dir %d cmd %d\n",
+		spcm->pcm.pcm_id, substream->stream, cmd);
 
 	stream.hdr.size = sizeof(stream);
 	stream.hdr.cmd = SOF_IPC_GLB_STREAM_MSG;
@@ -273,8 +282,8 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	dai = bytes_to_frames(substream->runtime,
 		spcm->stream[substream->stream].posn.dai_posn);
 
-	dev_dbg(sdev->dev, "PCM: local DMA position %lu DAI position %lu\n",
-		host, dai);
+	dev_dbg(sdev->dev, "PCM: stream %d dir %d DMA position %lu DAI position %lu\n",
+		spcm->pcm.pcm_id, substream->stream, host, dai);
 
 	return host;
 }
@@ -293,6 +302,9 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
 		return 0;
+
+	dev_dbg(sdev->dev, "pcm: open stream %d dir %d\n", spcm->pcm.pcm_id,
+		substream->stream);
 
 	mutex_lock(&spcm->mutex);
 
@@ -331,7 +343,7 @@ static int sof_pcm_open(struct snd_pcm_substream *substream)
 	//runtime->hw.fifo_size = hw->fifo_size;
 
 	/* set wait time - TODO: come from topology */
-	snd_pcm_wait_time(substream, 100);
+	snd_pcm_wait_time(substream, 500);
 
 	spcm->stream[substream->stream].posn.host_posn = 0;
 	spcm->stream[substream->stream].posn.dai_posn = 0;
@@ -350,6 +362,9 @@ static int sof_pcm_close(struct snd_pcm_substream *substream)
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
 		return 0;
+
+	dev_dbg(sdev->dev, "pcm: close stream %d dir %d\n", spcm->pcm.pcm_id,
+		substream->stream);
 
 	mutex_lock(&spcm->mutex);
 	pm_runtime_mark_last_busy(sdev->dev);

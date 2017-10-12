@@ -203,6 +203,7 @@ static void ipc_tx_next_msg(struct work_struct *work)
 	list_move(&msg->list, &ipc->reply_list);
 
 	snd_sof_dsp_send_msg(sdev, msg);
+	dev_dbg(sdev->dev, "ipc: send 0x%x\n", msg->header);
 
 out:
 	spin_unlock_irq(&sdev->ipc_lock);
