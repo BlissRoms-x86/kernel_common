@@ -2011,6 +2011,15 @@ static int apl_probe(struct snd_sof_dev *sdev)
 	int ret = 0, i;
 	struct snd_sof_hda_dev *hdev = &sdev->hda;
 	struct snd_sof_hda_stream *stream;
+	const struct snd_sof_chip_info *chip;
+
+	chip = sof_get_chip_info(sdev->pci->device);
+	if (chip == NULL) {
+		dev_err(sdev->dev, "no such device supported, chip id:%x\n",
+							sdev->pci->device);
+		ret = -EIO;
+		goto err;
+	}
 
 	/* HDA base */
 	sdev->bar[APL_HDA_BAR] = pci_ioremap_bar(pci, APL_HDA_BAR);
@@ -2134,7 +2143,7 @@ static int apl_probe(struct snd_sof_dev *sdev)
 	sdev->ipc_irq = pci->irq;
 	dev_dbg(sdev->dev, "using IPC IRQ %d\n", sdev->ipc_irq);
 	ret = request_threaded_irq(sdev->ipc_irq, apl_irq_handler,
-		apl_irq_thread, IRQF_SHARED, "AudioDSP", sdev);
+		chip->irq_thread, IRQF_SHARED, "AudioDSP", sdev);
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: failed to register PCI IRQ %d\n",
 			sdev->ipc_irq);
