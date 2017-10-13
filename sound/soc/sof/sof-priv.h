@@ -164,6 +164,7 @@ struct snd_sof_chip_info {
 	int ipc_req_mask;
 	int ipc_ack;
 	int ipc_ack_mask;
+	int ipc_ctl;
 
 	irqreturn_t (*irq_thread)(int irq, void *context);
 };

@@ -1761,6 +1761,7 @@ static const struct snd_sof_chip_info chip_info[] = {
 		.ipc_req_mask = APL_DSP_REG_HIPCI_BUSY,
 		.ipc_ack = APL_DSP_REG_HIPCIE,
 		.ipc_ack_mask = APL_DSP_REG_HIPCIE_DONE,
+		.ipc_ctl = APL_DSP_REG_HIPCCTL,
 		.irq_thread = apl_irq_thread
 	},
 	{
@@ -1771,6 +1772,7 @@ static const struct snd_sof_chip_info chip_info[] = {
 		.ipc_req_mask = APL_DSP_REG_HIPCI_BUSY,
 		.ipc_ack = APL_DSP_REG_HIPCIE,
 		.ipc_ack_mask = APL_DSP_REG_HIPCIE_DONE,
+		.ipc_ctl = APL_DSP_REG_HIPCCTL,
 		.irq_thread = apl_irq_thread
 	},
 	{
@@ -1784,6 +1786,7 @@ static const struct snd_sof_chip_info chip_info[] = {
 		.ipc_req_mask = CNL_DSP_REG_HIPCIDR_BUSY,
 		.ipc_ack = CNL_DSP_REG_HIPCIDA,
 		.ipc_ack_mask = CNL_DSP_REG_HIPCIDA_DONE,
+		.ipc_ctl = CNL_DSP_REG_HIPCCTL,
 		.irq_thread = cnl_irq_thread
 	},
 };
@@ -1884,11 +1887,11 @@ step5:
 		APL_ADSPIC_IPC, APL_ADSPIC_IPC);
 	
 	/* enable IPC DONE interrupt */
-	snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCCTL,
+	snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, chip->ipc_ctl,
 		APL_DSP_REG_HIPCCTL_DONE, APL_DSP_REG_HIPCCTL_DONE);
 
 	/* enable IPC BUSY interrupt */
-	snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, APL_DSP_REG_HIPCCTL,
+	snd_sof_dsp_update_bits(sdev, APL_DSP_BAR, chip->ipc_ctl,
 		APL_DSP_REG_HIPCCTL_BUSY, APL_DSP_REG_HIPCCTL_BUSY);
 
 	/* step 7: wait for ROM init */
