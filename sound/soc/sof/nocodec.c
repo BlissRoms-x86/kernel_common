@@ -47,7 +47,6 @@ static struct snd_soc_dai_link sof_nocodec_dais[] = {
 	{
 		/* SSP0 - Codec */
 		.name = "NoCodec",
-		.stream_name = "I2S",
 		.id = 0,
 		.init = nocodec_rtd_init,
 		.cpu_dai_name = "sof-audio",
