@@ -1,3 +1,13 @@
+This kernel enables most of the primary functions/hardware on Dell Venue 8 Pro 5830 to work properly.
+[OKAY] Wi-Fi: Dell Wireless 1538 ath6kl
+[FAIL] Bluetooth DLAC3002 ath3k
+[OKAY] ALSA: Intel SST Audio
+[FAIL] Camera (unknown hardware)
+[OKAY] Brightness Control
+[FAIL] Auto-brightness
+[OKAY] Auto-Rotation
+[OKAY] Suspend/Resume
+
 Linux kernel
 ============
 
