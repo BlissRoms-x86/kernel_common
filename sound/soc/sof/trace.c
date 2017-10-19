@@ -134,11 +134,9 @@ static int trace_debugfs_create(struct snd_sof_dev *sdev)
 
 int snd_sof_init_trace(struct snd_sof_dev *sdev)
 {
-	int ret = 0;
 	struct sof_ipc_dma_trace_params params;
 	struct sof_ipc_reply ipc_reply;
-	struct sof_ipc_hdr hdr;
-	dev_dbg(sdev->dev, "snd_sof_init_trace() start!!!\n");
+	int ret;
 
 	/* allocate trace page table buffer */
 	ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, sdev->parent,
@@ -155,26 +153,23 @@ int snd_sof_init_trace(struct snd_sof_dev *sdev)
 	if (ret < 0) {
 		dev_err(sdev->dev,
 			"error: cant alloc buffer for trace%d\n", ret);
-		return ret;
+		goto page_err;
 	}
 
 	/* craete compressed page table for audio firmware */
 	ret = snd_sof_create_page_table(sdev, &sdev->dmatb, sdev->dmatp.area,
 		sdev->dmatb.bytes);
 	if (ret < 0)
-		return ret;
+		goto table_err;
 
 	sdev->dma_trace_pages = ret;
 	dev_dbg(sdev->dev, "dma_trace_pages: %d\n", sdev->dma_trace_pages);
 
 	ret = trace_debugfs_create(sdev);
 	if (ret < 0)
-		return ret;
+		goto table_err;
 
 	/* set IPC parameters */
-	hdr.size = sizeof(hdr);
-	hdr.cmd = SOF_IPC_GLB_TRACE_MSG | SOF_IPC_TRACE_DMA_INIT;
-
 	params.hdr.size = sizeof(params);
 	params.hdr.cmd = SOF_IPC_GLB_TRACE_MSG | SOF_IPC_TRACE_DMA_PARAMS;
 	params.buffer.phy_addr = sdev->dmatp.addr;
@@ -184,24 +179,20 @@ int snd_sof_init_trace(struct snd_sof_dev *sdev)
 
 	/* send IPC to the DSP */
 	ret = sof_ipc_tx_message(sdev->ipc,
-		hdr.cmd, &hdr, sizeof(hdr),
-		&ipc_reply, sizeof(ipc_reply));
-	if (ret < 0) {
-		dev_err(sdev->dev,
-			"error: cant initialize DMA for Trace%d\n", ret);
-		return ret;
-	}
-
-	ret = sof_ipc_tx_message(sdev->ipc,
 		params.hdr.cmd, &params, sizeof(params),
 		&ipc_reply, sizeof(ipc_reply));
 	if (ret < 0) {
 		dev_err(sdev->dev,
 			"error: cant set params for DMA for Trace%d\n", ret);
-		return ret;
+		goto table_err;
 	}
 
-	dev_dbg(sdev->dev, "snd_sof_init_trace() end!!!\n");
 	return 0;
+
+table_err:
+	snd_dma_free_pages(&sdev->dmatb);
+page_err:
+	snd_dma_free_pages(&sdev->dmatp);
+	return ret;
 }
 EXPORT_SYMBOL(snd_sof_init_trace);
