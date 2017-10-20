@@ -59,6 +59,8 @@
 #ifndef __INCLUDE_UAPI_SOF_IPC_H__
 #define __INCLUDE_UAPI_SOF_IPC_H__
 
+#include <uapi/sound/sof-abi.h>
+
 /*
  * IPC messages have a prefixed 32 bit identifier made up as follows :-
  *
@@ -462,25 +464,23 @@ struct sof_ipc_stream_posn {
 
 /* control data type and direction */
 enum sof_ipc_ctrl_type {
+	/*  per channel data - uses struct sof_ipc_ctrl_value_chan */
 	SOF_CTRL_TYPE_VALUE_CHAN_GET = 0,
 	SOF_CTRL_TYPE_VALUE_CHAN_SET,
+	/* component data - uses struct sof_ipc_ctrl_value_comp */
 	SOF_CTRL_TYPE_VALUE_COMP_GET,
 	SOF_CTRL_TYPE_VALUE_COMP_SET,
+	/* bespoke data - struct struct sof_abi_hdr */
 	SOF_CTRL_TYPE_DATA_GET,
 	SOF_CTRL_TYPE_DATA_SET,
 };
 
 /* control command type */
 enum sof_ipc_ctrl_cmd {
-	SOF_CTRL_CMD_VOLUME = 0,
-	SOF_CTRL_CMD_ROUTE,
-	SOF_CTRL_CMD_SRC,
-	SOF_CTRL_CMD_LOOPBACK,
-	SOF_CTRL_CMD_EQ_SWITCH,
-	SOF_CTRL_CMD_EQ_CONFIG,
-	/* Mute is similar to volume, but maps better onto ALSA switch controls */
-	SOF_CTRL_CMD_MUTE,
-	SOF_CTRL_CMD_UNMUTE,
+	SOF_CTRL_CMD_VOLUME = 0, /* maps to ALSA volume style controls */
+	SOF_CTRL_CMD_ENUM, /* maps to ALSA enum style controls */
+	SOF_CTRL_CMD_SWITCH, /* maps to ALSA switch style controls */
+	SOF_CTRL_CMD_BINARY, /* maps to ALSA binary style controls */
 };
 
 /* generic channel mapped value data */
@@ -506,6 +506,7 @@ struct sof_ipc_ctrl_data {
 	/* control access and data type */
 	enum sof_ipc_ctrl_type type;
 	enum sof_ipc_ctrl_cmd cmd;
+	uint32_t index; /* control index for comps > 1 control */
 
 	/* control data - can either be appended or DMAed from host */
 	struct sof_ipc_host_buffer buffer;
@@ -518,7 +519,7 @@ struct sof_ipc_ctrl_data {
 		/* component values used by routing controls like mux, mixer */
 		struct sof_ipc_ctrl_value_comp compv[0];
 		/* data can be used by binary controls */
-		char data[0];
+		struct sof_abi_hdr data[0];
 	};
 } __attribute__((packed));
 

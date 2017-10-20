@@ -174,7 +174,7 @@ int snd_sof_enum_get(struct snd_kcontrol *kcontrol,
 
 	/* get all the mixer data from DSP */
 	snd_sof_ipc_get_comp_data(sdev->ipc, scontrol, SOF_IPC_COMP_GET_VALUE,
-		SOF_CTRL_TYPE_VALUE_CHAN_GET, SOF_CTRL_CMD_ROUTE);
+		SOF_CTRL_TYPE_VALUE_CHAN_GET, SOF_CTRL_CMD_ENUM);
 
 	/* read back each channel */
 	for (i = 0; i < channels; i++)
@@ -203,7 +203,7 @@ int snd_sof_enum_put(struct snd_kcontrol *kcontrol,
 
 	/* notify DSP of mixer updates */
 	snd_sof_ipc_set_comp_data(sdev->ipc, scontrol, SOF_IPC_COMP_SET_VALUE,
-		SOF_CTRL_TYPE_VALUE_CHAN_SET, SOF_CTRL_CMD_ROUTE);
+		SOF_CTRL_TYPE_VALUE_CHAN_SET, SOF_CTRL_CMD_ENUM);
 
 	pm_runtime_mark_last_busy(sdev->dev);
 	pm_runtime_put_autosuspend(sdev->dev);
