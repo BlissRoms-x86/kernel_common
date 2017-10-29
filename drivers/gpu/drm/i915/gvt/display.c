@@ -197,6 +197,12 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 			(TRANS_DDI_BPC_8 | TRANS_DDI_MODE_SELECT_DP_SST |
 			(PORT_B << TRANS_DDI_PORT_SHIFT) |
 			TRANS_DDI_FUNC_ENABLE);
+		if (IS_BROADWELL(dev_priv)) {
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_B)) &=
+				~PORT_CLK_SEL_MASK;
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_B)) |=
+				PORT_CLK_SEL_LCPLL_810;
+		}
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_B)) |= DDI_BUF_CTL_ENABLE;
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_B)) &= ~DDI_BUF_IS_IDLE;
 		vgpu_vreg(vgpu, SDEISR) |= SDE_PORTB_HOTPLUG_CPT;
@@ -211,6 +217,12 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 			(TRANS_DDI_BPC_8 | TRANS_DDI_MODE_SELECT_DP_SST |
 			(PORT_C << TRANS_DDI_PORT_SHIFT) |
 			TRANS_DDI_FUNC_ENABLE);
+		if (IS_BROADWELL(dev_priv)) {
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_C)) &=
+				~PORT_CLK_SEL_MASK;
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_C)) |=
+				PORT_CLK_SEL_LCPLL_810;
+		}
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_C)) |= DDI_BUF_CTL_ENABLE;
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_C)) &= ~DDI_BUF_IS_IDLE;
 		vgpu_vreg(vgpu, SFUSE_STRAP) |= SFUSE_STRAP_DDIC_DETECTED;
@@ -225,6 +237,12 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 			(TRANS_DDI_BPC_8 | TRANS_DDI_MODE_SELECT_DP_SST |
 			(PORT_D << TRANS_DDI_PORT_SHIFT) |
 			TRANS_DDI_FUNC_ENABLE);
+		if (IS_BROADWELL(dev_priv)) {
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_D)) &=
+				~PORT_CLK_SEL_MASK;
+			vgpu_vreg(vgpu, PORT_CLK_SEL(PORT_D)) |=
+				PORT_CLK_SEL_LCPLL_810;
+		}
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_D)) |= DDI_BUF_CTL_ENABLE;
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_D)) &= ~DDI_BUF_IS_IDLE;
 		vgpu_vreg(vgpu, SFUSE_STRAP) |= SFUSE_STRAP_DDID_DETECTED;
@@ -244,6 +262,10 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 
 		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_A)) |= DDI_INIT_DISPLAY_DETECTED;
 	}
+
+	/* Clear host CRT status, so guest couldn't detect this host CRT. */
+	if (IS_BROADWELL(dev_priv))
+		vgpu_vreg(vgpu, PCH_ADPA) &= ~ADPA_CRT_HOTPLUG_MONITOR_MASK;
 }
 
 static void clean_virtual_dp_monitor(struct intel_vgpu *vgpu, int port_num)
@@ -301,27 +323,27 @@ void intel_gvt_check_vblank_emulation(struct intel_gvt *gvt)
 {
 	struct intel_gvt_irq *irq = &gvt->irq;
 	struct intel_vgpu *vgpu;
-	bool have_enabled_pipe = false;
 	int pipe, id;
 
 	if (WARN_ON(!mutex_is_locked(&gvt->lock)))
 		return;
 
-	hrtimer_cancel(&irq->vblank_timer.timer);
-
 	for_each_active_vgpu(gvt, vgpu, id) {
 		for (pipe = 0; pipe < I915_MAX_PIPES; pipe++) {
-			have_enabled_pipe =
-				pipe_is_enabled(vgpu, pipe);
-			if (have_enabled_pipe)
-				break;
+			if (pipe_is_enabled(vgpu, pipe))
+				goto out;
 		}
 	}
 
-	if (have_enabled_pipe)
-		hrtimer_start(&irq->vblank_timer.timer,
-			ktime_add_ns(ktime_get(), irq->vblank_timer.period),
-			HRTIMER_MODE_ABS);
+	/* all the pipes are disabled */
+	hrtimer_cancel(&irq->vblank_timer.timer);
+	return;
+
+out:
+	hrtimer_start(&irq->vblank_timer.timer,
+		ktime_add_ns(ktime_get(), irq->vblank_timer.period),
+		HRTIMER_MODE_ABS);
+
 }
 
 static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
@@ -390,12 +412,13 @@ void intel_gvt_emulate_vblank(struct intel_gvt *gvt)
  */
 void intel_vgpu_clean_display(struct intel_vgpu *vgpu)
 {
-	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	enum port port;
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
-		clean_virtual_dp_monitor(vgpu, PORT_D);
-	else
-		clean_virtual_dp_monitor(vgpu, PORT_B);
+	for (port = PORT_B; port < PORT_E; port++) {
+		if (intel_vgpu_has_monitor_on_port(vgpu, port) &&
+		    intel_vgpu_port_is_dp(vgpu, port))
+			clean_virtual_dp_monitor(vgpu, port);
+	}
 }
 
 /**
@@ -411,15 +434,33 @@ void intel_vgpu_clean_display(struct intel_vgpu *vgpu)
 int intel_vgpu_init_display(struct intel_vgpu *vgpu, u64 resolution)
 {
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	enum port port;
+	enum intel_vgpu_port_type type;
 
 	intel_vgpu_init_i2c_edid(vgpu);
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
-		return setup_virtual_dp_monitor(vgpu, PORT_D, GVT_DP_D,
-						resolution);
-	else
-		return setup_virtual_dp_monitor(vgpu, PORT_B, GVT_DP_B,
-						resolution);
+	for (port = PORT_B; port < PORT_E; port++) {
+		if (!dev_priv->vbt.ddi_port_info[port].supports_dp)
+			continue;
+
+		switch (port) {
+		case PORT_B:
+			type = GVT_DP_B;
+			break;
+		case PORT_C:
+			type = GVT_DP_C;
+			break;
+		case PORT_D:
+			type = GVT_DP_D;
+			break;
+		default:
+			BUG();
+		}
+
+		return setup_virtual_dp_monitor(vgpu, port, type, resolution);
+	}
+
+	return -EINVAL;
 }
 
 /**

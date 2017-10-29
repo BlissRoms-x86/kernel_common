@@ -46,6 +46,7 @@
 #include "sched_policy.h"
 #include "render.h"
 #include "cmd_parser.h"
+#include "migrate.h"
 
 #define GVT_MAX_VGPU 8
 
@@ -99,7 +100,6 @@ struct intel_vgpu_mmio {
 	bool disable_warn_untrack;
 };
 
-#define INTEL_GVT_MAX_CFG_SPACE_SZ 256
 #define INTEL_GVT_MAX_BAR_NUM 4
 
 struct intel_vgpu_pci_bar {
@@ -108,7 +108,7 @@ struct intel_vgpu_pci_bar {
 };
 
 struct intel_vgpu_cfg_space {
-	unsigned char virtual_cfg_space[INTEL_GVT_MAX_CFG_SPACE_SZ];
+	unsigned char virtual_cfg_space[PCI_CFG_SPACE_EXP_SIZE];
 	struct intel_vgpu_pci_bar bar[INTEL_GVT_MAX_BAR_NUM];
 };
 
@@ -149,7 +149,7 @@ struct intel_vgpu {
 	bool active;
 	bool pv_notified;
 	bool failsafe;
-	bool resetting;
+	unsigned int resetting_eng;
 	void *sched_data;
 	struct vgpu_sched_ctl sched_ctl;
 
@@ -168,6 +168,7 @@ struct intel_vgpu {
 	ktime_t last_ctx_submit_time;
 	DECLARE_BITMAP(tlb_handle_pending, I915_NUM_ENGINES);
 	struct i915_gem_context *shadow_ctx;
+	unsigned long low_mem_max_gpfn;
 
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {
@@ -196,11 +197,39 @@ struct intel_gvt_fence {
 	unsigned long vgpu_allocated_fence_num;
 };
 
-#define INTEL_GVT_MMIO_HASH_BITS 9
+/* Special MMIO blocks. */
+struct gvt_mmio_block {
+	unsigned int device;
+	i915_reg_t   offset;
+	unsigned int size;
+	gvt_mmio_func read;
+	gvt_mmio_func write;
+};
+
+#define INTEL_GVT_MMIO_HASH_BITS 11
 
 struct intel_gvt_mmio {
-	u32 *mmio_attribute;
+	u8 *mmio_attribute;
+/* Register contains RO bits */
+#define F_RO		(1 << 0)
+/* Register contains graphics address */
+#define F_GMADR		(1 << 1)
+/* Mode mask registers with high 16 bits as the mask bits */
+#define F_MODE_MASK	(1 << 2)
+/* This reg can be accessed by GPU commands */
+#define F_CMD_ACCESS	(1 << 3)
+/* This reg has been accessed by a VM */
+#define F_ACCESSED	(1 << 4)
+/* This reg has been accessed through GPU commands */
+#define F_CMD_ACCESSED	(1 << 5)
+/* This reg could be accessed by unaligned address */
+#define F_UNALIGN	(1 << 6)
+
+	struct gvt_mmio_block *mmio_block;
+	unsigned int num_mmio_block;
+
 	DECLARE_HASHTABLE(mmio_info_table, INTEL_GVT_MMIO_HASH_BITS);
+	unsigned int num_tracked_mmio;
 };
 
 struct intel_gvt_firmware {
@@ -257,7 +286,12 @@ static inline struct intel_gvt *to_gvt(struct drm_i915_private *i915)
 
 enum {
 	INTEL_GVT_REQUEST_EMULATE_VBLANK = 0,
+
+	/* Scheduling trigger by timer */
 	INTEL_GVT_REQUEST_SCHED = 1,
+
+	/* Scheduling trigger by event */
+	INTEL_GVT_REQUEST_EVENT_SCHED = 2,
 };
 
 static inline void intel_gvt_request_service(struct intel_gvt *gvt,
@@ -322,6 +356,20 @@ int intel_gvt_load_firmware(struct intel_gvt *gvt);
 
 #define vgpu_fence_base(vgpu) (vgpu->fence.base)
 #define vgpu_fence_sz(vgpu) (vgpu->fence.size)
+
+/* Aperture/GM space definitions for vGPU Guest view point */
+#define vgpu_guest_aperture_offset(vgpu) \
+	vgpu_vreg(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base))
+#define vgpu_guest_hidden_offset(vgpu)	\
+	vgpu_vreg(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base))
+
+#define vgpu_guest_aperture_gmadr_base(vgpu) (vgpu_guest_aperture_offset(vgpu))
+#define vgpu_guest_aperture_gmadr_end(vgpu) \
+	(vgpu_guest_aperture_gmadr_base(vgpu) + vgpu_aperture_sz(vgpu) - 1)
+
+#define vgpu_guest_hidden_gmadr_base(vgpu) (vgpu_guest_hidden_offset(vgpu))
+#define vgpu_guest_hidden_gmadr_end(vgpu) \
+	(vgpu_guest_hidden_gmadr_base(vgpu) + vgpu_hidden_sz(vgpu) - 1)
 
 struct intel_vgpu_creation_params {
 	__u64 handle;
@@ -397,15 +445,17 @@ void intel_gvt_reset_vgpu_locked(struct intel_vgpu *vgpu, bool dmlr,
 void intel_gvt_reset_vgpu(struct intel_vgpu *vgpu);
 void intel_gvt_activate_vgpu(struct intel_vgpu *vgpu);
 void intel_gvt_deactivate_vgpu(struct intel_vgpu *vgpu);
+int intel_gvt_save_restore(struct intel_vgpu *vgpu, char *buf, size_t count,
+			   void *base, uint64_t off, bool restore);
 
 /* validating GM functions */
 #define vgpu_gmadr_is_aperture(vgpu, gmadr) \
-	((gmadr >= vgpu_aperture_gmadr_base(vgpu)) && \
-	 (gmadr <= vgpu_aperture_gmadr_end(vgpu)))
+	((gmadr >= vgpu_guest_aperture_gmadr_base(vgpu)) && \
+	 (gmadr <= vgpu_guest_aperture_gmadr_end(vgpu)))
 
 #define vgpu_gmadr_is_hidden(vgpu, gmadr) \
-	((gmadr >= vgpu_hidden_gmadr_base(vgpu)) && \
-	 (gmadr <= vgpu_hidden_gmadr_end(vgpu)))
+	((gmadr >= vgpu_guest_hidden_gmadr_base(vgpu)) && \
+	 (gmadr <= vgpu_guest_hidden_gmadr_end(vgpu)))
 
 #define vgpu_gmadr_is_valid(vgpu, gmadr) \
 	 ((vgpu_gmadr_is_aperture(vgpu, gmadr) || \
@@ -431,6 +481,20 @@ int intel_gvt_ggtt_index_g2h(struct intel_vgpu *vgpu, unsigned long g_index,
 int intel_gvt_ggtt_h2g_index(struct intel_vgpu *vgpu, unsigned long h_index,
 			     unsigned long *g_index);
 
+/* apply guest to host gma conversion in GM registers setting */
+static inline u64 intel_gvt_reg_g2h(struct intel_vgpu *vgpu,
+		u32 addr, u32 mask)
+{
+	u64 gma;
+
+	if (addr) {
+		intel_gvt_ggtt_gmadr_g2h(vgpu,
+				addr & mask, &gma);
+		addr = gma | (addr & (~mask));
+	}
+	return addr;
+}
+
 void intel_vgpu_init_cfg_space(struct intel_vgpu *vgpu,
 		bool primary);
 void intel_vgpu_reset_cfg_space(struct intel_vgpu *vgpu);
@@ -450,6 +514,8 @@ int intel_vgpu_init_opregion(struct intel_vgpu *vgpu, u32 gpa);
 int intel_vgpu_emulate_opregion_request(struct intel_vgpu *vgpu, u32 swsci);
 void populate_pvinfo_page(struct intel_vgpu *vgpu);
 
+int intel_gvt_scan_and_shadow_workload(struct intel_vgpu_workload *workload);
+
 struct intel_gvt_ops {
 	int (*emulate_cfg_read)(struct intel_vgpu *, unsigned int, void *,
 				unsigned int);
@@ -465,6 +531,8 @@ struct intel_gvt_ops {
 	void (*vgpu_reset)(struct intel_vgpu *);
 	void (*vgpu_activate)(struct intel_vgpu *);
 	void (*vgpu_deactivate)(struct intel_vgpu *);
+	int  (*vgpu_save_restore)(struct intel_vgpu *, char *buf, size_t count,
+				  void *base, uint64_t off, bool restore);
 };
 
 
@@ -473,6 +541,80 @@ enum {
 	GVT_FAILSAFE_INSUFFICIENT_RESOURCE,
 };
 
+static inline void mmio_hw_access_pre(struct drm_i915_private *dev_priv)
+{
+	intel_runtime_pm_get(dev_priv);
+}
+
+static inline void mmio_hw_access_post(struct drm_i915_private *dev_priv)
+{
+	intel_runtime_pm_put(dev_priv);
+}
+
+/**
+ * intel_gvt_mmio_set_accessed - mark a MMIO has been accessed
+ * @gvt: a GVT device
+ * @offset: register offset
+ *
+ */
+static inline void intel_gvt_mmio_set_accessed(
+			struct intel_gvt *gvt, unsigned int offset)
+{
+	gvt->mmio.mmio_attribute[offset >> 2] |= F_ACCESSED;
+}
+
+/**
+ * intel_gvt_mmio_is_cmd_accessed - mark a MMIO could be accessed by command
+ * @gvt: a GVT device
+ * @offset: register offset
+ *
+ */
+static inline bool intel_gvt_mmio_is_cmd_access(
+			struct intel_gvt *gvt, unsigned int offset)
+{
+	return gvt->mmio.mmio_attribute[offset >> 2] & F_CMD_ACCESS;
+}
+
+/**
+ * intel_gvt_mmio_is_unalign - mark a MMIO could be accessed unaligned
+ * @gvt: a GVT device
+ * @offset: register offset
+ *
+ */
+static inline bool intel_gvt_mmio_is_unalign(
+			struct intel_gvt *gvt, unsigned int offset)
+{
+	return gvt->mmio.mmio_attribute[offset >> 2] & F_UNALIGN;
+}
+
+/**
+ * intel_gvt_mmio_set_cmd_accessed - mark a MMIO has been accessed by command
+ * @gvt: a GVT device
+ * @offset: register offset
+ *
+ */
+static inline void intel_gvt_mmio_set_cmd_accessed(
+			struct intel_gvt *gvt, unsigned int offset)
+{
+	gvt->mmio.mmio_attribute[offset >> 2] |= F_CMD_ACCESSED;
+}
+
+/**
+ * intel_gvt_mmio_has_mode_mask - if a MMIO has a mode mask
+ * @gvt: a GVT device
+ * @offset: register offset
+ *
+ * Returns:
+ * True if a MMIO has a mode mask in its higher 16 bits, false if it isn't.
+ *
+ */
+static inline bool intel_gvt_mmio_has_mode_mask(
+			struct intel_gvt *gvt, unsigned int offset)
+{
+	return gvt->mmio.mmio_attribute[offset >> 2] & F_MODE_MASK;
+}
+
+#include "trace.h"
 #include "mpt.h"
 
 #endif

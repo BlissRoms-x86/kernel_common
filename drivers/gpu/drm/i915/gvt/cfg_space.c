@@ -33,6 +33,7 @@
 
 #include "i915_drv.h"
 #include "gvt.h"
+#include "i915_pvinfo.h"
 
 enum {
 	INTEL_GVT_PCI_BAR_GTTMMIO = 0,
@@ -101,7 +102,7 @@ int intel_vgpu_emulate_cfg_read(struct intel_vgpu *vgpu, unsigned int offset,
 	if (WARN_ON(bytes > 4))
 		return -EINVAL;
 
-	if (WARN_ON(offset + bytes > INTEL_GVT_MAX_CFG_SPACE_SZ))
+	if (WARN_ON(offset + bytes > vgpu->gvt->device_info.cfg_space_size))
 		return -EINVAL;
 
 	memcpy(p_data, vgpu_cfg_space(vgpu) + offset, bytes);
@@ -123,7 +124,7 @@ static int map_aperture(struct intel_vgpu *vgpu, bool map)
 	else
 		val = *(u32 *)(vgpu_cfg_space(vgpu) + PCI_BASE_ADDRESS_2);
 
-	first_gfn = (val + vgpu_aperture_offset(vgpu)) >> PAGE_SHIFT;
+	first_gfn = (val + vgpu_guest_aperture_offset(vgpu)) >> PAGE_SHIFT;
 	first_mfn = vgpu_aperture_pa_base(vgpu) >> PAGE_SHIFT;
 
 	ret = intel_gvt_hypervisor_map_gfn_to_mfn(vgpu, first_gfn,
@@ -288,7 +289,7 @@ int intel_vgpu_emulate_cfg_write(struct intel_vgpu *vgpu, unsigned int offset,
 	if (WARN_ON(bytes > 4))
 		return -EINVAL;
 
-	if (WARN_ON(offset + bytes > INTEL_GVT_MAX_CFG_SPACE_SZ))
+	if (WARN_ON(offset + bytes > vgpu->gvt->device_info.cfg_space_size))
 		return -EINVAL;
 
 	/* First check if it's PCI_COMMAND */

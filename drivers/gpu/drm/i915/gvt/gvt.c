@@ -54,6 +54,7 @@ static const struct intel_gvt_ops intel_gvt_ops = {
 	.vgpu_reset = intel_gvt_reset_vgpu,
 	.vgpu_activate = intel_gvt_activate_vgpu,
 	.vgpu_deactivate = intel_gvt_deactivate_vgpu,
+	.vgpu_save_restore = intel_gvt_save_restore,
 };
 
 /**
@@ -111,7 +112,7 @@ static void init_device_info(struct intel_gvt *gvt)
 	if (IS_BROADWELL(gvt->dev_priv) || IS_SKYLAKE(gvt->dev_priv)
 		|| IS_KABYLAKE(gvt->dev_priv)) {
 		info->max_support_vgpus = 8;
-		info->cfg_space_size = 256;
+		info->cfg_space_size = PCI_CFG_SPACE_EXP_SIZE;
 		info->mmio_size = 2 * 1024 * 1024;
 		info->mmio_bar = 0;
 		info->gtt_start_offset = 8 * 1024 * 1024;
@@ -147,7 +148,9 @@ static int gvt_service_thread(void *data)
 			mutex_unlock(&gvt->lock);
 		}
 
-		if (test_and_clear_bit(INTEL_GVT_REQUEST_SCHED,
+		if (test_bit(INTEL_GVT_REQUEST_SCHED,
+				(void *)&gvt->service_request) ||
+			test_bit(INTEL_GVT_REQUEST_EVENT_SCHED,
 					(void *)&gvt->service_request)) {
 			intel_gvt_schedule(gvt);
 		}
@@ -244,7 +247,7 @@ int intel_gvt_init_device(struct drm_i915_private *dev_priv)
 	gvt_dbg_core("init gvt device\n");
 
 	idr_init(&gvt->vgpu_idr);
-
+	spin_lock_init(&gvt->scheduler.mmio_context_lock);
 	mutex_init(&gvt->lock);
 	gvt->dev_priv = dev_priv;
 

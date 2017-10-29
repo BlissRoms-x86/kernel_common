@@ -296,9 +296,18 @@ struct vfio_region_info_cap_type {
 #define VFIO_REGION_TYPE_PCI_VENDOR_MASK	(0xffff)
 
 /* 8086 Vendor sub-types */
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION	(1)
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG	(2)
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG	(3)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION		(1)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG		(2)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG		(3)
+
+/* Mdev sub-type for device state save and restore */
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE	(4)
+
+/* Offset in region to save device state */
+#define VFIO_DEVICE_STATE_OFFSET	1
+
+#define VFIO_DEVICE_START	0
+#define VFIO_DEVICE_STOP	1
 
 /**
  * VFIO_DEVICE_GET_IRQ_INFO - _IOWR(VFIO_TYPE, VFIO_BASE + 9,
@@ -564,6 +573,20 @@ struct vfio_iommu_type1_dma_unmap {
  */
 #define VFIO_IOMMU_ENABLE	_IO(VFIO_TYPE, VFIO_BASE + 15)
 #define VFIO_IOMMU_DISABLE	_IO(VFIO_TYPE, VFIO_BASE + 16)
+
+/**
+ * VFIO_IOMMU_GET_DIRTY_BITMAP - _IOW(VFIO_TYPE, VFIO_BASE + 17,
+ *				    struct vfio_iommu_get_dirty_bitmap)
+ *
+ * Return: 0 on success, -errno on failure.
+ */
+struct vfio_iommu_get_dirty_bitmap {
+	__u64	       start_addr;
+	__u64	       page_nr;
+	__u8           dirty_bitmap[];
+};
+
+#define VFIO_IOMMU_GET_DIRTY_BITMAP _IO(VFIO_TYPE, VFIO_BASE + 17)
 
 /* -------- Additional API for SPAPR TCE (Server POWERPC) IOMMU -------- */
 
