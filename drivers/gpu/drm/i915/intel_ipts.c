@@ -69,6 +69,7 @@ typedef struct intel_ipts_object {
 
 static intel_ipts_object_t *ipts_object_create(size_t size, u32 flags)
 {
+	struct drm_i915_private *dev_priv = intel_ipts.dev->dev_private;
 	intel_ipts_object_t *obj = NULL;
 	struct drm_i915_gem_object *gem_obj = NULL;
 	int ret = 0;
@@ -84,7 +85,7 @@ static intel_ipts_object_t *ipts_object_create(size_t size, u32 flags)
 	}
 
 	/* Allocate the new object */
-	gem_obj = i915_gem_object_create(intel_ipts.dev, size);
+	gem_obj = i915_gem_object_create(dev_priv, size);
 	if (gem_obj == NULL) {
 		ret = -ENOMEM;
 		goto err_out;
@@ -140,7 +141,7 @@ static int ipts_object_pin(intel_ipts_object_t* obj,
 		vm = &dev_priv->ggtt.base;
 	}
 
-	vma = i915_gem_obj_lookup_or_create_vma(obj->gem_obj, vm, NULL);
+	vma = i915_vma_instance(obj->gem_obj, vm, NULL);
 	if (IS_ERR(vma)) {
 		DRM_ERROR("cannot find or create vma\n");
 		return -1;
@@ -195,7 +196,7 @@ static int create_ipts_context(void)
 		goto err_ctx;
 	}
 
-	ret = intel_lr_context_pin(ipts_ctx, dev_priv->engine[RCS]);
+	ret = execlists_context_pin(dev_priv->engine[RCS], ipts_ctx);
 	if (ret) {
 		DRM_DEBUG("lr context pinning failed : %d\n", ret);
 		goto err_ctx;
@@ -236,7 +237,7 @@ static void destroy_ipts_context(void)
 		return;
 	}
 
-	intel_lr_context_unpin(ipts_ctx, dev_priv->engine[RCS]);
+	execlists_context_unpin(dev_priv->engine[RCS], ipts_ctx);
 	i915_gem_context_put(ipts_ctx);
 
 	mutex_unlock(&intel_ipts.dev->struct_mutex);
@@ -443,7 +444,7 @@ static int intel_ipts_map_buffer(u64 gfx_handle, intel_ipts_mapbuffer_t *mapbuf)
 		vm = &dev_priv->ggtt.base;
 	}
 
-	vma = i915_gem_obj_lookup_or_create_vma(obj->gem_obj, vm, NULL);
+	vma = i915_vma_instance(obj->gem_obj, vm, NULL);
 	if (IS_ERR(vma)) {
 		DRM_ERROR("cannot find or create vma\n");
 		return -EINVAL;
@@ -481,6 +482,7 @@ static int intel_ipts_unmap_buffer(uint64_t gfx_handle, uint64_t buf_handle)
 
 int intel_ipts_connect(intel_ipts_connect_t *ipts_connect)
 {
+	struct drm_i915_private *dev_priv = intel_ipts.dev->dev_private;
 	int ret = 0;
 
 	if (!intel_ipts.initialized)
@@ -493,7 +495,7 @@ int intel_ipts_connect(intel_ipts_connect_t *ipts_connect)
 		ipts_connect->ipts_ops.get_wq_info = intel_ipts_get_wq_info;
 		ipts_connect->ipts_ops.map_buffer = intel_ipts_map_buffer;
 		ipts_connect->ipts_ops.unmap_buffer = intel_ipts_unmap_buffer;
-		ipts_connect->gfx_version = INTEL_INFO(to_i915(intel_ipts.dev))->gen;
+		ipts_connect->gfx_version = INTEL_INFO(dev_priv)->gen;
 		ipts_connect->gfx_handle = (uint64_t)&intel_ipts;
 
 		/* save callback and data */
