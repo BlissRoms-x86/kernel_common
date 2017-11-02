@@ -484,6 +484,7 @@ void snd_sof_free_topology(struct snd_sof_dev *sdev);
  * Trace/debug
  */
 int snd_sof_init_trace(struct snd_sof_dev *sdev);
+void snd_sof_release_trace(struct snd_sof_dev *sdev);
 int snd_sof_dbg_init(struct snd_sof_dev *sdev);
 void snd_sof_free_debug(struct snd_sof_dev *sdev);
 int snd_sof_debugfs_create_item(struct snd_sof_dev *sdev,

@@ -268,3 +268,10 @@ void snd_sof_trace_notify_for_error(struct snd_sof_dev *sdev)
 }
 
 EXPORT_SYMBOL(snd_sof_init_trace);
+
+void snd_sof_release_trace(struct snd_sof_dev *sdev)
+{
+	snd_dma_free_pages(&sdev->dmatb);
+	snd_dma_free_pages(&sdev->dmatp);
+}
+EXPORT_SYMBOL(snd_sof_release_trace);
