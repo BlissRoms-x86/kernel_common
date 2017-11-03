@@ -199,6 +199,7 @@ static int sof_pci_probe(struct pci_dev *pci,
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (priv == NULL)
 		return -ENOMEM;
+	pci_set_drvdata(pci, priv);
 
 	sof_pdata = devm_kzalloc(dev, sizeof(*sof_pdata), GFP_KERNEL);
 	if (sof_pdata == NULL)
