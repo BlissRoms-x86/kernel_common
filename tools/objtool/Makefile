@@ -7,8 +7,9 @@ ARCH := x86
 endif
 
 # always use the host compiler
-CC = gcc
-LD = ld
+CC = $(HOSTCC)
+HOSTLD ?= ld
+LD = $(HOSTLD)
 AR = ar
 
 ifeq ($(srctree),)
