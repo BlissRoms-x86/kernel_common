@@ -377,6 +377,8 @@ struct snd_sof_dev {
 	struct snd_dma_buffer dmatb;
 	struct snd_dma_buffer dmatp;
 	int dma_trace_pages;
+	wait_queue_head_t trace_sleep;
+	uint32_t host_offset;
 
 	void *private;			/* core does not touch this */
 };
@@ -474,6 +476,8 @@ int snd_sof_dbg_init(struct snd_sof_dev *sdev);
 void snd_sof_free_debug(struct snd_sof_dev *sdev);
 int snd_sof_debugfs_create_item(struct snd_sof_dev *sdev,
 	void __iomem *base, size_t size, const char *name);
+int snd_sof_trace_update_pos(struct snd_sof_dev *sdev,
+	struct sof_ipc_dma_trace_posn *posn);
 
 /*
  * Platform specific ops.

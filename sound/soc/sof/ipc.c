@@ -353,6 +353,24 @@ static void ipc_stream_message(struct snd_sof_dev *sdev, u32 msg_id)
 	}
 }
 
+static void ipc_trace_message(struct snd_sof_dev *sdev, u32 msg_id)
+{
+	struct sof_ipc_dma_trace_posn posn;
+
+	switch (msg_id) {
+	case SOF_IPC_TRACE_DMA_POSITION:
+		/* read back full message */
+		snd_sof_dsp_mailbox_read(sdev, sdev->dsp_box.offset, &posn,
+			sizeof(posn));
+		snd_sof_trace_update_pos(sdev, &posn);
+		break;
+	default:
+		dev_err(sdev->dev, "error: unhandled trace message %x\n",
+			msg_id);
+		break;
+	}
+}
+
 /* DSP firmware has sent host a message  */
 static void ipc_msgs_rx(struct work_struct *work)
 {
@@ -396,6 +414,9 @@ static void ipc_msgs_rx(struct work_struct *work)
 		break;
 	case SOF_IPC_GLB_STREAM_MSG:
 		ipc_stream_message(sdev, type);
+		break;
+	case SOF_IPC_GLB_TRACE_MSG:
+		ipc_trace_message(sdev, type);
 		break;
 	default:
 		dev_err(sdev->dev, "unknown DSP message 0x%x\n", cmd);

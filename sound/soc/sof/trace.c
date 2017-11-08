@@ -58,6 +58,8 @@
 #include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/sched/signal.h>
+#include <linux/time.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -70,16 +72,57 @@
 #include "sof-priv.h"
 #include "ops.h"
 
+static int sof_wait_trace_avail(struct snd_sof_dev *sdev, size_t *count, loff_t pos)
+{
+	size_t avail;
+	wait_queue_entry_t wait;
+
+	/* if pos is invalid for DMA trace host buffer*/
+	/* return error code */
+	if (sdev->host_offset < pos)
+		return -EINVAL;
+
+	/* if there is available trace data now */
+	/* it is unecessary to wait */
+	if (sdev->host_offset > pos)
+		goto _endcheck;
+
+	/* wait for available trace data from FW */
+	init_waitqueue_entry(&wait, current);
+	set_current_state(TASK_INTERRUPTIBLE);
+	add_wait_queue(&sdev->trace_sleep, &wait);
+
+	if (signal_pending(current)) {
+		remove_wait_queue(&sdev->trace_sleep, &wait);
+		goto _endcheck;
+	}
+
+	/* set timeout to max value, no error code */
+	schedule_timeout(MAX_SCHEDULE_TIMEOUT);
+	remove_wait_queue(&sdev->trace_sleep, &wait);
+
+_endcheck:
+	/* calculate the available count */
+	avail = sdev->host_offset - pos;
+
+	/* return min value between available and request count */
+	*count = avail < *count ? avail : *count;
+
+	return 0;
+}
+
 static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 				 size_t count, loff_t *ppos)
 {
 	struct snd_sof_dfsentry *dfse = file->private_data;
-	int size;
+	struct snd_sof_dev *sdev = dfse->sdev;
+	int err;
 	loff_t pos = *ppos;
-	size_t ret;
+	size_t ret, size;
 
 	size = dfse->size;
 
+	/* check pos and count */
 	if (pos < 0)
 		return -EINVAL;
 	if (pos >= size || !count)
@@ -87,13 +130,22 @@ static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 	if (count > size - pos)
 		count = size - pos;
 
-	size = (count + 3) & ~3;
+	/* get available count based on current host offset */
+	err = sof_wait_trace_avail(sdev, &count, pos);
+	if (err < 0 || count == 0) {
+		dev_err(sdev->dev,
+			"error: cant get more trace %d\n", err);
+		return 0;
+	}
 
+	/* copy available trace data to debugfs */
 	ret = copy_to_user(buffer, dfse->buf + pos, count);
 
 	if (ret == count)
 		return -EFAULT;
 	count -= ret;
+
+	/* move debugfs reading position */
 	*ppos = pos + count;
 
 	return count;
@@ -187,6 +239,8 @@ int snd_sof_init_trace(struct snd_sof_dev *sdev)
 		goto table_err;
 	}
 
+	init_waitqueue_head(&sdev->trace_sleep);
+	sdev->host_offset = 0;
 	return 0;
 
 table_err:
@@ -195,4 +249,16 @@ page_err:
 	snd_dma_free_pages(&sdev->dmatp);
 	return ret;
 }
+
+int snd_sof_trace_update_pos(struct snd_sof_dev *sdev,
+	struct sof_ipc_dma_trace_posn *posn)
+{
+	if (sdev->host_offset != posn->host_offset) {
+		sdev->host_offset = posn->host_offset;
+		wake_up(&sdev->trace_sleep);
+	}
+
+	return 0;
+}
+
 EXPORT_SYMBOL(snd_sof_init_trace);
