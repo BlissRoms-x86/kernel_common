@@ -1253,7 +1253,7 @@ static unsigned int ipv4_mtu(const struct dst_entry *dst)
 	if (mtu)
 		return mtu;
 
-	mtu = dst->dev->mtu;
+	mtu = READ_ONCE(dst->dev->mtu);
 
 	if (unlikely(dst_metric_locked(dst, RTAX_MTU))) {
 		if (rt->rt_uses_gateway && mtu > 576)
@@ -1860,6 +1860,7 @@ static int ip_route_input_slow(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 	fl4.flowi4_flags = 0;
 	fl4.daddr = daddr;
 	fl4.saddr = saddr;
+	fl4.flowi4_uid = sock_net_uid(net, NULL);
 	err = fib_lookup(net, &fl4, &res, 0);
 	if (err != 0) {
 		if (!IN_DEV_FORWARD(in_dev))

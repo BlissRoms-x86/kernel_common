@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Red Hat Inc.
+ * Copyright 2012 Red Hat Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,25 +19,20 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: Ben Skeggs <bskeggs@redhat.com>
+ * Authors: Ben Skeggs
  */
-#include "gf100.h"
-#include "ram.h"
+#include "dmacnv50.h"
+#include "rootnv50.h"
 
-#include <core/memory.h>
+#include <nvif/class.h>
 
-static const struct nvkm_fb_func
-gp104_fb = {
-	.dtor = gf100_fb_dtor,
-	.oneinit = gf100_fb_oneinit,
-	.init = gp100_fb_init,
-	.init_page = gm200_fb_init_page,
-	.ram_new = gp100_ram_new,
-	.memtype_valid = gf100_fb_memtype_valid,
+const struct nv50_disp_dmac_oclass
+gp102_disp_ovly_oclass = {
+	.base.oclass = GK104_DISP_OVERLAY_CONTROL_DMA,
+	.base.minver = 0,
+	.base.maxver = 0,
+	.ctor = nv50_disp_ovly_new,
+	.func = &gp102_disp_dmac_func,
+	.mthd = &gk104_disp_ovly_chan_mthd,
+	.chid = 5,
 };
-
-int
-gp104_fb_new(struct nvkm_device *device, int index, struct nvkm_fb **pfb)
-{
-	return gf100_fb_new_(&gp104_fb, device, index, pfb);
-}

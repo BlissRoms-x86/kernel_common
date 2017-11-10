@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Red Hat Inc.
+ * Copyright 2015 Martin Peres
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,26 +19,39 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: Ben Skeggs
+ * Authors: Martin Peres <martin.peres@free.fr>
  */
-#include "priv.h"
-#include <core/enum.h>
 
-#include <nvif/class.h>
+#ifndef __NOUVEAU_LED_H__
+#define __NOUVEAU_LED_H__
 
-static const struct nvkm_engine_func
-gp104_ce = {
-	.intr = gp100_ce_intr,
-	.sclass = {
-		{ -1, -1, PASCAL_DMA_COPY_B },
-		{ -1, -1, PASCAL_DMA_COPY_A },
-		{}
-	}
+#include "nouveau_drv.h"
+
+struct led_classdev;
+
+struct nouveau_led {
+	struct drm_device *dev;
+
+	struct led_classdev led;
 };
 
-int
-gp104_ce_new(struct nvkm_device *device, int index,
-	     struct nvkm_engine **pengine)
+static inline struct nouveau_led *
+nouveau_led(struct drm_device *dev)
 {
-	return nvkm_engine_new_(&gp104_ce, device, index, true, pengine);
+	return nouveau_drm(dev)->led;
 }
+
+/* nouveau_led.c */
+#if IS_ENABLED(CONFIG_LEDS_CLASS)
+int  nouveau_led_init(struct drm_device *dev);
+void nouveau_led_suspend(struct drm_device *dev);
+void nouveau_led_resume(struct drm_device *dev);
+void nouveau_led_fini(struct drm_device *dev);
+#else
+static inline int  nouveau_led_init(struct drm_device *dev) { return 0; };
+static inline void nouveau_led_suspend(struct drm_device *dev) { };
+static inline void nouveau_led_resume(struct drm_device *dev) { };
+static inline void nouveau_led_fini(struct drm_device *dev) { };
+#endif
+
+#endif
