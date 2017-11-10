@@ -97,6 +97,7 @@ static int sof_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
+	const struct snd_sof_dsp_ops *ops = sdev->ops;
 	struct snd_sof_pcm *spcm = rtd->sof;
 	struct sof_ipc_pcm_params pcm;
 	struct sof_ipc_pcm_params_reply ipc_params_reply;
@@ -283,10 +284,8 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
-	struct sof_ipc_stream_posn posn;
 	struct snd_sof_pcm *spcm = rtd->sof;
 	snd_pcm_uframes_t host = 0, dai = 0;
-	int err;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)

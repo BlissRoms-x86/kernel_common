@@ -75,6 +75,7 @@
 #include <linux/pci.h>
 #include <sound/hdaudio_ext.h>
 #include <sound/sof.h>
+#include <sound/pcm_params.h>
 #include <linux/pm_runtime.h>
 
 #include "sof-priv.h"
@@ -523,9 +524,7 @@ static int apl_stream_prepare(struct snd_sof_dev *sdev,
 int apl_stream_trigger(struct snd_sof_dev *sdev,
 	struct snd_pcm_substream *substream, int cmd)
 {
-	struct snd_sof_pdata *plat_data = dev_get_platdata(sdev->dev);
 	struct snd_sof_hda_stream *stream = substream->runtime->private_data;
-	int ret = 0, stream_tag = 0;
 
 	return apl_trigger(sdev, stream, cmd);
 }
@@ -670,10 +669,8 @@ static int apl_stream_prepare(struct snd_sof_dev *sdev,
 {
 	struct snd_sof_hda_stream *stream = substream->runtime->private_data;
 	struct snd_sof_hda_dev *hdev = &sdev->hda;
-	struct pci_dev *pci = sdev->pci;
 	struct snd_dma_buffer *dmab;// = substream->runtime->dma_buffer_p;
-	int direction = substream->stream;
-	int ret, timeout = APL_STREAM_RESET_TIMEOUT, i;
+	int ret, timeout = APL_STREAM_RESET_TIMEOUT;
 	u32 val, mask;
 	u32 *bdl, size = params_buffer_bytes(params);
 
@@ -830,6 +827,19 @@ static int apl_prepare(struct snd_sof_dev *sdev, unsigned int format,
 	int ret, timeout = APL_STREAM_RESET_TIMEOUT, i;
 	u32 val, mask;
 	u32 *bdl;
+
+	if (stream_tag) {
+		/* get the playback stream */
+		for (i = 0; i < hdev->num_playback; i++) {
+			if (hdev->pstream[i].open && hdev->pstream[i].stream_tag
+				== stream_tag) {
+				stream = &hdev->pstream[i];
+				break;
+			}
+		}
+		goto has_stream;
+	}
+
 
 	if (direction == SNDRV_PCM_STREAM_PLAYBACK) {
 		/* get an unused playback stream */
@@ -1285,6 +1295,18 @@ static irqreturn_t cnl_irq_thread(int irq, void *context)
 	}
 
 	return ret;
+}
+
+static int apl_cmd_done(struct snd_sof_dev *sdev)
+{
+	/* clear busy interrupt */
+	snd_sof_dsp_update_bits_forced(sdev, APL_DSP_BAR,
+		APL_DSP_REG_HIPCT, APL_DSP_REG_HIPCT_BUSY,
+		APL_DSP_REG_HIPCT_BUSY);
+
+	/* TODO: do we need to ack DSP ?? */
+
+	return 0;
 }
 
 static int cnl_cmd_done(struct snd_sof_dev *sdev)
