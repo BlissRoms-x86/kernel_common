@@ -521,31 +521,6 @@ static int byt_acpi_probe(struct snd_sof_dev *sdev)
 	sdev->mmio_bar = BYT_DSP_BAR;
 	sdev->mailbox_bar = BYT_DSP_BAR;
 
-#if 0
-	/* PCI base */
-	mmio = platform_get_resource(pdev, IORESOURCE_MEM,
-		desc->resindex_pcicfg_base);
-	if (mmio) {
-		base = mmio->start;
-		size = resource_size(mmio);
-	} else {
-		dev_err(sdev->dev, "error: failed to get PCI base at idx %d\n",
-			desc->resindex_pcicfg_base);
-		ret = -ENODEV;
-		goto pci_err;
-	}
-
-	dev_dbg(sdev->dev, "PCI base at 0x%x size 0x%x", base, size);
-	sdev->bar[BYT_PCI_BAR] = ioremap(base, size);
-	if (sdev->bar[BYT_PCI_BAR] == NULL) {
-		dev_err(sdev->dev, "error: failed to ioremap PCI base 0x%x size 0x%x\n",
-			base, size);
-		ret = -ENODEV;
-		goto pci_err;
-	}
-	dev_dbg(sdev->dev, "PCI VADDR %p\n", sdev->bar[BYT_PCI_BAR]);
-#endif
-
 	/* IMR base - optional */
 	if (desc->resindex_imr_base == -1)
 		goto irq;
@@ -612,8 +587,6 @@ irq:
 irq_err:
 	iounmap(sdev->bar[BYT_IMR_BAR]);
 imr_err:
-	iounmap(sdev->bar[BYT_PCI_BAR]);
-pci_err:
 	iounmap(sdev->bar[BYT_DSP_BAR]);	
 	return ret;
 }
