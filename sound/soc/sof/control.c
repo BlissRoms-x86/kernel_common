@@ -147,9 +147,11 @@ int snd_sof_volume_put(struct snd_kcontrol *kcontrol,
 	pm_runtime_get_sync(sdev->dev);
 
 	/* update each channel */
-	for (i = 0; i < channels; i++)
+	for (i = 0; i < channels; i++) {
 		cdata->chanv[i].value =
 			mixer_to_ipc(ucontrol->value.integer.value[i]);
+		cdata->chanv[i].channel = i;
+	}
 
 	/* notify DSP of mixer updates */
 	snd_sof_ipc_set_comp_data(sdev->ipc, scontrol, SOF_IPC_COMP_SET_VALUE,

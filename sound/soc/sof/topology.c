@@ -128,13 +128,12 @@ static enum sof_ipc_dai_type find_format(const char *name)
 
 static int sof_control_load_volume(struct snd_soc_component *scomp,
 	struct snd_sof_control *scontrol, struct snd_kcontrol_new *kc,
-	struct snd_soc_tplg_ctl_hdr *hdr, struct sof_ipc_comp_reply *r)
+	struct snd_soc_tplg_ctl_hdr *hdr)
 {
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_soc_tplg_mixer_control *mc =
 		(struct snd_soc_tplg_mixer_control *)hdr;
 	struct sof_ipc_ctrl_data *cdata;
-	struct sof_ipc_comp_volume v;
 
 	/* validate topology data */
 	if (mc->num_channels >= SND_SOC_TPLG_MAX_CHAN)
@@ -147,29 +146,18 @@ static int sof_control_load_volume(struct snd_soc_component *scomp,
 	if (scontrol->control_data == NULL)
 		return -ENOMEM;
 
-	/* init the volume new IPC */
-	memset(&v, 0, sizeof(v));
-	v.comp.hdr.size = sizeof(v);
-	v.comp.hdr.cmd = SOF_IPC_GLB_TPLG_MSG | SOF_IPC_TPLG_COMP_NEW;
-	v.comp.id = scontrol->comp_id = sdev->next_comp_id++;
-	v.comp.type = SOF_COMP_VOLUME;
-	v.channels = scontrol->num_channels = mc->num_channels;
-	v.min_value = mc->min;
-	v.max_value = mc->max;
-	// TODO: TLV
-	//v.step_size = 
+	scontrol->comp_id = sdev->next_comp_id;
+	scontrol->num_channels = mc->num_channels;
 
 	dev_dbg(sdev->dev, "tplg: load kcontrol index %d chans %d\n",
 		scontrol->comp_id, scontrol->num_channels);
 
+	return 0;
 	/* configure channel IDs */
 	//for (i = 0; i < mc->num_channels; i++) {
 	//	v.pcm.chmap[i] = mc->channel[i].id;
 	//}
 
-	/* send IPC to the DSP */
-	return sof_ipc_tx_message(sdev->ipc,
-		v.comp.hdr.cmd, &v, sizeof(v), r, sizeof(*r));
 }
 
 struct sof_topology_token {
@@ -447,7 +435,6 @@ static int sof_control_load(struct snd_soc_component *scomp, int index,
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_soc_dobj *dobj = NULL;
 	struct snd_sof_control *scontrol;
-	struct sof_ipc_comp_reply r;
 	int ret = -EINVAL;
 
 	dev_dbg(sdev->dev, "tplg: load control type %d name : %s\n", 
@@ -459,7 +446,6 @@ static int sof_control_load(struct snd_soc_component *scomp, int index,
 
 	scontrol->sdev = sdev;
 	mutex_init(&scontrol->mutex);
-	memset(&r, 0, sizeof(r)); 
 
 	switch (hdr->ops.info) {
 	case SND_SOC_TPLG_CTL_VOLSW:
@@ -467,7 +453,7 @@ static int sof_control_load(struct snd_soc_component *scomp, int index,
 	case SND_SOC_TPLG_CTL_VOLSW_XR_SX:
 		sm = (struct soc_mixer_control *)kc->private_value;
 		dobj = &sm->dobj;
-		ret = sof_control_load_volume(scomp, scontrol, kc, hdr, &r);
+		ret = sof_control_load_volume(scomp, scontrol, kc, hdr);
 		break;
 	case SND_SOC_TPLG_CTL_ENUM:
 	case SND_SOC_TPLG_CTL_BYTES:
@@ -484,15 +470,14 @@ static int sof_control_load(struct snd_soc_component *scomp, int index,
 			hdr->ops.get, hdr->ops.put, hdr->ops.info);
 		return 0;
 	}
-
+#if 0
 	if (ret < 0) {
 		dev_err(sdev->dev, "error: failed to create control %d\n", ret);
 		kfree(scontrol);
 		return ret;
 	}
-
+#endif
 	dobj->private = scontrol;
-	scontrol->readback_offset = r.offset;
 	list_add(&scontrol->list, &sdev->kcontrol_list);
 	return ret;
 }
@@ -839,6 +824,7 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
 	struct snd_sof_widget *swidget;
 	struct sof_ipc_comp_reply reply;
+	struct snd_sof_control *scontrol = NULL;
 	int ret = 0;
 
 	swidget = kzalloc(sizeof(*swidget), GFP_KERNEL);
@@ -870,6 +856,13 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 		break;
 	case snd_soc_dapm_pga:
 		ret = sof_widget_load_pga(scomp, index, swidget, tw, &reply);
+		/* Find scontrol for this pga and set readback offset*/
+		list_for_each_entry(scontrol, &sdev->kcontrol_list, list) {
+			if (scontrol->comp_id == swidget->comp_id) {
+				scontrol->readback_offset = reply.offset;
+				break;
+			}
+		}
 		break;
 	case snd_soc_dapm_buffer:
 		ret = sof_widget_load_buffer(scomp, index, swidget, tw, &reply);
