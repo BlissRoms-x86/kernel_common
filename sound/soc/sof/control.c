@@ -66,26 +66,42 @@
 #include <uapi/sound/sof-ipc.h>
 #include "sof-priv.h"
 
-#define SOF_VOLUME(x)		(1 << x)	/* x== 16 is 0dB */
-
 /* simple volume table TODO: to be replaced by coefficients from topology */
+/* -52 dB to +12 dB in 2 dB steps, 33 values */
 static const u32 volume_map[] = {
-	SOF_VOLUME(18),
-	SOF_VOLUME(17),
-	SOF_VOLUME(16),	/* 0dB */
-	SOF_VOLUME(15),
-	SOF_VOLUME(14),
-	SOF_VOLUME(13),
-	SOF_VOLUME(12),
-	SOF_VOLUME(11),
-	SOF_VOLUME(10),
-	SOF_VOLUME(9),
-	SOF_VOLUME(8),
-	SOF_VOLUME(7),
-	SOF_VOLUME(6),
-	SOF_VOLUME(5),
-	SOF_VOLUME(4),
-	SOF_VOLUME(3),
+	165,
+	207,
+	261,
+	328,
+	414,
+	521,
+	655,
+	825,
+	1039,
+	1308,
+	1646,
+	2072,
+	2609,
+	3285,
+	4135,
+	5206,
+	6554,
+	8250,
+	10387,
+	13076,
+	16462,
+	20724,
+	26090,
+	32846,
+	41350,
+	52057,
+	65536, /* 0 dB for Qx.16 gain value */
+	82505,
+	103868,
+	130762,
+	164619,
+	207243,
+	260904
 };
 
 static inline u32 mixer_to_ipc(unsigned int value)
