@@ -490,6 +490,7 @@ int snd_sof_debugfs_create_item(struct snd_sof_dev *sdev,
 	void __iomem *base, size_t size, const char *name);
 int snd_sof_trace_update_pos(struct snd_sof_dev *sdev,
 	struct sof_ipc_dma_trace_posn *posn);
+void snd_sof_trace_notify_for_error(struct snd_sof_dev *sdev);
 
 /*
  * Platform specific ops.

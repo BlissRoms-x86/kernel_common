@@ -261,4 +261,10 @@ int snd_sof_trace_update_pos(struct snd_sof_dev *sdev,
 	return 0;
 }
 
+void snd_sof_trace_notify_for_error(struct snd_sof_dev *sdev)
+{
+	dev_err(sdev->dev, "ASoC: trace wakes up for error!\n");
+	wake_up(&sdev->trace_sleep);
+}
+
 EXPORT_SYMBOL(snd_sof_init_trace);
