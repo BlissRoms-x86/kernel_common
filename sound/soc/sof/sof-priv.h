@@ -297,8 +297,8 @@ struct snd_sof_hda_stream {
 						*/
 };
 
-#define SOF_HDA_PLAYBACK_STREAMS	8
-#define SOF_HDA_CAPTURE_STREAMS		8
+#define SOF_HDA_PLAYBACK_STREAMS	16
+#define SOF_HDA_CAPTURE_STREAMS		16
 #define SOF_HDA_PLAYBACK 0
 #define SOF_HDA_CAPTURE 1
 
