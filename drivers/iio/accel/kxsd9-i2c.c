@@ -63,3 +63,7 @@ static struct i2c_driver kxsd9_i2c_driver = {
 	.id_table	= kxsd9_i2c_id,
 };
 module_i2c_driver(kxsd9_i2c_driver);
+
+MODULE_AUTHOR("Linus Walleij <linus.walleij@linaro.org>");
+MODULE_DESCRIPTION("Kionix KXSD9 I2C driver");
+MODULE_LICENSE("GPL v2");
