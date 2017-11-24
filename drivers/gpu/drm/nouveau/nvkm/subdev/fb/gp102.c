@@ -21,38 +21,23 @@
  *
  * Authors: Ben Skeggs <bskeggs@redhat.com>
  */
-#include "rootnv50.h"
-#include "dmacnv50.h"
+#include "gf100.h"
+#include "ram.h"
 
-#include <nvif/class.h>
+#include <core/memory.h>
 
-static const struct nv50_disp_root_func
-gp104_disp_root = {
-	.init = gf119_disp_root_init,
-	.fini = gf119_disp_root_fini,
-	.dmac = {
-		&gp104_disp_core_oclass,
-		&gp104_disp_base_oclass,
-		&gp104_disp_ovly_oclass,
-	},
-	.pioc = {
-		&gp102_disp_oimm_oclass,
-		&gp102_disp_curs_oclass,
-	},
+static const struct nvkm_fb_func
+gp102_fb = {
+	.dtor = gf100_fb_dtor,
+	.oneinit = gf100_fb_oneinit,
+	.init = gp100_fb_init,
+	.init_page = gm200_fb_init_page,
+	.ram_new = gp100_ram_new,
+	.memtype_valid = gf100_fb_memtype_valid,
 };
 
-static int
-gp104_disp_root_new(struct nvkm_disp *disp, const struct nvkm_oclass *oclass,
-		    void *data, u32 size, struct nvkm_object **pobject)
+int
+gp102_fb_new(struct nvkm_device *device, int index, struct nvkm_fb **pfb)
 {
-	return nv50_disp_root_new_(&gp104_disp_root, disp, oclass,
-				   data, size, pobject);
+	return gf100_fb_new_(&gp102_fb, device, index, pfb);
 }
-
-const struct nvkm_disp_oclass
-gp104_disp_root_oclass = {
-	.base.oclass = GP104_DISP,
-	.base.minver = -1,
-	.base.maxver = -1,
-	.ctor = gp104_disp_root_new,
-};

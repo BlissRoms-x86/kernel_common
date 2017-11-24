@@ -150,13 +150,8 @@ static void malidp_de_plane_update(struct drm_plane *plane,
 	/* convert src values from Q16 fixed point to integer */
 	src_w = plane->state->src_w >> 16;
 	src_h = plane->state->src_h >> 16;
-	if (plane->state->rotation & MALIDP_ROTATED_MASK) {
-		dest_w = plane->state->crtc_h;
-		dest_h = plane->state->crtc_w;
-	} else {
-		dest_w = plane->state->crtc_w;
-		dest_h = plane->state->crtc_h;
-	}
+	dest_w = plane->state->crtc_w;
+	dest_h = plane->state->crtc_h;
 
 	malidp_hw_write(mp->hwdev, format_id, mp->layer->base);
 
@@ -189,9 +184,9 @@ static void malidp_de_plane_update(struct drm_plane *plane,
 	if (plane->state->rotation & DRM_ROTATE_MASK)
 		val = ilog2(plane->state->rotation & DRM_ROTATE_MASK) << LAYER_ROT_OFFSET;
 	if (plane->state->rotation & DRM_REFLECT_X)
-		val |= LAYER_V_FLIP;
-	if (plane->state->rotation & DRM_REFLECT_Y)
 		val |= LAYER_H_FLIP;
+	if (plane->state->rotation & DRM_REFLECT_Y)
+		val |= LAYER_V_FLIP;
 
 	/* set the 'enable layer' bit */
 	val |= LAYER_ENABLE;
@@ -254,21 +249,18 @@ int malidp_de_planes_init(struct drm_device *drm)
 		if (ret < 0)
 			goto cleanup;
 
-		if (!drm->mode_config.rotation_property) {
+		/* SMART layer can't be rotated */
+		if (id != DE_SMART) {
 			unsigned long flags = DRM_ROTATE_0 |
 					      DRM_ROTATE_90 |
 					      DRM_ROTATE_180 |
 					      DRM_ROTATE_270 |
 					      DRM_REFLECT_X |
 					      DRM_REFLECT_Y;
-			drm->mode_config.rotation_property =
-				drm_mode_create_rotation_property(drm, flags);
+			drm_plane_create_rotation_property(&plane->base,
+							   DRM_ROTATE_0,
+							   flags);
 		}
-		/* SMART layer can't be rotated */
-		if (drm->mode_config.rotation_property && (id != DE_SMART))
-			drm_object_attach_property(&plane->base.base,
-						   drm->mode_config.rotation_property,
-						   DRM_ROTATE_0);
 
 		drm_plane_helper_add(&plane->base,
 				     &malidp_de_plane_helper_funcs);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Red Hat Inc.
+ * Copyright 2016 Red Hat Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,20 +19,17 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: Ben Skeggs
+ * Authors: Ben Skeggs <bskeggs@redhat.com>
  */
-#include "dmacnv50.h"
-#include "rootnv50.h"
+#include "priv.h"
 
-#include <nvif/class.h>
-
-const struct nv50_disp_dmac_oclass
-gp104_disp_ovly_oclass = {
-	.base.oclass = GK104_DISP_OVERLAY_CONTROL_DMA,
-	.base.minver = 0,
-	.base.maxver = 0,
-	.ctor = nv50_disp_ovly_new,
-	.func = &gp104_disp_dmac_func,
-	.mthd = &gk104_disp_ovly_chan_mthd,
-	.chid = 5,
+static const struct nvkm_pmu_func
+gp100_pmu = {
+	.reset = gt215_pmu_reset,
 };
+
+int
+gp100_pmu_new(struct nvkm_device *device, int index, struct nvkm_pmu **ppmu)
+{
+	return nvkm_pmu_new_(&gp100_pmu, device, index, ppmu);
+}
