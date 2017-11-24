@@ -183,6 +183,8 @@ struct chv_pinctrl {
 	struct chv_pin_context *saved_pin_context;
 };
 
+#define CHV_INVALID_HWIRQ	((unsigned)INVALID_HWIRQ)
+
 #define ALTERNATE_FUNCTION(p, m, i)		\
 	{					\
 		.pin = (p),			\
@@ -897,7 +899,7 @@ static int chv_gpio_request_enable(struct pinctrl_dev *pctldev,
 		/* Reset the interrupt mapping */
 		for (i = 0; i < ARRAY_SIZE(pctrl->intr_lines); i++) {
 			if (pctrl->intr_lines[i] == offset) {
-				pctrl->intr_lines[i] = 0;
+				pctrl->intr_lines[i] = CHV_INVALID_HWIRQ;
 				break;
 			}
 		}
@@ -1424,7 +1426,7 @@ static unsigned chv_gpio_irq_startup(struct irq_data *d)
 		else
 			handler = handle_edge_irq;
 
-		if (!pctrl->intr_lines[intsel]) {
+		if (pctrl->intr_lines[intsel] == CHV_INVALID_HWIRQ) {
 			irq_set_handler_locked(d, handler);
 			pctrl->intr_lines[intsel] = offset;
 		}
@@ -1638,6 +1640,10 @@ static int chv_gpio_probe(struct chv_pinctrl *pctrl, int irq)
 
 	/* Clear all interrupts */
 	chv_writel(0xffff, pctrl->regs + CHV_INTSTAT);
+
+	/* Initialize local cache of interrupt line mapping */
+	for (i = 0; i < ARRAY_SIZE(pctrl->intr_lines); i++)
+		pctrl->intr_lines[i] = CHV_INVALID_HWIRQ;
 
 	if (!need_valid_mask) {
 		irq_base = devm_irq_alloc_descs(pctrl->dev, -1, 0,
