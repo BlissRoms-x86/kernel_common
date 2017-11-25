@@ -286,6 +286,47 @@ static int is_byt_cr(struct device *dev, struct sst_acpi_mach *mach, bool *bytcr
 }
 
 
+
+static int is_byt_cr(struct device *dev, bool *bytcr)
+{
+	int status = 0;
+
+	if (IS_ENABLED(CONFIG_IOSF_MBI)) {
+		static const struct x86_cpu_id cpu_ids[] = {
+			{ X86_VENDOR_INTEL, 6, 55 }, /* Valleyview, Bay Trail */
+			{}
+		};
+		int status;
+		u32 bios_status;
+
+		if (!x86_match_cpu(cpu_ids) || !iosf_mbi_available()) {
+			/* bail silently */
+			return status;
+		}
+
+		status = iosf_mbi_read(BT_MBI_UNIT_PMC, /* 0x04 PUNIT */
+				       MBI_REG_READ, /* 0x10 */
+				       0x006, /* BIOS_CONFIG */
+				       &bios_status);
+
+		if (status) {
+			dev_err(dev, "could not read PUNIT BIOS_CONFIG\n");
+		} else {
+			/* bits 26:27 mirror PMIC options */
+			bios_status = (bios_status >> 26) & 3;
+
+			if ((bios_status == 1) || (bios_status == 3))
+				*bytcr = true;
+			else
+				dev_info(dev, "BYT-CR not detected\n");
+		}
+	} else {
+		dev_info(dev, "IOSF_MBI not enabled, no BYT-CR detection\n");
+	}
+	return status;
+}
+
+
 static int sst_acpi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -328,6 +369,18 @@ static int sst_acpi_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = is_byt_cr(dev, mach, &bytcr);
+	if (!((ret < 0) || (bytcr == false))) {
+		dev_info(dev, "Detected Baytrail-CR platform\n");
+
+		/* override resource info */
+		byt_rvp_platform_data.res_info = &bytcr_res_info;
+	}
+
+	ret = sst_alloc_drv_context(&ctx, dev, dev_id);
+	if (ret < 0)
+		return ret;
+
+	ret = is_byt_cr(dev, &bytcr);
 	if (!((ret < 0) || (bytcr == false))) {
 		dev_info(dev, "Detected Baytrail-CR platform\n");
 

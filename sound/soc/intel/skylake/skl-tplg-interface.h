@@ -179,4 +179,40 @@ enum skl_tuple_type {
 	SKL_TYPE_DATA
 };
 
+#define LIB_NAME_LENGTH	128
+#define HDA_MAX_LIB	16
+
+struct lib_info {
+	char name[LIB_NAME_LENGTH];
+} __packed;
+
+struct skl_dfw_manifest {
+	u32 lib_count;
+	struct lib_info lib[HDA_MAX_LIB];
+} __packed;
+
+#define LIB_NAME_LENGTH	128
+#define HDA_MAX_LIB	16
+
+struct lib_info {
+	char name[LIB_NAME_LENGTH];
+} __packed;
+
+struct skl_dfw_manifest {
+	u32 lib_count;
+	struct lib_info lib[HDA_MAX_LIB];
+} __packed;
+
+#define LIB_NAME_LENGTH	128
+#define HDA_MAX_LIB	16
+
+struct lib_info {
+	char name[LIB_NAME_LENGTH];
+} __packed;
+
+struct skl_dfw_manifest {
+	u32 lib_count;
+	struct lib_info lib[HDA_MAX_LIB];
+} __packed;
+
 #endif
