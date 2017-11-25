@@ -68,7 +68,7 @@ static u64 time_to_jiffies(u64 sec, u32 nsec)
 	if (sec || nsec) {
 		struct timespec64 ts = {
 			sec,
-			max_t(u32, nsec, NSEC_PER_SEC - 1)
+			min_t(u32, nsec, NSEC_PER_SEC - 1)
 		};
 
 		return get_jiffies_64() + timespec64_to_jiffies(&ts);
@@ -1312,7 +1312,8 @@ static int parse_dirplusfile(char *buf, size_t nbytes, struct file *file,
 			*/
 			over = !dir_emit(ctx, dirent->name, dirent->namelen,
 				       dirent->ino, dirent->type);
-			ctx->pos = dirent->off;
+			if (!over)
+				ctx->pos = dirent->off;
 		}
 
 		buf += reclen;

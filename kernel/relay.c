@@ -809,11 +809,11 @@ void relay_subbufs_consumed(struct rchan *chan,
 {
 	struct rchan_buf *buf;
 
-	if (!chan)
+	if (!chan || cpu >= NR_CPUS)
 		return;
 
 	buf = *per_cpu_ptr(chan->buf, cpu);
-	if (cpu >= NR_CPUS || !buf || subbufs_consumed > chan->n_subbufs)
+	if (!buf || subbufs_consumed > chan->n_subbufs)
 		return;
 
 	if (subbufs_consumed > buf->subbufs_produced - buf->subbufs_consumed)
@@ -847,7 +847,7 @@ void relay_close(struct rchan *chan)
 
 	if (chan->last_toobig)
 		printk(KERN_WARNING "relay: one or more items not logged "
-		       "[item size (%Zd) > sub-buffer size (%Zd)]\n",
+		       "[item size (%zd) > sub-buffer size (%zd)]\n",
 		       chan->last_toobig, chan->subbuf_size);
 
 	list_del(&chan->list);

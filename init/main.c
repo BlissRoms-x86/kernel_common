@@ -70,7 +70,6 @@
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/perf_event.h>
-#include <linux/file.h>
 #include <linux/ptrace.h>
 #include <linux/blkdev.h>
 #include <linux/elevator.h>
@@ -868,7 +867,6 @@ static void __init do_basic_setup(void)
 	do_ctors();
 	usermodehelper_enable();
 	do_initcalls();
-	random_int_secret_init();
 }
 
 static void __init do_pre_smp_initcalls(void)
@@ -948,8 +946,6 @@ static int __ref kernel_init(void *unused)
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();
 
-	flush_delayed_fput();
-
 	rcu_end_inkernel_boot();
 
 	if (ramdisk_execute_command) {
@@ -1022,6 +1018,13 @@ static noinline void __init kernel_init_freeable(void)
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
+	/*
+	 * We need to ensure that the filesystem is ready by this point,
+	 *  wait for async_populate_rootfs to complete.
+	 */
+#ifdef CONFIG_BLK_DEV_INITRD 
+	async_synchronize_full_domain(&populate_rootfs_domain);
+#endif
 	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work

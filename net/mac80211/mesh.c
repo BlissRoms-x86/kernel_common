@@ -339,7 +339,7 @@ int mesh_add_vendor_ies(struct ieee80211_sub_if_data *sdata,
 	/* fast-forward to vendor IEs */
 	offset = ieee80211_ie_split_vendor(ifmsh->ie, ifmsh->ie_len, 0);
 
-	if (offset) {
+	if (offset < ifmsh->ie_len) {
 		len = ifmsh->ie_len - offset;
 		data = ifmsh->ie + offset;
 		if (skb_tailroom(skb) < len)
@@ -685,7 +685,7 @@ ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
 		   2 + /* NULL SSID */
 		   /* Channel Switch Announcement */
 		   2 + sizeof(struct ieee80211_channel_sw_ie) +
-		   /* Mesh Channel Swith Parameters */
+		   /* Mesh Channel Switch Parameters */
 		   2 + sizeof(struct ieee80211_mesh_chansw_params_ie) +
 		   2 + 8 + /* supported rates */
 		   2 + 3; /* DS params */

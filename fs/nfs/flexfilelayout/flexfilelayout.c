@@ -28,6 +28,9 @@
 
 static struct group_info	*ff_zero_group;
 
+static void ff_layout_read_record_layoutstats_done(struct rpc_task *task,
+		struct nfs_pgio_header *hdr);
+
 static struct pnfs_layout_hdr *
 ff_layout_alloc_layout_hdr(struct inode *inode, gfp_t gfp_flags)
 {
@@ -639,12 +642,11 @@ nfs4_ff_layoutstat_start_io(struct nfs4_ff_layout_mirror *mirror,
 			    struct nfs4_ff_layoutstat *layoutstat,
 			    ktime_t now)
 {
-	static const ktime_t notime = {0};
 	s64 report_interval = FF_LAYOUTSTATS_REPORT_INTERVAL;
 	struct nfs4_flexfile_layout *ffl = FF_LAYOUT_FROM_HDR(mirror->layout);
 
 	nfs4_ff_start_busy_timer(&layoutstat->busy_timer, now);
-	if (ktime_equal(mirror->start_time, notime))
+	if (ktime_equal(mirror->start_time, 0))
 		mirror->start_time = now;
 	if (mirror->report_interval != 0)
 		report_interval = (s64)mirror->report_interval * 1000LL;
@@ -1070,9 +1072,6 @@ static int ff_layout_async_handle_error_v4(struct rpc_task *task,
 	struct nfs_client *mds_client = mds_server->nfs_client;
 	struct nfs4_slot_table *tbl = &clp->cl_session->fc_slot_table;
 
-	if (task->tk_status >= 0)
-		return 0;
-
 	switch (task->tk_status) {
 	/* MDS state errors */
 	case -NFS4ERR_DELEG_REVOKED:
@@ -1173,9 +1172,6 @@ static int ff_layout_async_handle_error_v3(struct rpc_task *task,
 {
 	struct nfs4_deviceid_node *devid = FF_LAYOUT_DEVID_NODE(lseg, idx);
 
-	if (task->tk_status >= 0)
-		return 0;
-
 	switch (task->tk_status) {
 	/* File access problems. Don't mark the device as unavailable */
 	case -EACCES:
@@ -1209,6 +1205,13 @@ static int ff_layout_async_handle_error(struct rpc_task *task,
 					int idx)
 {
 	int vers = clp->cl_nfs_mod->rpc_vers->number;
+
+	if (task->tk_status >= 0)
+		return 0;
+
+	/* Handle the case of an invalid layout segment */
+	if (!pnfs_is_valid_lseg(lseg))
+		return -NFS4ERR_RESET_TO_PNFS;
 
 	switch (vers) {
 	case 3:
@@ -1293,6 +1296,7 @@ static int ff_layout_read_done_cb(struct rpc_task *task,
 					hdr->pgio_mirror_idx + 1,
 					&hdr->pgio_mirror_idx))
 			goto out_eagain;
+		ff_layout_read_record_layoutstats_done(task, hdr);
 		pnfs_read_resend_pnfs(hdr);
 		return task->tk_status;
 	case -NFS4ERR_RESET_TO_MDS:
@@ -1765,7 +1769,7 @@ ff_layout_read_pagelist(struct nfs_pgio_header *hdr)
 	int vers;
 	struct nfs_fh *fh;
 
-	dprintk("--> %s ino %lu pgbase %u req %Zu@%llu\n",
+	dprintk("--> %s ino %lu pgbase %u req %zu@%llu\n",
 		__func__, hdr->inode->i_ino,
 		hdr->args.pgbase, (size_t)hdr->args.count, offset);
 
@@ -1842,7 +1846,7 @@ ff_layout_write_pagelist(struct nfs_pgio_header *hdr, int sync)
 
 	vers = nfs4_ff_layout_ds_version(lseg, idx);
 
-	dprintk("%s ino %lu sync %d req %Zu@%llu DS: %s cl_count %d vers %d\n",
+	dprintk("%s ino %lu sync %d req %zu@%llu DS: %s cl_count %d vers %d\n",
 		__func__, hdr->inode->i_ino, sync, (size_t) hdr->args.count,
 		offset, ds->ds_remotestr, atomic_read(&ds->ds_clp->cl_count),
 		vers);

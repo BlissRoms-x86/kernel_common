@@ -3255,8 +3255,6 @@ ath10k_mac_tx_h_get_txmode(struct ath10k *ar,
 	if (ar->htt.target_version_major < 3 &&
 	    (ieee80211_is_nullfunc(fc) || ieee80211_is_qos_nullfunc(fc)) &&
 	    !test_bit(ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX,
-		      ar->running_fw->fw_file.fw_features) &&
-	    !test_bit(ATH10K_FW_FEATURE_SKIP_NULL_FUNC_WAR,
 		      ar->running_fw->fw_file.fw_features))
 		return ATH10K_HW_TXRX_MGMT;
 
@@ -3738,6 +3736,9 @@ struct ieee80211_txq *ath10k_mac_txq_lookup(struct ath10k *ar,
 
 	peer = ar->peer_map[peer_id];
 	if (!peer)
+		return NULL;
+
+	if (peer->removed)
 		return NULL;
 
 	if (peer->sta)
@@ -4449,7 +4450,6 @@ static int ath10k_start(struct ieee80211_hw *hw)
 		ar->state = ATH10K_STATE_ON;
 		break;
 	case ATH10K_STATE_RESTARTING:
-		ath10k_halt(ar);
 		ar->state = ATH10K_STATE_RESTARTED;
 		break;
 	case ATH10K_STATE_ON:
@@ -7425,6 +7425,20 @@ ath10k_mac_op_switch_vif_chanctx(struct ieee80211_hw *hw,
 	return 0;
 }
 
+static void ath10k_mac_op_sta_pre_rcu_remove(struct ieee80211_hw *hw,
+					     struct ieee80211_vif *vif,
+					     struct ieee80211_sta *sta)
+{
+	struct ath10k *ar;
+	struct ath10k_peer *peer;
+
+	ar = hw->priv;
+
+	list_for_each_entry(peer, &ar->peers, list)
+		if (peer->sta == sta)
+			peer->removed = true;
+}
+
 static const struct ieee80211_ops ath10k_ops = {
 	.tx				= ath10k_mac_op_tx,
 	.wake_tx_queue			= ath10k_mac_op_wake_tx_queue,
@@ -7465,6 +7479,7 @@ static const struct ieee80211_ops ath10k_ops = {
 	.assign_vif_chanctx		= ath10k_mac_op_assign_vif_chanctx,
 	.unassign_vif_chanctx		= ath10k_mac_op_unassign_vif_chanctx,
 	.switch_vif_chanctx		= ath10k_mac_op_switch_vif_chanctx,
+	.sta_pre_rcu_remove		= ath10k_mac_op_sta_pre_rcu_remove,
 
 	CFG80211_TESTMODE_CMD(ath10k_tm_cmd)
 

@@ -145,7 +145,7 @@ static struct pnv_ioda_pe *pnv_ioda_init_pe(struct pnv_phb *phb, int pe_no)
 	 */
 	rc = opal_pci_eeh_freeze_clear(phb->opal_id, pe_no,
 				       OPAL_EEH_ACTION_CLEAR_FREEZE_ALL);
-	if (rc != OPAL_SUCCESS)
+	if (rc != OPAL_SUCCESS && rc != OPAL_UNSUPPORTED)
 		pr_warn("%s: Error %lld unfreezing PHB#%d-PE#%d\n",
 			__func__, rc, phb->hose->global_number, pe_no);
 
@@ -3031,7 +3031,7 @@ static void pnv_ioda_setup_pe_res(struct pnv_ioda_pe *pe,
 /*
  * This function is supposed to be called on basis of PE from top
  * to bottom style. So the the I/O or MMIO segment assigned to
- * parent PE could be overrided by its child PEs if necessary.
+ * parent PE could be overridden by its child PEs if necessary.
  */
 static void pnv_ioda_setup_pe_seg(struct pnv_ioda_pe *pe)
 {

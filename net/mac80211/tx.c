@@ -1277,11 +1277,6 @@ static void ieee80211_set_skb_enqueue_time(struct sk_buff *skb)
 	IEEE80211_SKB_CB(skb)->control.enqueue_time = codel_get_time();
 }
 
-static void ieee80211_set_skb_vif(struct sk_buff *skb, struct txq_info *txqi)
-{
-	IEEE80211_SKB_CB(skb)->control.vif = txqi->txq.vif;
-}
-
 static u32 codel_skb_len_func(const struct sk_buff *skb)
 {
 	return skb->len;
@@ -3262,7 +3257,7 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 	int extra_head = fast_tx->hdr_len - (ETH_HLEN - 2);
 	int hw_headroom = sdata->local->hw.extra_tx_headroom;
 	struct ethhdr eth;
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_tx_info *info;
 	struct ieee80211_hdr *hdr = (void *)fast_tx->hdr;
 	struct ieee80211_tx_data tx;
 	ieee80211_tx_result r;
@@ -3326,6 +3321,7 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 	memcpy(skb->data + fast_tx->da_offs, eth.h_dest, ETH_ALEN);
 	memcpy(skb->data + fast_tx->sa_offs, eth.h_source, ETH_ALEN);
 
+	info = IEEE80211_SKB_CB(skb);
 	memset(info, 0, sizeof(*info));
 	info->band = fast_tx->band;
 	info->control.vif = &sdata->vif;
@@ -3387,6 +3383,7 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 	struct ieee80211_tx_info *info;
 	struct ieee80211_tx_data tx;
 	ieee80211_tx_result r;
+	struct ieee80211_vif *vif;
 
 	spin_lock_bh(&fq->lock);
 
@@ -3402,8 +3399,6 @@ begin:
 	skb = fq_tin_dequeue(fq, tin, fq_tin_dequeue_func);
 	if (!skb)
 		goto out;
-
-	ieee80211_set_skb_vif(skb, txqi);
 
 	hdr = (struct ieee80211_hdr *)skb->data;
 	info = IEEE80211_SKB_CB(skb);
@@ -3461,6 +3456,34 @@ begin:
 		}
 	}
 
+	switch (tx.sdata->vif.type) {
+	case NL80211_IFTYPE_MONITOR:
+		if (tx.sdata->u.mntr.flags & MONITOR_FLAG_ACTIVE) {
+			vif = &tx.sdata->vif;
+			break;
+		}
+		tx.sdata = rcu_dereference(local->monitor_sdata);
+		if (tx.sdata) {
+			vif = &tx.sdata->vif;
+			info->hw_queue =
+				vif->hw_queue[skb_get_queue_mapping(skb)];
+		} else if (ieee80211_hw_check(&local->hw, QUEUE_CONTROL)) {
+			ieee80211_free_txskb(&local->hw, skb);
+			goto begin;
+		} else {
+			vif = NULL;
+		}
+		break;
+	case NL80211_IFTYPE_AP_VLAN:
+		tx.sdata = container_of(tx.sdata->bss,
+					struct ieee80211_sub_if_data, u.ap);
+		/* fall through */
+	default:
+		vif = &tx.sdata->vif;
+		break;
+	}
+
+	IEEE80211_SKB_CB(skb)->control.vif = vif;
 out:
 	spin_unlock_bh(&fq->lock);
 

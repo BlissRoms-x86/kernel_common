@@ -50,13 +50,14 @@
 
 struct receiver {
 	struct hlist_node list;
-	struct rcu_head rcu;
 	canid_t can_id;
 	canid_t mask;
 	unsigned long matches;
 	void (*func)(struct sk_buff *, void *);
 	void *data;
 	char *ident;
+	struct sock *sk;
+	struct rcu_head rcu;
 };
 
 #define CAN_SFF_RCV_ARRAY_SZ (1 << CAN_SFF_ID_BITS)
@@ -82,22 +83,27 @@ struct s_stats {
 
 	unsigned long rx_frames;
 	unsigned long tx_frames;
+	unsigned long tx_attempt_frames;
 	unsigned long matches;
 
 	unsigned long total_rx_rate;
 	unsigned long total_tx_rate;
+	unsigned long total_tx_attempt_rate;
 	unsigned long total_rx_match_ratio;
 
 	unsigned long current_rx_rate;
 	unsigned long current_tx_rate;
+	unsigned long current_tx_attempt_rate;
 	unsigned long current_rx_match_ratio;
 
 	unsigned long max_rx_rate;
 	unsigned long max_tx_rate;
+	unsigned long max_tx_attempt_rate;
 	unsigned long max_rx_match_ratio;
 
 	unsigned long rx_frames_delta;
 	unsigned long tx_frames_delta;
+	unsigned long tx_frames_attempt_delta;
 	unsigned long matches_delta;
 };
 

@@ -654,7 +654,7 @@ void __sock_recv_timestamp(struct msghdr *msg, struct sock *sk,
 
 	/* Race occurred between timestamp enabling and packet
 	   receiving.  Fill in the current time for now. */
-	if (need_software_tstamp && skb->tstamp.tv64 == 0)
+	if (need_software_tstamp && skb->tstamp == 0)
 		__net_timestamp(skb);
 
 	if (need_software_tstamp) {
@@ -2197,8 +2197,10 @@ int __sys_recvmmsg(int fd, struct mmsghdr __user *mmsg, unsigned int vlen,
 		return err;
 
 	err = sock_error(sock->sk);
-	if (err)
+	if (err) {
+		datagrams = err;
 		goto out_put;
+	}
 
 	entry = mmsg;
 	compat_entry = (struct compat_mmsghdr __user *)mmsg;
