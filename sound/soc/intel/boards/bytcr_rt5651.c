@@ -144,14 +144,14 @@ static const struct snd_soc_dapm_route byt_rt5651_audio_map[] = {
 	{"Internal Mic", NULL, "Platform Clock"},
 	{"Speaker", NULL, "Platform Clock"},
 	{"Line In", NULL, "Platform Clock"},
-
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	{"AIF1 Playback", NULL, "ssp2 Tx"},
 	{"ssp2 Tx", NULL, "codec_out0"},
 	{"ssp2 Tx", NULL, "codec_out1"},
 	{"codec_in0", NULL, "ssp2 Rx"},
 	{"codec_in1", NULL, "ssp2 Rx"},
 	{"ssp2 Rx", NULL, "AIF1 Capture"},
-
+#endif
 	{"Headset Mic", NULL, "micbias1"}, /* lowercase for rt5651 */
 	{"Headphone", NULL, "HPOL"},
 	{"Headphone", NULL, "HPOR"},
@@ -498,7 +498,11 @@ static struct snd_soc_dai_link byt_rt5651_dais[] = {
 
 /* SoC card */
 static struct snd_soc_card byt_rt5651_card = {
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	.name = "bytcr-rt5651",
+#else
+	.name = "bytcr_rt5651",
+#endif
 	.owner = THIS_MODULE,
 	.dai_link = byt_rt5651_dais,
 	.num_links = ARRAY_SIZE(byt_rt5651_dais),
