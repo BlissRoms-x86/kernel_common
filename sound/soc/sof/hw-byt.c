@@ -168,14 +168,14 @@ static void byt_dump(struct snd_sof_dev *sdev, u32 flags)
 				readl(sdev->bar[BYT_DSP_BAR] + i));
 		}
 	}
-
+#if 0
 	if (flags & SOF_DBG_PCI && sdev->pci == NULL) {
 		for (i = 0; i < 0xff; i += 4) {
 			dev_dbg(sdev->dev, "pci: 0x%2.2x value 0x%8.8x\n",
 				i, readl(sdev->bar[BYT_PCI_BAR] + i));
 		}
 	}
-
+#endif
 	if (flags & SOF_DBG_PCI && sdev->pci) {
 		for (i = 0; i < 0xff; i += 4) {
 			pci_read_config_dword(sdev->pci, i, &val);
