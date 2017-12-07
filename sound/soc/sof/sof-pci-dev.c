@@ -127,8 +127,8 @@ static struct snd_soc_acpi_mach sof_cnl_machines[] = {
 	{
 		.id = "INT34C2",
 		.drv_name = "cnl_alc700_i2s",
-		.sof_fw_filename = "intel/dsp_fw_cnl.bin",
-		.sof_tplg_filename = "intel/sof-cnl.tplg",
+		.sof_fw_filename = "intel/reef-cnl.bin",
+		.sof_tplg_filename = "intel/reef-cnl.tplg",
 		.asoc_plat_name = "0000:00:0e.0",
 	},
 	{}
@@ -141,8 +141,8 @@ static const struct sof_dev_desc cnl_desc = {
 	.resindex_imr_base	= -1,
 	.irqindex_host_ipc	= -1,
 	.resindex_dma_base	= -1,
-	.nocodec_fw_filename = "intel/dsp_fw_cnl.bin",
-	.nocodec_tplg_filename = "intel/sof-cnl.tplg"
+	.nocodec_fw_filename = "intel/reef-cnl.bin",
+	.nocodec_tplg_filename = "intel/reef-cnl.tplg"
 };
 #endif
 
