@@ -273,25 +273,37 @@ static void apl_dump(struct snd_sof_dev *sdev, u32 flags)
 	u32 reg;
 	int i;
 
-	if (flags & SOF_DBG_REGS) {
+	if (flags & SOF_DBG_REGS && sdev->bar[APL_HDA_BAR]) {
 		for (i = 0; i < 0x120; i += 4 ) {
 			dev_dbg(sdev->dev, "hda 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, APL_HDA_BAR, i));
 		}
+
+		if (sdev->bar[APL_SPIB_BAR] == NULL)
+			goto dsp_bar;
 		for (i = 0; i < 0xc; i += 4 ) {
 			dev_dbg(sdev->dev, "spib 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, APL_SPIB_BAR, i));
 		}
+
+dsp_bar:
+		if (sdev->bar[APL_DSP_BAR] == NULL)
+			goto pp_bar;
 		for (i = 0; i < 0x40; i += 4 ) {
 			dev_dbg(sdev->dev, "dsp 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, APL_DSP_BAR, i));
 		}
+
+pp_bar:
+		if (sdev->bar[APL_PP_BAR] == NULL)
+			goto mbox;
 		for (i = 0; i < 0x40; i += 4 ) {
 			dev_dbg(sdev->dev, "pp 0x%2.2x value 0x%8.8x\n",
 				i, snd_sof_dsp_read(sdev, APL_PP_BAR, i));
 		}
 	}
 
+mbox:
 	if (flags & SOF_DBG_MBOX) {
 		for (i = 0; i < APL_MBOX_DUMP_SIZE; i += 4) {
 			dev_dbg(sdev->dev, "regs: 0x%2.2x value 0x%8.8x\n",
@@ -410,7 +422,7 @@ static int apl_spib_config(struct snd_sof_dev *sdev,
 	u32 mask = 0;
 
 	if (sdev->bar[APL_SPIB_BAR] == NULL) {
-		dev_err(sdev->dev, "error: address of spb capability is NULL\n");
+		dev_err(sdev->dev, "error: address of spib capability is NULL\n");
 		return -EINVAL; 
 	}
 	
