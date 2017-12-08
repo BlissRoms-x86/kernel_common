@@ -1425,7 +1425,7 @@ int snd_sof_load_topology(struct snd_sof_dev *sdev, const char *file)
 	struct snd_soc_tplg_hdr *hdr;
 	int ret;
 
-	dev_dbg(sdev->dev, "loading topology\n");
+	dev_dbg(sdev->dev, "loading topology:%s\n", file);
 
 	ret = request_firmware(&fw, file, sdev->dev);
 	if (ret < 0) {
