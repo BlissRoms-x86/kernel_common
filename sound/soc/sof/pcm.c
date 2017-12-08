@@ -378,6 +378,7 @@ static int sof_pcm_close(struct snd_pcm_substream *substream)
 	struct snd_sof_dev *sdev =
 		snd_soc_platform_get_drvdata(rtd->platform);
 	struct snd_sof_pcm *spcm = rtd->sof;
+	const struct snd_sof_dsp_ops *ops = sdev->ops;
 
 	/* nothing todo for BE */
 	if (rtd->dai_link->no_pcm)
@@ -385,6 +386,9 @@ static int sof_pcm_close(struct snd_pcm_substream *substream)
 
 	dev_dbg(sdev->dev, "pcm: close stream %d dir %d\n", spcm->pcm.pcm_id,
 		substream->stream);
+
+	if (ops && ops->host_stream_close)
+		ops->host_stream_close(sdev, substream);
 
 	mutex_lock(&spcm->mutex);
 	pm_runtime_mark_last_busy(sdev->dev);

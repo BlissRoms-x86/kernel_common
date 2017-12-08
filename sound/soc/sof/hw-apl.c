@@ -676,6 +676,43 @@ int apl_pcm_open(struct snd_sof_dev *sdev,
 
 }
 
+int apl_pcm_close(struct snd_sof_dev *sdev,
+	struct snd_pcm_substream *substream)
+{
+	struct snd_sof_hda_stream *stream = substream->runtime->private_data;
+	struct snd_sof_hda_dev *hdev = &sdev->hda;
+	int i;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		/* get an unused playback stream */
+		for (i = 0; i < hdev->num_playback; i++) {
+			if (hdev->pstream[i].open &&
+				hdev->pstream[i].stream_tag == stream->stream_tag) {
+				hdev->pstream[i].open = false;
+				goto found;
+			}
+		}
+	} else {
+		/* get an unused capture stream */
+		for (i = 0; i < hdev->num_capture; i++) {
+			if (hdev->cstream[i].open &&
+				hdev->cstream[i].stream_tag == stream->stream_tag) {
+				hdev->cstream[i].open = false;
+				goto found;
+			}
+		}
+	}
+
+	dev_dbg(sdev->dev, "stream %s not opened!\n", substream->name);
+	return -ENODEV;
+
+found:
+	/* unbinding pcm substream to hda stream */
+	substream->runtime->private_data = NULL;
+	return 0;
+
+}
+
 static int apl_stream_prepare(struct snd_sof_dev *sdev,
 	struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params)
 {
@@ -2498,6 +2535,7 @@ struct snd_sof_dsp_ops snd_sof_apl_ops = {
 
 	/* stream callbacks */
 	.host_stream_open = apl_pcm_open,
+	.host_stream_close = apl_pcm_close,
 	.host_stream_prepare = apl_stream_prepare,
 	.host_stream_trigger = apl_stream_trigger,
 
@@ -2548,6 +2586,7 @@ struct snd_sof_dsp_ops snd_sof_cnl_ops = {
 
 	/* stream callbacks */
 	.host_stream_open = apl_pcm_open,
+	.host_stream_close = apl_pcm_close,
 	.host_stream_prepare = apl_stream_prepare,
 	.host_stream_trigger = apl_stream_trigger,
 

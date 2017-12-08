@@ -151,6 +151,9 @@ struct snd_sof_dsp_ops {
 	/* connect pcm substream to a host stream */
 	int (*host_stream_open)(struct snd_sof_dev *sdev,
 		struct snd_pcm_substream *substream);
+	/* disconnect pcm substream to a host stream */
+	int (*host_stream_close)(struct snd_sof_dev *sdev,
+		struct snd_pcm_substream *substream);
 
 	/* host stream prepare */
 	int (*host_stream_prepare)(struct snd_sof_dev *sdev,
