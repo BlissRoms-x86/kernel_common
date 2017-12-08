@@ -297,9 +297,10 @@ static snd_pcm_uframes_t sof_pcm_pointer(struct snd_pcm_substream *substream)
 	dai = bytes_to_frames(substream->runtime,
 		spcm->stream[substream->stream].posn.dai_posn);
 
+#if 0
 	dev_dbg(sdev->dev, "PCM: stream %d dir %d DMA position %lu DAI position %lu\n",
 		spcm->pcm.pcm_id, substream->stream, host, dai);
-
+#endif
 	return host;
 }
 
