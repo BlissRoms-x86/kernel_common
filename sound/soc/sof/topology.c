@@ -427,6 +427,16 @@ static void sof_parse_tokens(struct snd_soc_component *scomp,
 	}
 }
 
+static void sof_dbg_comp_config(struct snd_soc_component *scomp,
+	struct sof_ipc_comp_config *config)
+{
+	struct snd_sof_dev *sdev = snd_soc_component_get_drvdata(scomp);
+
+	dev_dbg(sdev->dev, " config: periods snk %d src %d fmt %d\n",
+		config->periods_sink, config->periods_source,
+		config->frame_fmt);
+}
+
 /* external kcontrol init - used for any driver specific init */
 static int sof_control_load(struct snd_soc_component *scomp, int index,
 	struct snd_kcontrol_new *kc, struct snd_soc_tplg_ctl_hdr *hdr)
@@ -561,9 +571,10 @@ static int sof_widget_load_dai(struct snd_soc_component *scomp, int index,
 	sof_parse_tokens(scomp, &dai.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
 
-	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d type %d index %d fmt %d\n",
+	dev_dbg(sdev->dev, "dai %s: dmac %d chan %d type %d index %d\n",
 		swidget->widget->name, dai.dmac_id, dai.dmac_chan,
-		dai.type, dai.index, dai.config.frame_fmt);
+		dai.type, dai.index);
+	sof_dbg_comp_config(scomp, &dai.config);
 
 	return sof_ipc_tx_message(sdev->ipc,
 		dai.comp.hdr.cmd, &dai, sizeof(dai), r, sizeof(*r));
@@ -627,6 +638,7 @@ static int sof_widget_load_pcm(struct snd_soc_component *scomp, int index,
 
 	dev_dbg(sdev->dev, "host %s: dmac %d chan %d\n",
 		swidget->widget->name, host.dmac_id, host.dmac_chan);
+	sof_dbg_comp_config(scomp, &host.config);
 
 	return sof_ipc_tx_message(sdev->ipc,
 		host.comp.hdr.cmd, &host, sizeof(host), r, sizeof(*r));
@@ -700,6 +712,7 @@ static int sof_widget_load_mixer(struct snd_soc_component *scomp, int index,
 	sof_parse_tokens(scomp, &mixer.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
 
+	sof_dbg_comp_config(scomp, &mixer.config);
 	return sof_ipc_tx_message(sdev->ipc,
 		mixer.comp.hdr.cmd, &mixer, sizeof(mixer), r, sizeof(*r));
 }
@@ -734,7 +747,8 @@ static int sof_widget_load_pga(struct snd_soc_component *scomp, int index,
 		ARRAY_SIZE(volume_tokens), private->array, private->size);
 	sof_parse_tokens(scomp, &volume.config, comp_tokens,
 		ARRAY_SIZE(comp_tokens), private->array, private->size);
-	
+	sof_dbg_comp_config(scomp, &volume.config);
+
 	return sof_ipc_tx_message(sdev->ipc,
 		volume.comp.hdr.cmd, &volume, sizeof(volume), r, sizeof(*r));
 }
@@ -766,6 +780,7 @@ static int sof_widget_load_src(struct snd_soc_component *scomp, int index,
 
 	dev_dbg(sdev->dev, "src %s: source rate %d sink rate %d\n",
 		swidget->widget->name, src.source_rate, src.sink_rate);
+	sof_dbg_comp_config(scomp, &src.config);
 
 	return sof_ipc_tx_message(sdev->ipc,
 		src.comp.hdr.cmd, &src, sizeof(src), r, sizeof(*r));
@@ -799,6 +814,7 @@ static int sof_widget_load_siggen(struct snd_soc_component *scomp, int index,
 
 	dev_dbg(sdev->dev, "tone %s: frequency %d amplitude %d\n",
 		swidget->widget->name, tone.frequency, tone.amplitude);
+	sof_dbg_comp_config(scomp, &tone.config);
 
 	return sof_ipc_tx_message(sdev->ipc,
 		tone.comp.hdr.cmd, &tone, sizeof(tone), r, sizeof(*r));
