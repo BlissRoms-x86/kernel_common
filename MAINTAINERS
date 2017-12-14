@@ -8252,6 +8252,15 @@ S:	Orphan
 F:	drivers/mmc/host/mmc_spi.c
 F:	include/linux/spi/mmc_spi.h
 
+MULTIPLEXER SUBSYSTEM
+M:	Peter Rosin <peda@axentia.se>
+S:	Maintained
+F:	Documentation/ABI/testing/mux/sysfs-class-mux*
+F:	Documentation/devicetree/bindings/mux/
+F:	include/linux/dt-bindings/mux/
+F:	include/linux/mux/
+F:	drivers/mux/
+
 MULTISOUND SOUND DRIVER
 M:	Andrew Veliath <andrewtv@usa.net>
 S:	Maintained
@@ -11022,6 +11031,14 @@ F:	drivers/media/usb/siano/
 F:	drivers/media/usb/siano/
 F:	drivers/media/mmc/siano/
 
+SILEAD TOUCHSCREEN DRIVER
+M:	Hans de Goede <hdegoede@redhat.com>
+L:	linux-input@vger.kernel.org
+L:	platform-driver-x86@vger.kernel.org
+S:	Maintained
+F:	drivers/input/touchscreen/silead.c
+F:	drivers/platform/x86/silead_dmi.c
+
 SIMPLEFB FB DRIVER
 M:	Hans de Goede <hdegoede@redhat.com>
 L:	linux-fbdev@vger.kernel.org
@@ -12626,6 +12643,15 @@ F:	Documentation/usb/
 F:	drivers/usb/
 F:	include/linux/usb.h
 F:	include/linux/usb/
+
+USB TYPEC SUBSYSTEM
+M:	Heikki Krogerus <heikki.krogerus@linux.intel.com>
+L:	linux-usb@vger.kernel.org
+S:	Maintained
+F:	Documentation/ABI/testing/sysfs-class-typec
+F:	Documentation/usb/typec.rst
+F:	drivers/usb/typec/
+F:	include/linux/usb/typec.h
 
 USB UHCI DRIVER
 M:	Alan Stern <stern@rowland.harvard.edu>

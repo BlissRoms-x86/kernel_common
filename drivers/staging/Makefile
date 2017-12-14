@@ -1,12 +1,14 @@
 # Makefile for staging directory
 
 obj-y				+= media/
+obj-y				+= typec/
 obj-$(CONFIG_SLICOSS)		+= slicoss/
 obj-$(CONFIG_PRISM2_USB)	+= wlan-ng/
 obj-$(CONFIG_COMEDI)		+= comedi/
 obj-$(CONFIG_FB_OLPC_DCON)	+= olpc_dcon/
 obj-$(CONFIG_RTL8192U)		+= rtl8192u/
 obj-$(CONFIG_RTL8192E)		+= rtl8192e/
+obj-$(CONFIG_RTL8723BS)		+= rtl8723bs/
 obj-$(CONFIG_R8712U)		+= rtl8712/
 obj-$(CONFIG_R8188EU)		+= rtl8188eu/
 obj-$(CONFIG_RTS5208)		+= rts5208/

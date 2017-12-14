@@ -36,6 +36,7 @@
 
 extern struct bus_type i2c_bus_type;
 extern struct device_type i2c_adapter_type;
+extern struct device_type i2c_client_type;
 
 /* --- General options ------------------------------------------------	*/
 
@@ -50,6 +51,7 @@ enum i2c_slave_event;
 typedef int (*i2c_slave_cb_t)(struct i2c_client *, enum i2c_slave_event, u8 *);
 
 struct module;
+struct property_entry;
 
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
 /*
@@ -135,7 +137,11 @@ enum i2c_alert_protocol {
  * struct i2c_driver - represent an I2C device driver
  * @class: What kind of i2c device we instantiate (for detect)
  * @attach_adapter: Callback for bus addition (deprecated)
- * @probe: Callback for device binding
+ * @match: Allows the driver to override the default i2c_bus match behavior
+ *         return < 0 to fail the match, > 0 to force a match, 0 to fallback
+ *         to default id matching
+ * @probe: Callback for device binding - soon to be deprecated
+ * @probe_new: New callback for device binding
  * @remove: Callback for device unbinding
  * @shutdown: Callback for device shutdown
  * @alert: Alert callback, for example for the SMBus alert protocol
@@ -145,6 +151,7 @@ enum i2c_alert_protocol {
  * @detect: Callback for device detection
  * @address_list: The I2C addresses to probe (for detect)
  * @clients: List of detected clients we created (for i2c-core use only)
+ * @disable_i2c_core_irq_mapping: Tell the i2c-core to not do irq-mapping
  *
  * The driver.owner field should be set to the module owner of this driver.
  * The driver.name field should be set to the name of this driver.
@@ -174,9 +181,17 @@ struct i2c_driver {
 	 */
 	int (*attach_adapter)(struct i2c_adapter *) __deprecated;
 
+	/* Set this to override standard i2c_bus match behavior */
+	int (*match)(struct i2c_client *);
+
 	/* Standard driver model interfaces */
 	int (*probe)(struct i2c_client *, const struct i2c_device_id *);
 	int (*remove)(struct i2c_client *);
+
+	/* New driver model interface to aid the seamless removal of the
+	 * current probe()'s, more commonly unused than used second parameter.
+	 */
+	int (*probe_new)(struct i2c_client *);
 
 	/* driver model interfaces that don't relate to enumeration  */
 	void (*shutdown)(struct i2c_client *);
@@ -203,6 +218,8 @@ struct i2c_driver {
 	int (*detect)(struct i2c_client *, struct i2c_board_info *);
 	const unsigned short *address_list;
 	struct list_head clients;
+
+	bool disable_i2c_core_irq_mapping;
 };
 #define to_i2c_driver(d) container_of(d, struct i2c_driver, driver)
 
@@ -243,6 +260,8 @@ struct i2c_client {
 
 extern struct i2c_client *i2c_verify_client(struct device *dev);
 extern struct i2c_adapter *i2c_verify_adapter(struct device *dev);
+extern const struct i2c_device_id *i2c_match_id(const struct i2c_device_id *id,
+					const struct i2c_client *client);
 
 static inline struct i2c_client *kobj_to_i2c_client(struct kobject *kobj)
 {
@@ -286,10 +305,14 @@ static inline int i2c_slave_event(struct i2c_client *client,
  * @type: chip type, to initialize i2c_client.name
  * @flags: to initialize i2c_client.flags
  * @addr: stored in i2c_client.addr
+ * @dev_name: Overrides the default <busnr>-<addr> dev_name if set
  * @platform_data: stored in i2c_client.dev.platform_data
  * @archdata: copied into i2c_client.dev.archdata
  * @of_node: pointer to OpenFirmware device node
  * @fwnode: device node supplied by the platform firmware
+ * @properties: additional device properties for the device
+ * @resources: resources associated with the device
+ * @num_resources: number of resources in the @resources array
  * @irq: stored in i2c_client.irq
  *
  * I2C doesn't actually support hardware probing, although controllers and
@@ -307,10 +330,14 @@ struct i2c_board_info {
 	char		type[I2C_NAME_SIZE];
 	unsigned short	flags;
 	unsigned short	addr;
+	const char	*dev_name;
 	void		*platform_data;
 	struct dev_archdata	*archdata;
 	struct device_node *of_node;
 	struct fwnode_handle *fwnode;
+	const struct property_entry *properties;
+	const struct resource *resources;
+	unsigned int	num_resources;
 	int		irq;
 };
 
@@ -774,6 +801,10 @@ extern struct i2c_adapter *of_find_i2c_adapter_by_node(struct device_node *node)
 /* must call i2c_put_adapter() when done with returned i2c_adapter device */
 struct i2c_adapter *of_get_i2c_adapter_by_node(struct device_node *node);
 
+extern const struct of_device_id
+*i2c_of_match_device(const struct of_device_id *matches,
+		     struct i2c_client *client);
+
 #else
 
 static inline struct i2c_client *of_find_i2c_device_by_node(struct device_node *node)
@@ -790,14 +821,29 @@ static inline struct i2c_adapter *of_get_i2c_adapter_by_node(struct device_node 
 {
 	return NULL;
 }
+
+static inline const struct of_device_id
+*i2c_of_match_device(const struct of_device_id *matches,
+		     struct i2c_client *client)
+{
+	return NULL;
+}
+
 #endif /* CONFIG_OF */
 
 #if IS_ENABLED(CONFIG_ACPI)
 u32 i2c_acpi_find_bus_speed(struct device *dev);
+struct i2c_client *i2c_acpi_new_device(struct device *dev, int index,
+				       struct i2c_board_info *info);
 #else
 static inline u32 i2c_acpi_find_bus_speed(struct device *dev)
 {
 	return 0;
+}
+static inline struct i2c_client *i2c_acpi_new_device(struct device *dev,
+					int index, struct i2c_board_info *info)
+{
+	return NULL;
 }
 #endif /* CONFIG_ACPI */
 

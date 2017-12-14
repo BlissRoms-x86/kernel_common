@@ -1824,7 +1824,7 @@ static void intel_enable_ddi(struct intel_encoder *intel_encoder,
 
 	if (intel_crtc->config->has_audio) {
 		intel_display_power_get(dev_priv, POWER_DOMAIN_AUDIO);
-		intel_audio_codec_enable(intel_encoder);
+		intel_audio_codec_enable(intel_encoder, pipe_config, conn_state);
 	}
 }
 
@@ -2520,6 +2520,7 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_dig_port->max_lanes = max_lanes;
 
 	intel_encoder->type = INTEL_OUTPUT_UNKNOWN;
+	intel_encoder->port = port;
 	intel_encoder->crtc_mask = (1 << 0) | (1 << 1) | (1 << 2);
 	intel_encoder->cloneable = 0;
 

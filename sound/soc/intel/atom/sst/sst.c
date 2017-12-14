@@ -27,6 +27,7 @@
 #include <linux/pm_qos.h>
 #include <linux/async.h>
 #include <linux/acpi.h>
+#include <linux/vmalloc.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <asm/platform_sst_audio.h>
@@ -457,26 +458,26 @@ static int intel_sst_suspend(struct device *dev)
 		return -EBUSY;
 
 	/* save the memories */
-	fw_save = kzalloc(sizeof(*fw_save), GFP_KERNEL);
+	fw_save = vmalloc(sizeof(*fw_save));
 	if (!fw_save)
 		return -ENOMEM;
-	fw_save->iram = kzalloc(ctx->iram_end - ctx->iram_base, GFP_KERNEL);
+	fw_save->iram = vmalloc(ctx->iram_end - ctx->iram_base);
 	if (!fw_save->iram) {
 		ret = -ENOMEM;
 		goto iram;
 	}
-	fw_save->dram = kzalloc(ctx->dram_end - ctx->dram_base, GFP_KERNEL);
+	fw_save->dram = vmalloc(ctx->dram_end - ctx->dram_base);
 	if (!fw_save->dram) {
 		ret = -ENOMEM;
 		goto dram;
 	}
-	fw_save->sram = kzalloc(SST_MAILBOX_SIZE, GFP_KERNEL);
+	fw_save->sram = vmalloc(SST_MAILBOX_SIZE);
 	if (!fw_save->sram) {
 		ret = -ENOMEM;
 		goto sram;
 	}
 
-	fw_save->ddr = kzalloc(ctx->ddr_end - ctx->ddr_base, GFP_KERNEL);
+	fw_save->ddr = vmalloc(ctx->ddr_end - ctx->ddr_base);
 	if (!fw_save->ddr) {
 		ret = -ENOMEM;
 		goto ddr;
@@ -491,13 +492,13 @@ static int intel_sst_suspend(struct device *dev)
 	ctx->ops->reset(ctx);
 	return 0;
 ddr:
-	kfree(fw_save->sram);
+	vfree(fw_save->sram);
 sram:
-	kfree(fw_save->dram);
+	vfree(fw_save->dram);
 dram:
-	kfree(fw_save->iram);
+	vfree(fw_save->iram);
 iram:
-	kfree(fw_save);
+	vfree(fw_save);
 	return ret;
 }
 
@@ -523,11 +524,11 @@ static int intel_sst_resume(struct device *dev)
 	memcpy32_toio(ctx->mailbox, fw_save->sram, SST_MAILBOX_SIZE);
 	memcpy32_toio(ctx->ddr, fw_save->ddr, ctx->ddr_end - ctx->ddr_base);
 
-	kfree(fw_save->sram);
-	kfree(fw_save->dram);
-	kfree(fw_save->iram);
-	kfree(fw_save->ddr);
-	kfree(fw_save);
+	vfree(fw_save->sram);
+	vfree(fw_save->dram);
+	vfree(fw_save->iram);
+	vfree(fw_save->ddr);
+	vfree(fw_save);
 
 	block = sst_create_block(ctx, 0, FW_DWNL_ID);
 	if (block == NULL)

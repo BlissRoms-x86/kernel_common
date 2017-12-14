@@ -206,6 +206,7 @@ struct intel_encoder {
 	struct drm_encoder base;
 
 	enum intel_output_type type;
+	enum port port;
 	unsigned int cloneable;
 	void (*hot_plug)(struct intel_encoder *);
 	bool (*compute_config)(struct intel_encoder *,
@@ -247,6 +248,8 @@ struct intel_encoder {
 	void (*suspend)(struct intel_encoder *);
 	int crtc_mask;
 	enum hpd_pin hpd_pin;
+	/* for communication with audio component; protected by av_mutex */
+	const struct drm_connector *audio_connector;
 };
 
 struct intel_panel {
@@ -959,8 +962,6 @@ struct intel_digital_port {
 	enum irqreturn (*hpd_pulse)(struct intel_digital_port *, bool);
 	bool release_cl2_override;
 	uint8_t max_lanes;
-	/* for communication with audio component; protected by av_mutex */
-	const struct drm_connector *audio_connector;
 };
 
 struct intel_dp_mst_encoder {
@@ -1176,10 +1177,14 @@ u32 intel_fb_stride_alignment(const struct drm_i915_private *dev_priv,
 
 /* intel_audio.c */
 void intel_init_audio_hooks(struct drm_i915_private *dev_priv);
-void intel_audio_codec_enable(struct intel_encoder *encoder);
+void intel_audio_codec_enable(struct intel_encoder *encoder,
+			      const struct intel_crtc_state *crtc_state,
+			      const struct drm_connector_state *conn_state);
 void intel_audio_codec_disable(struct intel_encoder *encoder);
 void i915_audio_component_init(struct drm_i915_private *dev_priv);
 void i915_audio_component_cleanup(struct drm_i915_private *dev_priv);
+void intel_audio_init(struct drm_i915_private *dev_priv);
+void intel_audio_deinit(struct drm_i915_private *dev_priv);
 
 /* intel_display.c */
 void skl_set_preferred_cdclk_vco(struct drm_i915_private *dev_priv, int vco);
