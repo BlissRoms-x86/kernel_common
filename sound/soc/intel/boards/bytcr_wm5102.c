@@ -32,9 +32,9 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
+#include <sound/soc-acpi.h>
 #include "../../codecs/wm5102.h"
 #include "../atom/sst-atom-controls.h"
-#include "../common/sst-acpi.h"
 #include "../common/sst-dsp.h"
 
 enum {
@@ -605,7 +605,7 @@ struct acpi_chan_package {   /* ACPICA seems to require 64 bit integers */
 static int snd_byt_wm5102_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
-	struct sst_acpi_mach *mach;
+	struct snd_soc_acpi_mach *mach;
 	int i;
 	int dai_index;
 	struct byt_wm5102_private *priv;
@@ -656,7 +656,7 @@ static int snd_byt_wm5102_mc_probe(struct platform_device *pdev)
 		/* format specified: 2 64-bit integers */
 		struct acpi_buffer format = {sizeof("NN"), "NN"};
 		struct acpi_buffer state = {0, NULL};
-		struct sst_acpi_package_context pkg_ctx;
+		struct snd_soc_acpi_package_context pkg_ctx;
 		bool pkg_found = false;
 
 		state.length = sizeof(chan_package);
@@ -668,7 +668,7 @@ static int snd_byt_wm5102_mc_probe(struct platform_device *pdev)
 		pkg_ctx.state = &state;
 		pkg_ctx.data_valid = false;
 
-		pkg_found = sst_acpi_find_package_from_hid(mach->id, &pkg_ctx);
+		pkg_found = snd_soc_acpi_find_package_from_hid(mach->id, &pkg_ctx);
 		if (pkg_found) {
 			if (chan_package.aif_value == 1) {
 				dev_info(&pdev->dev, "BIOS Routing: AIF1 connected\n");

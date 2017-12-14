@@ -251,7 +251,7 @@ static int is_byt(void)
 	return status;
 }
 
-static int is_byt_cr(struct device *dev, struct struct snd_soc_acpi_mach *mach, bool *bytcr)
+static int is_byt_cr(struct device *dev, struct snd_soc_acpi_mach *mach, bool *bytcr)
 {
 	int status = 0;
 
