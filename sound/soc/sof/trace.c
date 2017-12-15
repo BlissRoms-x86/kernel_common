@@ -72,18 +72,22 @@
 #include "sof-priv.h"
 #include "ops.h"
 
-static int sof_wait_trace_avail(struct snd_sof_dev *sdev, size_t *count, loff_t pos)
+static int sof_wait_trace_avail(struct snd_sof_dev *sdev, size_t *count, loff_t pos, size_t size)
 {
 	size_t avail;
 	wait_queue_entry_t wait;
 
-	/* if pos is invalid for DMA trace host buffer*/
-	/* return error code */
-	if (sdev->host_offset < pos)
-		return -EINVAL;
+	/*
+	 * If host offset is less than local pos, it means write pointer of
+	 * host DMA buffer has been wrapped. We should output the trace data
+	 * at the end of host DMA buffer at first.
+	 */
+	if (sdev->host_offset < pos) {
+		avail = size - pos;
+		goto _host_end;
+	}
 
-	/* if there is available trace data now */
-	/* it is unecessary to wait */
+	/* If there is available trace data now, it is unnecessary to wait. */
 	if (sdev->host_offset > pos)
 		goto _endcheck;
 
@@ -105,6 +109,7 @@ _endcheck:
 	/* calculate the available count */
 	avail = sdev->host_offset - pos;
 
+_host_end:
 	/* return min value between available and request count */
 	*count = avail < *count ? avail : *count;
 
@@ -118,6 +123,7 @@ static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 	struct snd_sof_dev *sdev = dfse->sdev;
 	int err;
 	loff_t pos = *ppos;
+	loff_t lpos = pos;
 	size_t ret, size;
 
 	size = dfse->size;
@@ -125,13 +131,23 @@ static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 	/* check pos and count */
 	if (pos < 0)
 		return -EINVAL;
-	if (pos >= size || !count)
+	if (!count)
 		return 0;
-	if (count > size - pos)
-		count = size - pos;
+
+	/*
+	 * If pos exceeds size, it means host DMA buffer has been wrapped. So
+	 * local pos will be truncated from global pos. It is possible to wrap
+	 * host DMA buffer multiply times when keep output long time, so we
+	 * need one loop to process it.
+	 */
+	while (lpos >= size)
+		lpos -= size;
+
+	if (count > size - lpos)
+		count = size - lpos;
 
 	/* get available count based on current host offset */
-	err = sof_wait_trace_avail(sdev, &count, pos);
+	err = sof_wait_trace_avail(sdev, &count, lpos, size);
 	if (err < 0 || count == 0) {
 		dev_err(sdev->dev,
 			"error: cant get more trace %d\n", err);
@@ -139,7 +155,7 @@ static ssize_t sof_dfsentry_trace_read(struct file *file, char __user *buffer,
 	}
 
 	/* copy available trace data to debugfs */
-	ret = copy_to_user(buffer, dfse->buf + pos, count);
+	ret = copy_to_user(buffer, dfse->buf + lpos, count);
 
 	if (ret == count)
 		return -EFAULT;
