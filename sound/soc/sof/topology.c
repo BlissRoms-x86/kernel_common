@@ -887,11 +887,11 @@ static int sof_widget_ready(struct snd_soc_component *scomp, int index,
 		ret = sof_widget_load_pipeline(scomp, index, swidget, tw,
 			&reply);
 		break;
-	case snd_soc_dapm_aif_in:
+	case snd_soc_dapm_aif_out:
 		ret = sof_widget_load_pcm(scomp, index, swidget,
 			SOF_IPC_STREAM_CAPTURE, tw, &reply);
 		break;
-	case snd_soc_dapm_aif_out:
+	case snd_soc_dapm_aif_in:
 		ret = sof_widget_load_pcm(scomp, index, swidget,
 			SOF_IPC_STREAM_PLAYBACK, tw, &reply);
 		break;
