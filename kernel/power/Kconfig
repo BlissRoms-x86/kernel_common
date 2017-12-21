@@ -1,6 +1,7 @@
 config SUSPEND
 	bool "Suspend to RAM and standby"
 	depends on ARCH_SUSPEND_POSSIBLE
+	select RTC_LIB
 	default y
 	---help---
 	  Allow the system to enter sleep states in which main memory is
@@ -258,20 +259,6 @@ config APM_EMULATION
 	  random kernel OOPSes or reboots that don't seem to be related to
 	  anything, try disabling/enabling this option (or disabling/enabling
 	  APM in your BIOS).
-
-config PM_OPP
-	bool
-	select SRCU
-	---help---
-	  SOCs have a standard set of tuples consisting of frequency and
-	  voltage pairs that the device will support per voltage domain. This
-	  is called Operating Performance Point or OPP. The actual definitions
-	  of OPP varies over silicon within the same family of devices.
-
-	  OPP layer organizes the data internally using device pointers
-	  representing individual voltage domains and provides SOC
-	  implementations a ready to use framework to manage OPPs.
-	  For more information, read <file:Documentation/power/opp.txt>
 
 config PM_CLK
 	def_bool y

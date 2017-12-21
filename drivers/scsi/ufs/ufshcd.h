@@ -454,6 +454,7 @@ struct ufs_stats {
  * @utmrdl_dma_addr: UTMRDL DMA address
  * @host: Scsi_Host instance of the driver
  * @dev: device handle
+ * @sdev_ufs_rpmb: reference to RPMB device W-LU
  * @lrb: local reference block
  * @lrb_in_use: lrb in use
  * @outstanding_tasks: Bits representing outstanding task requests
@@ -517,6 +518,7 @@ struct ufs_hba {
 	 * "UFS device" W-LU.
 	 */
 	struct scsi_device *sdev_ufs_device;
+	struct scsi_device *sdev_ufs_rpmb;
 
 	enum ufs_dev_pwr_mode curr_dev_pwr_mode;
 	enum uic_link_state uic_link_state;
@@ -674,6 +676,8 @@ struct ufs_hba {
 
 	enum bkops_status urgent_bkops_lvl;
 	bool is_urgent_bkops_lvl_checked;
+	int latency_hist_enabled;
+	struct io_latency_state io_lat_s;
 
 	struct rw_semaphore clk_scaling_lock;
 	struct ufs_desc_size desc_size;
@@ -982,5 +986,8 @@ static inline void ufshcd_vops_dbg_register_dump(struct ufs_hba *hba)
 	if (hba->vops && hba->vops->dbg_register_dump)
 		hba->vops->dbg_register_dump(hba);
 }
+
+int ufshcd_dump_regs(struct ufs_hba *hba, size_t offset, size_t len,
+		     const char *prefix);
 
 #endif /* End of Header */

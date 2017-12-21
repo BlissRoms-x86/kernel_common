@@ -4,6 +4,8 @@
 #
 obj-$(CONFIG_USB_PHY)			+= phy.o
 obj-$(CONFIG_OF)			+= of.o
+obj-$(CONFIG_USB_OTG_WAKELOCK)		+= otg-wakelock.o
+obj-$(CONFIG_DUAL_ROLE_USB_INTF)	+= class-dual-role.o
 
 # transceiver drivers, keep the list sorted
 
@@ -26,3 +28,4 @@ obj-$(CONFIG_USB_MXS_PHY)		+= phy-mxs-usb.o
 obj-$(CONFIG_USB_ULPI)			+= phy-ulpi.o
 obj-$(CONFIG_USB_ULPI_VIEWPORT)		+= phy-ulpi-viewport.o
 obj-$(CONFIG_KEYSTONE_USB_PHY)		+= phy-keystone.o
+obj-$(CONFIG_USB_INTEL_DUAL_ROLE_PHY)	+= phy-intel-dualrole.o

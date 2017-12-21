@@ -59,6 +59,10 @@
 #include "braille.h"
 #include "internal.h"
 
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+extern void printascii(char *);
+#endif
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -371,6 +375,11 @@ __packed __aligned(4)
  * console_unlock() or anything else that might wake up a process.
  */
 DEFINE_RAW_SPINLOCK(logbuf_lock);
+
+/* Give the posibility to temporary disable slow (!CON_FAST) consoles */
+static atomic_t console_slow_suspended = ATOMIC_INIT(0);
+/* Keep the number of slow suspend in check */
+#define MAX_SLOW_SUSPEND_COUNT  (50)
 
 /*
  * Helper macros to lock/unlock logbuf_lock and switch between
@@ -1735,6 +1744,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 			text += 2;
 		}
 	}
+
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+	printascii(text);
+#endif
 
 	if (level == LOGLEVEL_DEFAULT)
 		level = default_message_loglevel;
