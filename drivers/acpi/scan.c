@@ -1557,6 +1557,13 @@ static bool acpi_device_enumeration_by_parent(struct acpi_device *device)
 	if (acpi_is_indirect_io_slave(device))
 		return true;
 
+	/*
+	 * Treat RT8723BS devices as non serdev for now, so that the
+	 * userspace btattach code can keep working.
+	 */
+	if (!strcmp(acpi_device_hid(device), "OBDA8723"))
+		return false;
+
 	/* Macs use device properties in lieu of _CRS resources */
 	if (x86_apple_machine &&
 	    (fwnode_property_present(&device->fwnode, "spiSclkPeriod") ||
