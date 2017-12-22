@@ -752,7 +752,8 @@ static int mbind_range(struct mm_struct *mm, unsigned long start,
 			((vmstart - vma->vm_start) >> PAGE_SHIFT);
 		prev = vma_merge(mm, prev, vmstart, vmend, vma->vm_flags,
 				 vma->anon_vma, vma->vm_file, pgoff,
-				 new_pol, vma->vm_userfaultfd_ctx);
+				 new_pol, vma->vm_userfaultfd_ctx,
+				 vma_get_anon_name(vma));
 		if (prev) {
 			vma = prev;
 			next = vma->vm_next;
@@ -924,11 +925,6 @@ static long do_get_mempolicy(int *policy, nodemask_t *nmask,
 		 * the policy to userspace.
 		 */
 		*policy |= (pol->flags & MPOL_MODE_FLAGS);
-	}
-
-	if (vma) {
-		up_read(&current->mm->mmap_sem);
-		vma = NULL;
 	}
 
 	err = 0;

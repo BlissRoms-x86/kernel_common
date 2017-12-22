@@ -33,6 +33,7 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/fence.h>
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
@@ -40,7 +41,7 @@
 #include <drm/drm_modeset_lock.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_auth.h>
-#include <drm/drm_framebuffer.h>
+#include <drm/drm_debugfs_crc.h>
 
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
@@ -122,6 +123,10 @@ static int drm_crtc_register_all(struct drm_device *dev)
 	int ret = 0;
 
 	drm_for_each_crtc(crtc, dev) {
+		if (drm_debugfs_crtc_add(crtc))
+			DRM_ERROR("Failed to initialize debugfs entry for CRTC '%s'.\n",
+				  crtc->name);
+
 		if (crtc->funcs->late_register)
 			ret = crtc->funcs->late_register(crtc);
 		if (ret)
@@ -138,7 +143,75 @@ static void drm_crtc_unregister_all(struct drm_device *dev)
 	drm_for_each_crtc(crtc, dev) {
 		if (crtc->funcs->early_unregister)
 			crtc->funcs->early_unregister(crtc);
+		drm_debugfs_crtc_remove(crtc);
 	}
+}
+
+static const struct fence_ops drm_crtc_fence_ops;
+
+static struct drm_crtc *fence_to_crtc(struct fence *fence)
+{
+	BUG_ON(fence->ops != &drm_crtc_fence_ops);
+	return container_of(fence->lock, struct drm_crtc, fence_lock);
+}
+
+static const char *drm_crtc_fence_get_driver_name(struct fence *fence)
+{
+	struct drm_crtc *crtc = fence_to_crtc(fence);
+
+	return crtc->dev->driver->name;
+}
+
+static const char *drm_crtc_fence_get_timeline_name(struct fence *fence)
+{
+	struct drm_crtc *crtc = fence_to_crtc(fence);
+
+	return crtc->timeline_name;
+}
+
+static bool drm_crtc_fence_enable_signaling(struct fence *fence)
+{
+	return true;
+}
+
+static const struct fence_ops drm_crtc_fence_ops = {
+	.get_driver_name = drm_crtc_fence_get_driver_name,
+	.get_timeline_name = drm_crtc_fence_get_timeline_name,
+	.enable_signaling = drm_crtc_fence_enable_signaling,
+	.wait = fence_default_wait,
+};
+
+struct fence *drm_crtc_create_fence(struct drm_crtc *crtc)
+{
+	struct fence *fence;
+
+	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
+	if (!fence)
+		return NULL;
+
+	fence_init(fence, &drm_crtc_fence_ops, &crtc->fence_lock,
+		       crtc->fence_context, ++crtc->fence_seqno);
+
+	return fence;
+}
+
+static int drm_crtc_crc_init(struct drm_crtc *crtc)
+{
+#ifdef CONFIG_DEBUG_FS
+	spin_lock_init(&crtc->crc.lock);
+	init_waitqueue_head(&crtc->crc.wq);
+	crtc->crc.source = kstrdup("auto", GFP_KERNEL);
+	if (!crtc->crc.source)
+		return -ENOMEM;
+#endif
+	return 0;
+}
+
+static void drm_crtc_crc_fini(struct drm_crtc *crtc)
+{
+#ifdef CONFIG_DEBUG_FS
+	kfree(crtc->crc.source);
+#endif
 }
 
 /**
@@ -198,6 +271,11 @@ int drm_crtc_init_with_planes(struct drm_device *dev, struct drm_crtc *crtc,
 		return -ENOMEM;
 	}
 
+	crtc->fence_context = fence_context_alloc(1);
+	spin_lock_init(&crtc->fence_lock);
+	snprintf(crtc->timeline_name, sizeof(crtc->timeline_name),
+		 "CRTC:%d-%s", crtc->base.id, crtc->name);
+
 	crtc->base.properties = &crtc->properties;
 
 	list_add_tail(&crtc->head, &config->crtc_list);
@@ -210,9 +288,17 @@ int drm_crtc_init_with_planes(struct drm_device *dev, struct drm_crtc *crtc,
 	if (cursor)
 		cursor->possible_crtcs = 1 << drm_crtc_index(crtc);
 
+	ret = drm_crtc_crc_init(crtc);
+	if (ret) {
+		drm_mode_object_unregister(dev, &crtc->base);
+		return ret;
+	}
+
 	if (drm_core_check_feature(dev, DRIVER_ATOMIC)) {
 		drm_object_attach_property(&crtc->base, config->prop_active, 0);
 		drm_object_attach_property(&crtc->base, config->prop_mode_id, 0);
+		drm_object_attach_property(&crtc->base,
+					   config->prop_out_fence_ptr, 0);
 	}
 
 	return 0;
@@ -235,6 +321,8 @@ void drm_crtc_cleanup(struct drm_crtc *crtc)
 	 * remove the drm_crtc at runtime we would have to decrement all
 	 * the indices on the drm_crtc after us in the crtc_list.
 	 */
+
+	drm_crtc_crc_fini(crtc);
 
 	kfree(crtc->gamma_store);
 	crtc->gamma_store = NULL;
@@ -364,6 +452,18 @@ static int drm_mode_create_standard_properties(struct drm_device *dev)
 	if (!prop)
 		return -ENOMEM;
 	dev->mode_config.prop_fb_id = prop;
+
+	prop = drm_property_create_signed_range(dev, DRM_MODE_PROP_ATOMIC,
+			"IN_FENCE_FD", -1, INT_MAX);
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.prop_in_fence_fd = prop;
+
+	prop = drm_property_create_range(dev, DRM_MODE_PROP_ATOMIC,
+			"OUT_FENCE_PTR", 0, U64_MAX);
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.prop_out_fence_ptr = prop;
 
 	prop = drm_property_create_object(dev, DRM_MODE_PROP_ATOMIC,
 			"CRTC_ID", DRM_MODE_OBJECT_CRTC);
@@ -695,8 +795,7 @@ int drm_crtc_check_viewport(const struct drm_crtc *crtc,
 	drm_crtc_get_hv_timing(mode, &hdisplay, &vdisplay);
 
 	if (crtc->state &&
-	    crtc->primary->state->rotation & (DRM_ROTATE_90 |
-					      DRM_ROTATE_270))
+	    drm_rotation_90_or_270(crtc->primary->state->rotation))
 		swap(hdisplay, vdisplay);
 
 	return drm_framebuffer_check_src_coords(x << 16, y << 16,

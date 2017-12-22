@@ -1992,6 +1992,12 @@ void composite_disconnect(struct usb_gadget *gadget)
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	unsigned long			flags;
 
+	if (cdev == NULL) {
+		WARN(1, "%s: Calling disconnect on a Gadget that is \
+			 not connected\n", __func__);
+		return;
+	}
+
 	/* REVISIT:  should we have config and device level
 	 * disconnect callbacks?
 	 */
@@ -2147,7 +2153,7 @@ int composite_os_desc_req_prepare(struct usb_composite_dev *cdev,
 	cdev->os_desc_req->buf = kmalloc(4096, GFP_KERNEL);
 	if (!cdev->os_desc_req->buf) {
 		ret = -ENOMEM;
-		kfree(cdev->os_desc_req);
+		usb_ep_free_request(ep0, cdev->os_desc_req);
 		goto end;
 	}
 	cdev->os_desc_req->context = cdev;

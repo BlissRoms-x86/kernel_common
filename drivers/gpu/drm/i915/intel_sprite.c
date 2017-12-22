@@ -146,12 +146,11 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
 	 * This means we must not write any registers on the first
 	 * line of vblank (since not the whole line is actually in
 	 * vblank). And unfortunately we can't use the interrupt to
-	 * wait here since it may have already fired before we check
-	 * the scanline. We could use the frame start interrupt instead
-	 * since it will fire after the critical scanline, but that would
-	 * require more changes in the interrupt code. So for now we'll
-	 * just do the nasty thing and poll for the bad scanline to
-	 * pass us by.
+	 * wait here since it will fire too soon. We could use the
+	 * frame start interrupt instead since it will fire after the
+	 * critical scanline, but that would require more changes
+	 * in the interrupt code. So for now we'll just do the nasty
+	 * thing and poll for the bad scanline to pass us by.
 	 *
 	 * FIXME figure out if BXT+ DSI suffers from this as well
 	 */
@@ -1009,9 +1008,7 @@ int intel_sprite_set_colorkey(struct drm_device *dev, void *data,
 		drm_modeset_backoff(&ctx);
 	}
 
-	if (ret)
-		drm_atomic_state_free(state);
-
+	drm_atomic_state_put(state);
 out:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
@@ -1068,6 +1065,7 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 	struct intel_plane_state *state = NULL;
 	unsigned long possible_crtcs;
 	const uint32_t *plane_formats;
+	unsigned int supported_rotations;
 	int num_plane_formats;
 	int ret;
 
@@ -1143,6 +1141,15 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 		goto fail;
 	}
 
+	if (INTEL_GEN(dev) >= 9) {
+		supported_rotations =
+			DRM_ROTATE_0 | DRM_ROTATE_90 |
+			DRM_ROTATE_180 | DRM_ROTATE_270;
+	} else {
+		supported_rotations =
+			DRM_ROTATE_0 | DRM_ROTATE_180;
+	}
+
 	intel_plane->pipe = pipe;
 	intel_plane->plane = plane;
 	intel_plane->frontbuffer_bit = INTEL_FRONTBUFFER_SPRITE(pipe, plane);
@@ -1165,7 +1172,9 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 	if (ret)
 		goto fail;
 
-	intel_create_rotation_property(dev, intel_plane);
+	drm_plane_create_rotation_property(&intel_plane->base,
+					   DRM_ROTATE_0,
+					   supported_rotations);
 
 	drm_plane_helper_add(&intel_plane->base, &intel_plane_helper_funcs);
 

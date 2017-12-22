@@ -76,6 +76,8 @@
 #define EDID_QUIRK_FORCE_12BPC			(1 << 9)
 /* Force 6bpc */
 #define EDID_QUIRK_FORCE_6BPC			(1 << 10)
+/* Force 10bpc */
+#define EDID_QUIRK_FORCE_10BPC			(1 << 11)
 
 struct detailed_mode_closure {
 	struct drm_connector *connector;
@@ -117,6 +119,9 @@ static const struct edid_quirk {
 	/* Funai Electronics PM36B */
 	{ "FCM", 13600, EDID_QUIRK_PREFER_LARGE_75 |
 	  EDID_QUIRK_DETAILED_IN_CM },
+
+	/* LGD panel of HP zBook 17 G2, eDP 10 bpc, but reports unknown bpc */
+	{ "LGD", 764, EDID_QUIRK_FORCE_10BPC },
 
 	/* LG Philips LCD LP154W01-A5 */
 	{ "LPL", 0, EDID_QUIRK_DETAILED_USE_MAXIMUM_SIZE },
@@ -1285,20 +1290,20 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 	void *data)
 {
 	int i, j = 0, valid_extensions = 0;
-	u8 *block, *new;
+	u8 *edid, *new;
 	bool print_bad_edid = !connector->bad_edid_counter || (drm_debug & DRM_UT_KMS);
 
-	if ((block = kmalloc(EDID_LENGTH, GFP_KERNEL)) == NULL)
+	if ((edid = kmalloc(EDID_LENGTH, GFP_KERNEL)) == NULL)
 		return NULL;
 
 	/* base block fetch */
 	for (i = 0; i < 4; i++) {
-		if (get_edid_block(data, block, 0, EDID_LENGTH))
+		if (get_edid_block(data, edid, 0, EDID_LENGTH))
 			goto out;
-		if (drm_edid_block_valid(block, 0, print_bad_edid,
+		if (drm_edid_block_valid(edid, 0, print_bad_edid,
 					 &connector->edid_corrupt))
 			break;
-		if (i == 0 && drm_edid_is_zero(block, EDID_LENGTH)) {
+		if (i == 0 && drm_edid_is_zero(edid, EDID_LENGTH)) {
 			connector->null_edid_counter++;
 			goto carp;
 		}
@@ -1307,24 +1312,22 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 		goto carp;
 
 	/* if there's no extensions, we're done */
-	if (block[0x7e] == 0)
-		return (struct edid *)block;
+	if (edid[0x7e] == 0)
+		return (struct edid *)edid;
 
-	new = krealloc(block, (block[0x7e] + 1) * EDID_LENGTH, GFP_KERNEL);
+	new = krealloc(edid, (edid[0x7e] + 1) * EDID_LENGTH, GFP_KERNEL);
 	if (!new)
 		goto out;
-	block = new;
+	edid = new;
 
-	for (j = 1; j <= block[0x7e]; j++) {
+	for (j = 1; j <= edid[0x7e]; j++) {
+		u8 *block = edid + (valid_extensions + 1) * EDID_LENGTH;
+
 		for (i = 0; i < 4; i++) {
-			if (get_edid_block(data,
-				  block + (valid_extensions + 1) * EDID_LENGTH,
-				  j, EDID_LENGTH))
+			if (get_edid_block(data, block, j, EDID_LENGTH))
 				goto out;
-			if (drm_edid_block_valid(block + (valid_extensions + 1)
-						 * EDID_LENGTH, j,
-						 print_bad_edid,
-						 NULL)) {
+			if (drm_edid_block_valid(block, j,
+						 print_bad_edid, NULL)) {
 				valid_extensions++;
 				break;
 			}
@@ -1339,16 +1342,16 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 		}
 	}
 
-	if (valid_extensions != block[0x7e]) {
-		block[EDID_LENGTH-1] += block[0x7e] - valid_extensions;
-		block[0x7e] = valid_extensions;
-		new = krealloc(block, (valid_extensions + 1) * EDID_LENGTH, GFP_KERNEL);
+	if (valid_extensions != edid[0x7e]) {
+		edid[EDID_LENGTH-1] += edid[0x7e] - valid_extensions;
+		edid[0x7e] = valid_extensions;
+		new = krealloc(edid, (valid_extensions + 1) * EDID_LENGTH, GFP_KERNEL);
 		if (!new)
 			goto out;
-		block = new;
+		edid = new;
 	}
 
-	return (struct edid *)block;
+	return (struct edid *)edid;
 
 carp:
 	if (print_bad_edid) {
@@ -1358,7 +1361,7 @@ carp:
 	connector->bad_edid_counter++;
 
 out:
-	kfree(block);
+	kfree(edid);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(drm_do_get_edid);
@@ -4104,6 +4107,9 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
 
 	if (quirks & EDID_QUIRK_FORCE_8BPC)
 		connector->display_info.bpc = 8;
+
+	if (quirks & EDID_QUIRK_FORCE_10BPC)
+		connector->display_info.bpc = 10;
 
 	if (quirks & EDID_QUIRK_FORCE_12BPC)
 		connector->display_info.bpc = 12;

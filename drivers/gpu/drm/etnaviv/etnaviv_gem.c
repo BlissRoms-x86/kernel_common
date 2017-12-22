@@ -409,20 +409,16 @@ int etnaviv_gem_cpu_prep(struct drm_gem_object *obj, u32 op,
 	struct etnaviv_gem_object *etnaviv_obj = to_etnaviv_bo(obj);
 	struct drm_device *dev = obj->dev;
 	bool write = !!(op & ETNA_PREP_WRITE);
-	int ret;
+	unsigned long remain =
+		op & ETNA_PREP_NOSYNC ? 0 : etnaviv_timeout_to_jiffies(timeout);
+	long lret;
 
-	if (op & ETNA_PREP_NOSYNC) {
-		if (!reservation_object_test_signaled_rcu(etnaviv_obj->resv,
-							  write))
-			return -EBUSY;
-	} else {
-		unsigned long remain = etnaviv_timeout_to_jiffies(timeout);
-
-		ret = reservation_object_wait_timeout_rcu(etnaviv_obj->resv,
-							  write, true, remain);
-		if (ret <= 0)
-			return ret == 0 ? -ETIMEDOUT : ret;
-	}
+	lret = reservation_object_wait_timeout_rcu(etnaviv_obj->resv,
+						   write, true, remain);
+	if (lret < 0)
+		return lret;
+	else if (lret == 0)
+		return remain == 0 ? -EBUSY : -ETIMEDOUT;
 
 	if (etnaviv_obj->flags & ETNA_BO_CACHED) {
 		if (!etnaviv_obj->sgt) {
@@ -549,12 +545,15 @@ static const struct etnaviv_gem_ops etnaviv_gem_shmem_ops = {
 void etnaviv_gem_free_object(struct drm_gem_object *obj)
 {
 	struct etnaviv_gem_object *etnaviv_obj = to_etnaviv_bo(obj);
+	struct etnaviv_drm_private *priv = obj->dev->dev_private;
 	struct etnaviv_vram_mapping *mapping, *tmp;
 
 	/* object should not be active */
 	WARN_ON(is_active(etnaviv_obj));
 
+	mutex_lock(&priv->gem_lock);
 	list_del(&etnaviv_obj->gem_node);
+	mutex_unlock(&priv->gem_lock);
 
 	list_for_each_entry_safe(mapping, tmp, &etnaviv_obj->vram_list,
 				 obj_node) {

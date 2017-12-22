@@ -142,6 +142,7 @@ struct dentry_operations {
 	int (*d_manage)(struct dentry *, bool);
 	struct dentry *(*d_real)(struct dentry *, const struct inode *,
 				 unsigned int);
+	void (*d_canonical_path)(const struct path *, struct path *);
 } ____cacheline_aligned;
 
 /*
@@ -590,5 +591,11 @@ static inline struct inode *d_real_inode(const struct dentry *dentry)
 	return d_backing_inode(d_real((struct dentry *) dentry, NULL, 0));
 }
 
+struct name_snapshot {
+	const char *name;
+	char inline_name[DNAME_INLINE_LEN];
+};
+void take_dentry_name_snapshot(struct name_snapshot *, struct dentry *);
+void release_dentry_name_snapshot(struct name_snapshot *);
 
 #endif	/* __LINUX_DCACHE_H */
