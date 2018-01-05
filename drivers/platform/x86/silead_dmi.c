@@ -150,6 +150,20 @@ static const struct silead_ts_dmi_data onda_v891w_data = {
 	.properties	= onda_v891w_props,
 };
 
+static const struct property_entry teclast_x3_plus_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1980),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1500),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl1680-teclast-x3-plus.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	{ }
+};
+
+static const struct silead_ts_dmi_data teclast_x3_plus_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= teclast_x3_plus_props,
+};
+
+
 static const struct dmi_system_id silead_ts_dmi_table[] = {
 	{
 		/* CUBE iwork8 Air */
@@ -249,6 +263,14 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "ONDA Tablet"),
 			DMI_MATCH(DMI_BIOS_VERSION, "ONDA.W89EBBN08"),
+		},
+	},
+	{
+		/* TECLAST X3 Plus */
+		.driver_data = (void *)&teclast_x3_plus_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "TECLAST"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "X3 Plus"),
 		},
 	},
 	{ },
