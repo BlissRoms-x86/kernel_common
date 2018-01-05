@@ -63,7 +63,7 @@
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/debugfs.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <uapi/sound/sof-ipc.h>
 #include "sof-priv.h"
 #include "ops.h"

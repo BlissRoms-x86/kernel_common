@@ -13,6 +13,7 @@ config SND_SOC_SOF_NOCODEC
 config SND_SOC_SOF
 	tristate "Sound Open Firmware Support"
 	default m
+	depends on SND_DMA_SGBUF
 	select SND_SOC_TOPOLOGY
 	select SND_SOC_COMPRESS
 	select SND_SOC_SOF_NOCODEC
