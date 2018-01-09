@@ -99,8 +99,96 @@ config SND_SST_ATOM_HIFI2_PLATFORM
 	  recommended option
 
 config SND_SOC_INTEL_SKYLAKE
-	tristate "SKL/BXT/KBL/GLK/CNL... Platforms"
+	tristate "All Skylake+ platforms"
 	depends on PCI && ACPI
+	select SND_SOC_INTEL_SKL
+	select SND_SOC_INTEL_BXT
+	select SND_SOC_INTEL_KBL
+	select SND_SOC_INTEL_GLK
+	select SND_SOC_INTEL_CNL
+	help
+	  This configuration is a backwards compatible shortcut to enable all
+	  SKL+ platform and machine drivers. Say n if you prefer to select
+	  which drivers will be enabled (e.g. to reduce the number of modules
+	  or for coexistence with SOF)
+
+if SND_SOC_INTEL_SKYLAKE=n
+
+menu "Skylake+ platform selection"
+
+config SND_SOC_INTEL_SKL_PLATFORM
+	tristate "SkyLake Platforms"
+	depends on SND_SOC_INTEL_SKYLAKE_PLATFORMS
+	depends on PCI && ACPI
+	select SND_SOC_INTEL_SKL
+	help
+	  If you have a Intel Skylake platform with the DSP enabled
+	  in the BIOS, then enable this option by saying Y or m.
+	  This is a recommended option
+
+config SND_SOC_INTEL_BXT_PLATFORM
+	tristate "Broxton/ApolloLake Platforms"
+	depends on PCI && ACPI
+	select SND_SOC_INTEL_BXT
+	help
+	  If you have a Intel Broxton/ApolloLake platform with the DSP enabled
+	  in the BIOS, then enable this option by saying Y or m.
+	  This is a recommended option
+
+config SND_SOC_INTEL_KBL_PLATFORM
+	tristate "KabyLake/CoffeeLake Platforms"
+	depends on PCI && ACPI
+	select SND_SOC_INTEL_KBL
+	help
+	  If you have a Intel KabyLake/CoffeeLake platform with the DSP enabled
+	  in the BIOS, then enable this option by saying Y or m.
+	  This is a recommended option
+
+config SND_SOC_INTEL_GLK_PLATFORM
+	tristate "GeminiLake Platforms"
+	depends on PCI && ACPI
+	select SND_SOC_INTEL_GLK
+	help
+	  If you have a Intel GeminiLake platform with the DSP enabled
+	  in the BIOS, then enable this option by saying Y or m.
+	  This is a recommended option
+
+config SND_SOC_INTEL_CNL_PLATFORM
+	tristate "CannonLake Platforms"
+	depends on PCI && ACPI
+	select SND_SOC_INTEL_CNL
+	help
+	  If you have a Intel CannonLake platform with the DSP enabled
+	  in the BIOS, then enable this option by saying Y or m.
+	  This is a recommended option
+
+endmenu
+
+endif ## !SND_SOC_INTEL_SKYLAKE
+
+config SND_SOC_INTEL_SKL
+	tristate
+	select SND_SOC_INTEL_SKYLAKE_GENERIC
+
+config SND_SOC_INTEL_BXT
+	tristate
+	select SND_SOC_INTEL_SKYLAKE_GENERIC
+
+config SND_SOC_INTEL_KBL
+	tristate
+	select SND_SOC_INTEL_SKYLAKE_GENERIC
+
+config SND_SOC_INTEL_GLK
+	tristate
+	select SND_SOC_INTEL_SKYLAKE_GENERIC
+
+config SND_SOC_INTEL_CNL
+	tristate
+	select SND_SOC_INTEL_SKYLAKE_GENERIC
+
+
+config SND_SOC_INTEL_SKYLAKE_GENERIC
+	tristate
 	select SND_HDA_EXT_CORE
 	select SND_HDA_DSP_LOADER
 	select SND_SOC_TOPOLOGY
