@@ -30,10 +30,12 @@ config SND_SOC_SOF_INTEL
           Say Y if you have such a device.
           If unsure select "N".
 
+if SND_SOC_SOF_INTEL
+
 config SND_SOC_SOF_BAYTRAIL
 	tristate "SOF support for Baytrail, Braswell and Cherrytrail"
-	depends on SND_SOC_SOF_INTEL
 	select SND_SOC_SOF_ACPI
+	select SND_SOC_ACPI_INTEL_MATCH
 	help
           This adds support for Sound Open Firmware for Intel(R) platforms
           using the Baytrail, Braswell or Cherrytrail processors.
@@ -42,8 +44,8 @@ config SND_SOC_SOF_BAYTRAIL
 
 config SND_SOC_SOF_HASWELL
 	tristate "SOF support for Haswell"
-	depends on SND_SOC_SOF_INTEL
 	select SND_SOC_SOF_ACPI
+	select SND_SOC_ACPI_INTEL_MATCH
 	help
           This adds support for Sound Open Firmware for Intel(R) platforms
           using the Haswell processors.
@@ -54,6 +56,7 @@ config SND_SOC_SOF_BROADWELL
 	tristate "SOF support for Broadwell"
 	depends on SND_SOC_SOF_INTEL
 	select SND_SOC_SOF_ACPI
+	select SND_SOC_ACPI_INTEL_MATCH
 	help
           This adds support for Sound Open Firmware for Intel(R) platforms
           using the Broadwell processors.
@@ -62,10 +65,12 @@ config SND_SOC_SOF_BROADWELL
 
 config SND_SOC_SOF_APOLLOLAKE
 	tristate "SOF support for Apollolake"
-	depends on SND_SOC_SOF_INTEL
 	select SND_SOC_SOF_PCI
+	select SND_SOC_ACPI_INTEL_MATCH
 	help
           This adds support for Sound Open Firmware for Intel(R) platforms
           using the Apollolake processors.
           Say Y if you have such a device.
           If unsure select "N".
+
+endif ## SND_SOC_SOF_INTEL
