@@ -35,6 +35,7 @@
 #include <asm/traps.h>
 #include <asm/cputype.h>
 #include <asm/system_misc.h>
+#include <asm/uaccess.h>
 
 /* Breakpoint currently in use for each BRP. */
 static DEFINE_PER_CPU(struct perf_event *, bp_on_reg[ARM_MAX_BRP]);
@@ -752,6 +753,28 @@ static int watchpoint_handler(unsigned long addr, unsigned int esr,
 		wp = slots[i];
 		if (wp == NULL)
 			continue;
+
+		info = counter_arch_bp(wp);
+		/* AArch32 watchpoints are either 4 or 8 bytes aligned. */
+		if (is_compat_task()) {
+			if (info->ctrl.len == ARM_BREAKPOINT_LEN_8)
+				alignment_mask = 0x7;
+			else
+				alignment_mask = 0x3;
+		} else {
+			alignment_mask = 0x7;
+		}
+
+		/* Check if the watchpoint value matches. */
+		val = read_wb_reg(AARCH64_DBG_REG_WVR, i);
+		if (val != (untagged_addr(addr) & ~alignment_mask))
+			goto unlock;
+
+		/* Possible match, check the byte address select to confirm. */
+		ctrl_reg = read_wb_reg(AARCH64_DBG_REG_WCR, i);
+		decode_ctrl_reg(ctrl_reg, &ctrl);
+		if (!((1 << (addr & alignment_mask)) & ctrl.len))
+			goto unlock;
 
 		/*
 		 * Check that the access type matches.

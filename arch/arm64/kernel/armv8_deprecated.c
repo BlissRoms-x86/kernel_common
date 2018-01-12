@@ -299,9 +299,9 @@ do {								\
 	_ASM_EXTABLE(0b, 4b)					\
 	_ASM_EXTABLE(1b, 4b)					\
 	: "=&r" (res), "+r" (data), "=&r" (temp)		\
-	: "r" (addr), "i" (-EAGAIN), "i" (-EFAULT)		\
-	: "memory");						\
-	uaccess_disable();					\
+	: "r" ((unsigned long)addr), "i" (-EAGAIN),		\
+	  "i" (-EFAULT)						\
+	: "memory")
 } while (0)
 
 #define __user_swp_asm(data, addr, res, temp) \
