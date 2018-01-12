@@ -375,9 +375,9 @@ acpi_ds_resolve_package_element(union acpi_operand_object **element_ptr)
 				ACPI_NS_SEARCH_PARENT | ACPI_NS_DONT_OPEN_SCOPE,
 				NULL, &resolved_node);
 	if (ACPI_FAILURE(status)) {
-		status = acpi_ns_externalize_name(ACPI_UINT32_MAX,
-						  (char *)element->reference.
-						  aml, NULL, &external_path);
+		acpi_ns_externalize_name(ACPI_UINT32_MAX,
+					 (char *)element->reference.aml, NULL,
+					 &external_path);
 
 		ACPI_EXCEPTION((AE_INFO, status,
 				"Could not find/resolve named package element: %s",
