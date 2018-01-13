@@ -249,13 +249,13 @@ static void scm_request_requeue(struct scm_request *scmrq)
 static void scm_request_finish(struct scm_request *scmrq)
 {
 	struct scm_blk_dev *bdev = scmrq->bdev;
+	blk_status_t *error;
 	int i;
 
 	for (i = 0; i < nr_requests_per_io && scmrq->request[i]; i++) {
-		if (scmrq->error)
-			blk_mq_end_request(scmrq->request[i], scmrq->error);
-		else
-			blk_mq_complete_request(scmrq->request[i]);
+		error = blk_mq_rq_to_pdu(scmrq->request[i]);
+		*error = scmrq->error;
+		blk_mq_complete_request(scmrq->request[i]);
 	}
 
 	atomic_dec(&bdev->queued_reqs);
@@ -278,7 +278,7 @@ struct scm_queue {
 	spinlock_t lock;
 };
 
-static int scm_blk_request(struct blk_mq_hw_ctx *hctx,
+static blk_status_t scm_blk_request(struct blk_mq_hw_ctx *hctx,
 			   const struct blk_mq_queue_data *qd)
 {
 	struct scm_device *scmdev = hctx->queue->queuedata;
@@ -290,7 +290,7 @@ static int scm_blk_request(struct blk_mq_hw_ctx *hctx,
 	spin_lock(&sq->lock);
 	if (!scm_permit_request(bdev, req)) {
 		spin_unlock(&sq->lock);
-		return BLK_MQ_RQ_QUEUE_BUSY;
+		return BLK_STS_RESOURCE;
 	}
 
 	scmrq = sq->scmrq;
@@ -299,7 +299,7 @@ static int scm_blk_request(struct blk_mq_hw_ctx *hctx,
 		if (!scmrq) {
 			SCM_LOG(5, "no request");
 			spin_unlock(&sq->lock);
-			return BLK_MQ_RQ_QUEUE_BUSY;
+			return BLK_STS_RESOURCE;
 		}
 		scm_request_init(bdev, scmrq);
 		sq->scmrq = scmrq;
@@ -315,7 +315,7 @@ static int scm_blk_request(struct blk_mq_hw_ctx *hctx,
 
 		sq->scmrq = NULL;
 		spin_unlock(&sq->lock);
-		return BLK_MQ_RQ_QUEUE_BUSY;
+		return BLK_STS_RESOURCE;
 	}
 	blk_mq_start_request(req);
 
@@ -324,7 +324,7 @@ static int scm_blk_request(struct blk_mq_hw_ctx *hctx,
 		sq->scmrq = NULL;
 	}
 	spin_unlock(&sq->lock);
-	return BLK_MQ_RQ_QUEUE_OK;
+	return BLK_STS_OK;
 }
 
 static int scm_blk_init_hctx(struct blk_mq_hw_ctx *hctx, void *data,
@@ -415,7 +415,9 @@ void scm_blk_irq(struct scm_device *scmdev, void *data, blk_status_t error)
 
 static void scm_blk_request_done(struct request *req)
 {
-	blk_mq_end_request(req, 0);
+	blk_status_t *error = blk_mq_rq_to_pdu(req);
+
+	blk_mq_end_request(req, *error);
 }
 
 static const struct block_device_operations scm_blk_devops = {
@@ -448,6 +450,7 @@ int scm_blk_dev_setup(struct scm_blk_dev *bdev, struct scm_device *scmdev)
 	atomic_set(&bdev->queued_reqs, 0);
 
 	bdev->tag_set.ops = &scm_mq_ops;
+	bdev->tag_set.cmd_size = sizeof(blk_status_t);
 	bdev->tag_set.nr_hw_queues = nr_requests;
 	bdev->tag_set.queue_depth = nr_requests_per_io * nr_requests;
 	bdev->tag_set.flags = BLK_MQ_F_SHOULD_MERGE;

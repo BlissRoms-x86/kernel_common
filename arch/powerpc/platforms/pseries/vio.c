@@ -519,7 +519,7 @@ static dma_addr_t vio_dma_iommu_map_page(struct device *dev, struct page *page,
 {
 	struct vio_dev *viodev = to_vio_dev(dev);
 	struct iommu_table *tbl;
-	dma_addr_t ret = DMA_ERROR_CODE;
+	dma_addr_t ret = IOMMU_MAPPING_ERROR;
 
 	tbl = get_iommu_table_base(dev);
 	if (vio_cmo_alloc(viodev, roundup(size, IOMMU_PAGE_SIZE(tbl)))) {
@@ -625,6 +625,7 @@ static const struct dma_map_ops vio_dma_mapping_ops = {
 	.unmap_page        = vio_dma_iommu_unmap_page,
 	.dma_supported     = vio_dma_iommu_dma_supported,
 	.get_required_mask = vio_dma_get_required_mask,
+	.mapping_error	   = dma_iommu_mapping_error,
 };
 
 /**
@@ -1356,14 +1357,14 @@ struct vio_dev *vio_register_device_node(struct device_node *of_node)
 	 */
 	parent_node = of_get_parent(of_node);
 	if (parent_node) {
-		if (!strcmp(parent_node->full_name, "/ibm,platform-facilities"))
+		if (!strcmp(parent_node->type, "ibm,platform-facilities"))
 			family = PFO;
-		else if (!strcmp(parent_node->full_name, "/vdevice"))
+		else if (!strcmp(parent_node->type, "vdevice"))
 			family = VDEVICE;
 		else {
-			pr_warn("%s: parent(%s) of %s not recognized.\n",
+			pr_warn("%s: parent(%pOF) of %s not recognized.\n",
 					__func__,
-					parent_node->full_name,
+					parent_node,
 					of_node_name);
 			of_node_put(parent_node);
 			return NULL;
@@ -1554,7 +1555,7 @@ static ssize_t devspec_show(struct device *dev,
 {
 	struct device_node *of_node = dev->of_node;
 
-	return sprintf(buf, "%s\n", of_node_full_name(of_node));
+	return sprintf(buf, "%pOF\n", of_node);
 }
 static DEVICE_ATTR_RO(devspec);
 

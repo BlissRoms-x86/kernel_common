@@ -301,7 +301,7 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
 	struct page *pages;
 
-	pages = alloc_pages(gfp_mask, order);
+	pages = alloc_pages(gfp_mask & ~__GFP_ZERO, order);
 	if (pages) {
 		unsigned int count, i;
 
@@ -310,6 +310,13 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask, unsigned int order)
 		count = 1 << order;
 		for (i = 0; i < count; i++)
 			SetPageReserved(pages + i);
+
+		arch_kexec_post_alloc_pages(page_address(pages), count,
+					    gfp_mask);
+
+		if (gfp_mask & __GFP_ZERO)
+			for (i = 0; i < count; i++)
+				clear_highpage(pages + i);
 	}
 
 	return pages;
@@ -321,6 +328,9 @@ static void kimage_free_pages(struct page *page)
 
 	order = page_private(page);
 	count = 1 << order;
+
+	arch_kexec_pre_free_pages(page_address(page), count);
+
 	for (i = 0; i < count; i++)
 		ClearPageReserved(page + i);
 	__free_pages(page, order);
@@ -482,6 +492,40 @@ struct page *kimage_alloc_control_pages(struct kimage *image,
 	return pages;
 }
 
+int kimage_crash_copy_vmcoreinfo(struct kimage *image)
+{
+	struct page *vmcoreinfo_page;
+	void *safecopy;
+
+	if (image->type != KEXEC_TYPE_CRASH)
+		return 0;
+
+	/*
+	 * For kdump, allocate one vmcoreinfo safe copy from the
+	 * crash memory. as we have arch_kexec_protect_crashkres()
+	 * after kexec syscall, we naturally protect it from write
+	 * (even read) access under kernel direct mapping. But on
+	 * the other hand, we still need to operate it when crash
+	 * happens to generate vmcoreinfo note, hereby we rely on
+	 * vmap for this purpose.
+	 */
+	vmcoreinfo_page = kimage_alloc_control_pages(image, 0);
+	if (!vmcoreinfo_page) {
+		pr_warn("Could not allocate vmcoreinfo buffer\n");
+		return -ENOMEM;
+	}
+	safecopy = vmap(&vmcoreinfo_page, 1, VM_MAP, PAGE_KERNEL);
+	if (!safecopy) {
+		pr_warn("Could not vmap vmcoreinfo buffer\n");
+		return -ENOMEM;
+	}
+
+	image->vmcoreinfo_data_copy = safecopy;
+	crash_update_vmcoreinfo_safecopy(safecopy);
+
+	return 0;
+}
+
 static int kimage_add_entry(struct kimage *image, kimage_entry_t entry)
 {
 	if (*image->entry != 0)
@@ -568,6 +612,11 @@ void kimage_free(struct kimage *image)
 
 	if (!image)
 		return;
+
+	if (image->vmcoreinfo_data_copy) {
+		crash_update_vmcoreinfo_safecopy(NULL);
+		vunmap(image->vmcoreinfo_data_copy);
+	}
 
 	kimage_free_extra_pages(image);
 	for_each_kimage_entry(image, ptr, entry) {

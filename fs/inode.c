@@ -353,7 +353,7 @@ void address_space_init_once(struct address_space *mapping)
 	init_rwsem(&mapping->i_mmap_rwsem);
 	INIT_LIST_HEAD(&mapping->private_list);
 	spin_lock_init(&mapping->private_lock);
-	mapping->i_mmap = RB_ROOT;
+	mapping->i_mmap = RB_ROOT_CACHED;
 }
 EXPORT_SYMBOL(address_space_init_once);
 
@@ -637,6 +637,7 @@ again:
 
 	dispose_list(&dispose);
 }
+EXPORT_SYMBOL_GPL(evict_inodes);
 
 /**
  * invalidate_inodes	- attempt to free all inodes on a superblock
@@ -1569,11 +1570,24 @@ EXPORT_SYMBOL(bmap);
 static void update_ovl_inode_times(struct dentry *dentry, struct inode *inode,
 			       bool rcu)
 {
-	if (!rcu) {
-		struct inode *realinode = d_real_inode(dentry);
+	struct dentry *upperdentry;
 
-		if (unlikely(inode != realinode) &&
-		    (!timespec_equal(&inode->i_mtime, &realinode->i_mtime) ||
+	/*
+	 * Nothing to do if in rcu or if non-overlayfs
+	 */
+	if (rcu || likely(!(dentry->d_flags & DCACHE_OP_REAL)))
+		return;
+
+	upperdentry = d_real(dentry, NULL, 0, D_REAL_UPPER);
+
+	/*
+	 * If file is on lower then we can't update atime, so no worries about
+	 * stale mtime/ctime.
+	 */
+	if (upperdentry) {
+		struct inode *realinode = d_inode(upperdentry);
+
+		if ((!timespec_equal(&inode->i_mtime, &realinode->i_mtime) ||
 		     !timespec_equal(&inode->i_ctime, &realinode->i_ctime))) {
 			inode->i_mtime = realinode->i_mtime;
 			inode->i_ctime = realinode->i_ctime;
@@ -1915,8 +1929,6 @@ __setup("ihash_entries=", set_ihash_entries);
  */
 void __init inode_init_early(void)
 {
-	unsigned int loop;
-
 	/* If hashes are distributed across NUMA nodes, defer
 	 * hash allocation until vmalloc space is available.
 	 */
@@ -1928,20 +1940,15 @@ void __init inode_init_early(void)
 					sizeof(struct hlist_head),
 					ihash_entries,
 					14,
-					HASH_EARLY,
+					HASH_EARLY | HASH_ZERO,
 					&i_hash_shift,
 					&i_hash_mask,
 					0,
 					0);
-
-	for (loop = 0; loop < (1U << i_hash_shift); loop++)
-		INIT_HLIST_HEAD(&inode_hashtable[loop]);
 }
 
 void __init inode_init(void)
 {
-	unsigned int loop;
-
 	/* inode slab cache */
 	inode_cachep = kmem_cache_create("inode_cache",
 					 sizeof(struct inode),
@@ -1959,14 +1966,11 @@ void __init inode_init(void)
 					sizeof(struct hlist_head),
 					ihash_entries,
 					14,
-					0,
+					HASH_ZERO,
 					&i_hash_shift,
 					&i_hash_mask,
 					0,
 					0);
-
-	for (loop = 0; loop < (1U << i_hash_shift); loop++)
-		INIT_HLIST_HEAD(&inode_hashtable[loop]);
 }
 
 void init_special_inode(struct inode *inode, umode_t mode, dev_t rdev)
@@ -2024,7 +2028,7 @@ bool inode_owner_or_capable(const struct inode *inode)
 		return true;
 
 	ns = current_user_ns();
-	if (ns_capable(ns, CAP_FOWNER) && kuid_has_mapping(ns, inode->i_uid))
+	if (kuid_has_mapping(ns, inode->i_uid) && ns_capable(ns, CAP_FOWNER))
 		return true;
 	return false;
 }

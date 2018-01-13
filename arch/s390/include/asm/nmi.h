@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *   Machine check handler definitions
  *
@@ -25,6 +26,12 @@
 #define MCCK_CODE_CPU_TIMER_VALID	_BITUL(63 - 46)
 #define MCCK_CODE_PSW_MWP_VALID		_BITUL(63 - 20)
 #define MCCK_CODE_PSW_IA_VALID		_BITUL(63 - 23)
+
+#define MCCK_CR14_CR_PENDING_SUB_MASK	(1 << 28)
+#define MCCK_CR14_RECOVERY_SUB_MASK	(1 << 27)
+#define MCCK_CR14_DEGRAD_SUB_MASK	(1 << 26)
+#define MCCK_CR14_EXT_DAMAGE_SUB_MASK	(1 << 25)
+#define MCCK_CR14_WARN_SUB_MASK		(1 << 24)
 
 #ifndef __ASSEMBLY__
 
@@ -66,7 +73,7 @@ union mci {
 		u64 ar :  1; /* 33 access register validity */
 		u64 da :  1; /* 34 delayed access exception */
 		u64    :  1; /* 35 */
-		u64 gs :  1; /* 36 guarded storage registers */
+		u64 gs :  1; /* 36 guarded storage registers validity */
 		u64    :  5; /* 37-41 */
 		u64 pr :  1; /* 42 tod programmable register validity */
 		u64 fc :  1; /* 43 fp control register validity */

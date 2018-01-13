@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef BLK_INTERNAL_H
 #define BLK_INTERNAL_H
 
@@ -64,7 +65,6 @@ void blk_rq_bio_prep(struct request_queue *q, struct request *rq,
 			struct bio *bio);
 void blk_queue_bypass_start(struct request_queue *q);
 void blk_queue_bypass_end(struct request_queue *q);
-void blk_dequeue_request(struct request *rq);
 void __blk_queue_free_tags(struct request_queue *q);
 void blk_freeze_queue(struct request_queue *q);
 
@@ -81,9 +81,20 @@ static inline void blk_queue_enter_live(struct request_queue *q)
 
 #ifdef CONFIG_BLK_DEV_INTEGRITY
 void blk_flush_integrity(void);
+bool __bio_integrity_endio(struct bio *);
+static inline bool bio_integrity_endio(struct bio *bio)
+{
+	if (bio_integrity(bio))
+		return __bio_integrity_endio(bio);
+	return true;
+}
 #else
 static inline void blk_flush_integrity(void)
 {
+}
+static inline bool bio_integrity_endio(struct bio *bio)
+{
+	return true;
 }
 #endif
 
@@ -192,6 +203,8 @@ static inline void elv_deactivate_rq(struct request_queue *q, struct request *rq
 	if (e->type->ops.sq.elevator_deactivate_req_fn)
 		e->type->ops.sq.elevator_deactivate_req_fn(q, rq);
 }
+
+struct hd_struct *__disk_get_part(struct gendisk *disk, int partno);
 
 #ifdef CONFIG_FAIL_IO_TIMEOUT
 int blk_should_fake_timeout(struct request_queue *);

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PARISC_UACCESS_H
 #define __PARISC_UACCESS_H
 
@@ -6,7 +7,6 @@
  */
 #include <asm/page.h>
 #include <asm/cache.h>
-#include <asm-generic/uaccess-unaligned.h>
 
 #include <linux/bug.h>
 #include <linux/string.h>
@@ -209,7 +209,6 @@ extern long lstrnlen_user(const char __user *, long);
 #define user_addr_max() (~0UL)
 
 #define strnlen_user lstrnlen_user
-#define strlen_user(str) lstrnlen_user(str, 0x7fffffffL)
 #define clear_user lclear_user
 #define __clear_user lclear_user
 

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0+ WITH Linux-syscall-note */
 /*
  * Copyright 1999-2000 Jeremy Fitzhardinge <jeremy@goop.org>
  *
@@ -108,7 +109,7 @@ enum autofs_notify {
 /* v4 multi expire (via pipe) */
 struct autofs_packet_expire_multi {
 	struct autofs_packet_hdr hdr;
-	autofs_wqt_t wait_queue_entry_token;
+	autofs_wqt_t wait_queue_token;
 	int len;
 	char name[NAME_MAX+1];
 };
@@ -123,7 +124,7 @@ union autofs_packet_union {
 /* autofs v5 common packet struct */
 struct autofs_v5_packet {
 	struct autofs_packet_hdr hdr;
-	autofs_wqt_t wait_queue_entry_token;
+	autofs_wqt_t wait_queue_token;
 	__u32 dev;
 	__u64 ino;
 	__u32 uid;
@@ -155,8 +156,6 @@ enum {
 };
 
 #define AUTOFS_IOC_EXPIRE_MULTI    _IOW(AUTOFS_IOCTL, AUTOFS_IOC_EXPIRE_MULTI_CMD, int)
-#define AUTOFS_IOC_EXPIRE_INDIRECT AUTOFS_IOC_EXPIRE_MULTI
-#define AUTOFS_IOC_EXPIRE_DIRECT   AUTOFS_IOC_EXPIRE_MULTI
 #define AUTOFS_IOC_PROTOSUBVER     _IOR(AUTOFS_IOCTL, AUTOFS_IOC_PROTOSUBVER_CMD, int)
 #define AUTOFS_IOC_ASKUMOUNT       _IOR(AUTOFS_IOCTL, AUTOFS_IOC_ASKUMOUNT_CMD, int)
 
