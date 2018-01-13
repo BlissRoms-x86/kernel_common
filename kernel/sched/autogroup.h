@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifdef CONFIG_SCHED_AUTOGROUP
 
 #include <linux/kref.h>
@@ -55,11 +56,9 @@ autogroup_task_group(struct task_struct *p, struct task_group *tg)
 	return tg;
 }
 
-#ifdef CONFIG_SCHED_DEBUG
 static inline int autogroup_path(struct task_group *tg, char *buf, int buflen)
 {
 	return 0;
 }
-#endif
 
 #endif /* CONFIG_SCHED_AUTOGROUP */

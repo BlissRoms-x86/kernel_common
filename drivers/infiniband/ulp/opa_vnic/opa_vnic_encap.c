@@ -139,6 +139,7 @@ void opa_vnic_release_mac_tbl(struct opa_vnic_adapter *adapter)
 	rcu_assign_pointer(adapter->mactbl, NULL);
 	synchronize_rcu();
 	opa_vnic_free_mac_tbl(mactbl);
+	adapter->info.vport.mac_tbl_digest = 0;
 	mutex_unlock(&adapter->mactbl_lock);
 }
 
@@ -460,7 +461,7 @@ void opa_vnic_encap_skb(struct opa_vnic_adapter *adapter, struct sk_buff *skb)
 	sc = opa_vnic_get_sc(info, skb);
 	l4_hdr = info->vesw.vesw_id;
 
-	mdata = (struct opa_vnic_skb_mdata *)skb_push(skb, sizeof(*mdata));
+	mdata = skb_push(skb, sizeof(*mdata));
 	mdata->vl = opa_vnic_get_vl(adapter, skb);
 	mdata->entropy = entropy;
 	mdata->flags = 0;

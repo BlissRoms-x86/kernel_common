@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_MMAN_H
 #define _LINUX_MMAN_H
 
@@ -22,7 +23,7 @@ unsigned long vm_memory_committed(void);
 
 static inline void vm_acct_memory(long pages)
 {
-	__percpu_counter_add(&vm_committed_as, pages, vm_committed_as_batch);
+	percpu_counter_add_batch(&vm_committed_as, pages, vm_committed_as_batch);
 }
 
 static inline void vm_unacct_memory(long pages)
@@ -63,8 +64,9 @@ static inline bool arch_validate_prot(unsigned long prot)
  * ("bit1" and "bit2" must be single bits)
  */
 #define _calc_vm_trans(x, bit1, bit2) \
+  ((!(bit1) || !(bit2)) ? 0 : \
   ((bit1) <= (bit2) ? ((x) & (bit1)) * ((bit2) / (bit1)) \
-   : ((x) & (bit1)) / ((bit1) / (bit2)))
+   : ((x) & (bit1)) / ((bit1) / (bit2))))
 
 /*
  * Combine the mmap "prot" argument into "vm_flags" used internally.

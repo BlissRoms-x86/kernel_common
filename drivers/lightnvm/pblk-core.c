@@ -193,7 +193,7 @@ void pblk_bio_free_pages(struct pblk *pblk, struct bio *bio, int off,
 	bio_advance(bio, off * PBLK_EXPOSED_PAGE_SIZE);
 	for (i = off; i < nr_pages + off; i++) {
 		bv = bio->bi_io_vec[i];
-		mempool_free(bv.bv_page, pblk->page_pool);
+		mempool_free(bv.bv_page, pblk->page_bio_pool);
 	}
 }
 
@@ -205,14 +205,14 @@ int pblk_bio_add_pages(struct pblk *pblk, struct bio *bio, gfp_t flags,
 	int i, ret;
 
 	for (i = 0; i < nr_pages; i++) {
-		page = mempool_alloc(pblk->page_pool, flags);
+		page = mempool_alloc(pblk->page_bio_pool, flags);
 		if (!page)
 			goto err;
 
 		ret = bio_add_pc_page(q, bio, page, PBLK_EXPOSED_PAGE_SIZE, 0);
 		if (ret != PBLK_EXPOSED_PAGE_SIZE) {
 			pr_err("pblk: could not add page to bio\n");
-			mempool_free(page, pblk->page_pool);
+			mempool_free(page, pblk->page_bio_pool);
 			goto err;
 		}
 	}
@@ -486,12 +486,14 @@ void pblk_dealloc_page(struct pblk *pblk, struct pblk_line *line, int nr_secs)
 	u64 addr;
 	int i;
 
+	spin_lock(&line->lock);
 	addr = find_next_zero_bit(line->map_bitmap,
 					pblk->lm.sec_per_line, line->cur_sec);
 	line->cur_sec = addr - nr_secs;
 
 	for (i = 0; i < nr_secs; i++, line->cur_sec--)
 		WARN_ON(!test_and_clear_bit(line->cur_sec, line->map_bitmap));
+	spin_unlock(&line->lock);
 }
 
 u64 __pblk_alloc_page(struct pblk *pblk, struct pblk_line *line, int nr_secs)
@@ -1670,13 +1672,10 @@ void pblk_line_run_ws(struct pblk *pblk, struct pblk_line *line, void *priv,
 	queue_work(wq, &line_ws->ws);
 }
 
-void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
-		  unsigned long *lun_bitmap)
+static void __pblk_down_page(struct pblk *pblk, struct ppa_addr *ppa_list,
+			     int nr_ppas, int pos)
 {
-	struct nvm_tgt_dev *dev = pblk->dev;
-	struct nvm_geo *geo = &dev->geo;
-	struct pblk_lun *rlun;
-	int pos = pblk_ppa_to_pos(geo, ppa_list[0]);
+	struct pblk_lun *rlun = &pblk->luns[pos];
 	int ret;
 
 	/*
@@ -1690,14 +1689,8 @@ void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
 		WARN_ON(ppa_list[0].g.lun != ppa_list[i].g.lun ||
 				ppa_list[0].g.ch != ppa_list[i].g.ch);
 #endif
-	/* If the LUN has been locked for this same request, do no attempt to
-	 * lock it again
-	 */
-	if (test_and_set_bit(pos, lun_bitmap))
-		return;
 
-	rlun = &pblk->luns[pos];
-	ret = down_timeout(&rlun->wr_sem, msecs_to_jiffies(5000));
+	ret = down_timeout(&rlun->wr_sem, msecs_to_jiffies(30000));
 	if (ret) {
 		switch (ret) {
 		case -ETIME:
@@ -1708,6 +1701,50 @@ void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
 			break;
 		}
 	}
+}
+
+void pblk_down_page(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas)
+{
+	struct nvm_tgt_dev *dev = pblk->dev;
+	struct nvm_geo *geo = &dev->geo;
+	int pos = pblk_ppa_to_pos(geo, ppa_list[0]);
+
+	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
+}
+
+void pblk_down_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,
+		  unsigned long *lun_bitmap)
+{
+	struct nvm_tgt_dev *dev = pblk->dev;
+	struct nvm_geo *geo = &dev->geo;
+	int pos = pblk_ppa_to_pos(geo, ppa_list[0]);
+
+	/* If the LUN has been locked for this same request, do no attempt to
+	 * lock it again
+	 */
+	if (test_and_set_bit(pos, lun_bitmap))
+		return;
+
+	__pblk_down_page(pblk, ppa_list, nr_ppas, pos);
+}
+
+void pblk_up_page(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas)
+{
+	struct nvm_tgt_dev *dev = pblk->dev;
+	struct nvm_geo *geo = &dev->geo;
+	struct pblk_lun *rlun;
+	int pos = pblk_ppa_to_pos(geo, ppa_list[0]);
+
+#ifdef CONFIG_NVM_DEBUG
+	int i;
+
+	for (i = 1; i < nr_ppas; i++)
+		WARN_ON(ppa_list[0].g.lun != ppa_list[i].g.lun ||
+				ppa_list[0].g.ch != ppa_list[i].g.ch);
+#endif
+
+	rlun = &pblk->luns[pos];
+	up(&rlun->wr_sem);
 }
 
 void pblk_up_rq(struct pblk *pblk, struct ppa_addr *ppa_list, int nr_ppas,

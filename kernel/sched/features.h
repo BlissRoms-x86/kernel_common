@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Only give sleepers 50% of their service deficit. This allows
  * them to run sooner, but does not allow tons of sleepers to
@@ -81,3 +82,34 @@ SCHED_FEAT(RT_RUNTIME_SHARE, true)
 SCHED_FEAT(LB_MIN, false)
 SCHED_FEAT(ATTACH_AGE_LOAD, true)
 
+SCHED_FEAT(WA_IDLE, true)
+SCHED_FEAT(WA_WEIGHT, true)
+SCHED_FEAT(WA_BIAS, true)
+
+/*
+ * Energy aware scheduling. Use platform energy model to guide scheduling
+ * decisions optimizing for energy efficiency.
+ */
+#ifdef CONFIG_DEFAULT_USE_ENERGY_AWARE
+SCHED_FEAT(ENERGY_AWARE, true)
+#else
+SCHED_FEAT(ENERGY_AWARE, false)
+#endif
+
+/*
+ * Energy aware scheduling algorithm choices:
+ * EAS_PREFER_IDLE
+ *   Direct tasks in a schedtune.prefer_idle=1 group through
+ *   the EAS path for wakeup task placement. Otherwise, put
+ *   those tasks through the mainline slow path.
+ * FIND_BEST_TARGET
+ *   Limit the number of placement options for which we calculate
+ *   energy by using heuristics to select 'best idle' and
+ *   'best active' cpu options.
+ * FBT_STRICT_ORDER
+ *   ON: If the target CPU saves any energy, use that.
+ *   OFF: Use whichever of target or backup saves most.
+ */
+SCHED_FEAT(EAS_PREFER_IDLE, true)
+SCHED_FEAT(FIND_BEST_TARGET, true)
+SCHED_FEAT(FBT_STRICT_ORDER, true)

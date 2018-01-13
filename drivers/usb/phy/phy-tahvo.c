@@ -326,7 +326,7 @@ static struct attribute *tahvo_attributes[] = {
 	NULL
 };
 
-static struct attribute_group tahvo_attr_group = {
+static const struct attribute_group tahvo_attr_group = {
 	.attrs = tahvo_attributes,
 };
 
@@ -368,7 +368,8 @@ static int tahvo_usb_probe(struct platform_device *pdev)
 	tu->extcon = devm_extcon_dev_allocate(&pdev->dev, tahvo_cable);
 	if (IS_ERR(tu->extcon)) {
 		dev_err(&pdev->dev, "failed to allocate memory for extcon\n");
-		return -ENOMEM;
+		ret = PTR_ERR(tu->extcon);
+		goto err_disable_clk;
 	}
 
 	ret = devm_extcon_dev_register(&pdev->dev, tu->extcon);

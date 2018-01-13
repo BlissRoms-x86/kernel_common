@@ -199,6 +199,10 @@ acpi_ns_walk_namespace(acpi_object_type type,
 
 	ACPI_FUNCTION_TRACE(ns_walk_namespace);
 
+	if (!acpi_gbl_root_node) {
+		return_ACPI_STATUS(AE_NO_NAMESPACE);
+	}
+
 	/* Special case for the namespace Root Node */
 
 	if (start_node == ACPI_ROOT_OBJECT) {

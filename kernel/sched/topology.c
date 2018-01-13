@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Scheduler topology setup/handling methods
  */
@@ -14,11 +15,9 @@ cpumask_var_t sched_domains_tmpmask2;
 
 #ifdef CONFIG_SCHED_DEBUG
 
-static __read_mostly int sched_debug_enabled;
-
 static int __init sched_debug_setup(char *str)
 {
-	sched_debug_enabled = 1;
+	sched_debug_enabled = true;
 
 	return 0;
 }
@@ -40,9 +39,6 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 
 	if (!(sd->flags & SD_LOAD_BALANCE)) {
 		printk("does not load-balance\n");
-		if (sd->parent)
-			printk(KERN_ERR "ERROR: !SD_LOAD_BALANCE domain"
-					" has parent");
 		return -1;
 	}
 
@@ -155,8 +151,12 @@ static inline bool sched_debug(void)
 
 static int sd_degenerate(struct sched_domain *sd)
 {
-	if (cpumask_weight(sched_domain_span(sd)) == 1)
-		return 1;
+	if (cpumask_weight(sched_domain_span(sd)) == 1) {
+		if (sd->groups->sge)
+			sd->flags &= ~SD_LOAD_BALANCE;
+		else
+			return 1;
+	}
 
 	/* Following flags need at least 2 groups */
 	if (sd->flags & (SD_LOAD_BALANCE |
@@ -166,7 +166,8 @@ static int sd_degenerate(struct sched_domain *sd)
 			 SD_SHARE_CPUCAPACITY |
 			 SD_ASYM_CPUCAPACITY |
 			 SD_SHARE_PKG_RESOURCES |
-			 SD_SHARE_POWERDOMAIN)) {
+			 SD_SHARE_POWERDOMAIN |
+			 SD_SHARE_CAP_STATES)) {
 		if (sd->groups != sd->groups->next)
 			return 0;
 	}
@@ -199,7 +200,12 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 				SD_SHARE_CPUCAPACITY |
 				SD_SHARE_PKG_RESOURCES |
 				SD_PREFER_SIBLING |
-				SD_SHARE_POWERDOMAIN);
+				SD_SHARE_POWERDOMAIN |
+				SD_SHARE_CAP_STATES);
+		if (parent->groups->sge) {
+			parent->flags &= ~SD_LOAD_BALANCE;
+			return 0;
+		}
 		if (nr_node_ids == 1)
 			pflags &= ~SD_SERIALIZE;
 	}
@@ -261,8 +267,6 @@ void rq_attach_root(struct rq *rq, struct root_domain *rd)
 
 static int init_rootdomain(struct root_domain *rd)
 {
-	memset(rd, 0, sizeof(*rd));
-
 	if (!zalloc_cpumask_var(&rd->span, GFP_KERNEL))
 		goto out;
 	if (!zalloc_cpumask_var(&rd->online, GFP_KERNEL))
@@ -272,12 +276,21 @@ static int init_rootdomain(struct root_domain *rd)
 	if (!zalloc_cpumask_var(&rd->rto_mask, GFP_KERNEL))
 		goto free_dlo_mask;
 
+#ifdef HAVE_RT_PUSH_IPI
+	rd->rto_cpu = -1;
+	raw_spin_lock_init(&rd->rto_lock);
+	init_irq_work(&rd->rto_push_work, rto_push_irq_work_func);
+#endif
+
 	init_dl_bw(&rd->dl_bw);
 	if (cpudl_init(&rd->cpudl) != 0)
 		goto free_rto_mask;
 
 	if (cpupri_init(&rd->cpupri) != 0)
 		goto free_cpudl;
+
+	rd->max_cap_orig_cpu = rd->min_cap_orig_cpu = -1;
+
 	return 0;
 
 free_cpudl:
@@ -311,7 +324,7 @@ static struct root_domain *alloc_rootdomain(void)
 {
 	struct root_domain *rd;
 
-	rd = kmalloc(sizeof(*rd), GFP_KERNEL);
+	rd = kzalloc(sizeof(*rd), GFP_KERNEL);
 	if (!rd)
 		return NULL;
 
@@ -337,7 +350,8 @@ static void free_sched_groups(struct sched_group *sg, int free_sgc)
 		if (free_sgc && atomic_dec_and_test(&sg->sgc->ref))
 			kfree(sg->sgc);
 
-		kfree(sg);
+		if (atomic_dec_and_test(&sg->ref))
+			kfree(sg);
 		sg = tmp;
 	} while (sg != first);
 }
@@ -345,15 +359,12 @@ static void free_sched_groups(struct sched_group *sg, int free_sgc)
 static void destroy_sched_domain(struct sched_domain *sd)
 {
 	/*
-	 * If its an overlapping domain it has private groups, iterate and
-	 * nuke them all.
+	 * A normal sched domain may have multiple group references, an
+	 * overlapping domain, having private groups, only one.  Iterate,
+	 * dropping group/capacity references, freeing where none remain.
 	 */
-	if (sd->flags & SD_OVERLAP) {
-		free_sched_groups(sd->groups, 1);
-	} else if (atomic_dec_and_test(&sd->groups->ref)) {
-		kfree(sd->groups->sgc);
-		kfree(sd->groups);
-	}
+	free_sched_groups(sd->groups, 1);
+
 	if (sd->shared && atomic_dec_and_test(&sd->shared->ref))
 		kfree(sd->shared);
 	kfree(sd);
@@ -391,11 +402,14 @@ DEFINE_PER_CPU(int, sd_llc_id);
 DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DEFINE_PER_CPU(struct sched_domain *, sd_numa);
 DEFINE_PER_CPU(struct sched_domain *, sd_asym);
+DEFINE_PER_CPU(struct sched_domain *, sd_ea);
+DEFINE_PER_CPU(struct sched_domain *, sd_scs);
 
 static void update_top_cache_domain(int cpu)
 {
 	struct sched_domain_shared *sds = NULL;
 	struct sched_domain *sd;
+	struct sched_domain *ea_sd = NULL;
 	int id = cpu;
 	int size = 1;
 
@@ -416,6 +430,17 @@ static void update_top_cache_domain(int cpu)
 
 	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
 	rcu_assign_pointer(per_cpu(sd_asym, cpu), sd);
+
+	for_each_domain(cpu, sd) {
+		if (sd->groups->sge)
+			ea_sd = sd;
+		else
+			break;
+	}
+	rcu_assign_pointer(per_cpu(sd_ea, cpu), ea_sd);
+
+	sd = highest_flag_domain(cpu, SD_SHARE_CAP_STATES);
+	rcu_assign_pointer(per_cpu(sd_scs, cpu), sd);
 }
 
 /*
@@ -463,6 +488,7 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 	rq_attach_root(rq, rd);
 	tmp = rq->sd;
 	rcu_assign_pointer(rq->sd, sd);
+	dirty_sched_domain_sysctl(cpu);
 	destroy_sched_domains(tmp);
 
 	update_top_cache_domain(cpu);
@@ -476,7 +502,7 @@ static int __init isolated_cpu_setup(char *str)
 	alloc_bootmem_cpumask_var(&cpu_isolated_map);
 	ret = cpulist_parse(str, cpu_isolated_map);
 	if (ret) {
-		pr_err("sched: Error, all isolcpus= values must be between 0 and %d\n", nr_cpu_ids);
+		pr_err("sched: Error, all isolcpus= values must be between 0 and %u\n", nr_cpu_ids);
 		return 0;
 	}
 	return 1;
@@ -670,6 +696,7 @@ build_group_from_child_sched_domain(struct sched_domain *sd, int cpu)
 	else
 		cpumask_copy(sg_span, sched_domain_span(sd));
 
+	atomic_inc(&sg->ref);
 	return sg;
 }
 
@@ -698,6 +725,7 @@ static void init_overlap_sched_group(struct sched_domain *sd,
 	sg_span = sched_group_span(sg);
 	sg->sgc->capacity = SCHED_CAPACITY_SCALE * cpumask_weight(sg_span);
 	sg->sgc->min_capacity = SCHED_CAPACITY_SCALE;
+	sg->sgc->max_capacity = SCHED_CAPACITY_SCALE;
 }
 
 static int
@@ -946,6 +974,108 @@ next:
 	update_group_capacity(sd, cpu);
 }
 
+#define cap_state_power(s,i) (s->cap_states[i].power)
+#define cap_state_cap(s,i) (s->cap_states[i].cap)
+#define idle_state_power(s,i) (s->idle_states[i].power)
+
+static inline int sched_group_energy_equal(const struct sched_group_energy *a,
+		const struct sched_group_energy *b)
+{
+	int i;
+
+	/* check pointers first */
+	if (a == b)
+		return true;
+
+	/* check contents are equivalent */
+	if (a->nr_cap_states != b->nr_cap_states)
+		return false;
+	if (a->nr_idle_states != b->nr_idle_states)
+		return false;
+	for (i=0;i<a->nr_cap_states;i++){
+		if (cap_state_power(a,i) !=
+			cap_state_power(b,i))
+			return false;
+		if (cap_state_cap(a,i) !=
+			cap_state_cap(b,i))
+			return false;
+	}
+	for (i=0;i<a->nr_idle_states;i++){
+		if (idle_state_power(a,i) !=
+			idle_state_power(b,i))
+			return false;
+	}
+
+	return true;
+}
+
+#define energy_eff(e, n) \
+    ((e->cap_states[n].cap << SCHED_CAPACITY_SHIFT)/e->cap_states[n].power)
+
+static void init_sched_groups_energy(int cpu, struct sched_domain *sd,
+				     sched_domain_energy_f fn)
+{
+	struct sched_group *sg = sd->groups;
+	const struct sched_group_energy *sge;
+	int i;
+
+	if (!(fn && fn(cpu)))
+		return;
+
+	if (cpu != group_balance_cpu(sg))
+		return;
+
+	if (sd->flags & SD_OVERLAP) {
+		pr_err("BUG: EAS does not support overlapping sd spans\n");
+#ifdef CONFIG_SCHED_DEBUG
+		pr_err("     the %s domain has SD_OVERLAP set\n", sd->name);
+#endif
+		return;
+	}
+
+	if (sd->child && !sd->child->groups->sge) {
+		pr_err("BUG: EAS setup borken for CPU%d\n", cpu);
+#ifdef CONFIG_SCHED_DEBUG
+		pr_err("     energy data on %s but not on %s domain\n",
+			sd->name, sd->child->name);
+#endif
+		return;
+	}
+
+	sge = fn(cpu);
+
+	/*
+	 * Check that the per-cpu provided sd energy data is consistent for all
+	 * cpus within the mask.
+	 */
+	if (cpumask_weight(sched_group_span(sg)) > 1) {
+		struct cpumask mask;
+
+		cpumask_xor(&mask, sched_group_span(sg), get_cpu_mask(cpu));
+
+		for_each_cpu(i, &mask)
+			BUG_ON(!sched_group_energy_equal(sge,fn(i)));
+	}
+
+	/* Check that energy efficiency (capacity/power) is monotonically
+	 * decreasing in the capacity state vector with higher indexes
+	 */
+	for (i = 0; i < (sge->nr_cap_states - 1); i++) {
+		if (energy_eff(sge, i) > energy_eff(sge, i+1))
+			continue;
+#ifdef CONFIG_SCHED_DEBUG
+		pr_warn("WARN: cpu=%d, domain=%s: incr. energy eff %lu[%d]->%lu[%d]\n",
+			cpu, sd->name, energy_eff(sge, i), i,
+			energy_eff(sge, i+1), i+1);
+#else
+		pr_warn("WARN: cpu=%d: incr. energy eff %lu[%d]->%lu[%d]\n",
+			cpu, energy_eff(sge, i), i, energy_eff(sge, i+1), i+1);
+#endif
+	}
+
+	sd->groups->sge = fn(cpu);
+}
+
 /*
  * Initializers for schedule domains
  * Non-inlined to reduce accumulated stack pressure in build_sched_domains()
@@ -1065,6 +1195,7 @@ static int sched_domains_curr_level;
  *   SD_NUMA                - describes NUMA topologies
  *   SD_SHARE_POWERDOMAIN   - describes shared power domain
  *   SD_ASYM_CPUCAPACITY    - describes mixed capacity topologies
+ *   SD_SHARE_CAP_STATES    - describes shared capacity states
  *
  * Odd one out, which beside describing the topology has a quirk also
  * prescribes the desired behaviour that goes along with it:
@@ -1077,7 +1208,8 @@ static int sched_domains_curr_level;
 	 SD_NUMA |			\
 	 SD_ASYM_PACKING |		\
 	 SD_ASYM_CPUCAPACITY |		\
-	 SD_SHARE_POWERDOMAIN)
+	 SD_SHARE_POWERDOMAIN |		\
+	 SD_SHARE_CAP_STATES)
 
 static struct sched_domain *
 sd_init(struct sched_domain_topology_level *tl,
@@ -1186,15 +1318,11 @@ sd_init(struct sched_domain_topology_level *tl,
 		sd->idle_idx = 1;
 	}
 
-	/*
-	 * For all levels sharing cache; connect a sched_domain_shared
-	 * instance.
-	 */
-	if (sd->flags & SD_SHARE_PKG_RESOURCES) {
-		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
-		atomic_inc(&sd->shared->ref);
+	sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
+	atomic_inc(&sd->shared->ref);
+
+	if (sd->flags & SD_SHARE_PKG_RESOURCES)
 		atomic_set(&sd->shared->nr_busy_cpus, sd_weight);
-	}
 
 	sd->private = sdd;
 
@@ -1595,7 +1723,7 @@ static void __sdt_free(const struct cpumask *cpu_map)
 	}
 }
 
-struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
+static struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 		const struct cpumask *cpu_map, struct sched_domain_attr *attr,
 		struct sched_domain *child, int cpu)
 {
@@ -1653,8 +1781,6 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 				*per_cpu_ptr(d.sd, i) = sd;
 			if (tl->flags & SDTL_OVERLAP)
 				sd->flags |= SD_OVERLAP;
-			if (cpumask_equal(cpu_map, sched_domain_span(sd)))
-				break;
 		}
 	}
 
@@ -1674,10 +1800,13 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 
 	/* Calculate CPU capacity for physical packages and nodes */
 	for (i = nr_cpumask_bits-1; i >= 0; i--) {
+		struct sched_domain_topology_level *tl = sched_domain_topology;
+
 		if (!cpumask_test_cpu(i, cpu_map))
 			continue;
 
-		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent) {
+		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent, tl++) {
+			init_sched_groups_energy(i, sd, tl->energy);
 			claim_allocations(i, sd);
 			init_sched_groups_capacity(i, sd);
 		}
@@ -1686,12 +1815,23 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	/* Attach the domains */
 	rcu_read_lock();
 	for_each_cpu(i, cpu_map) {
+		int max_cpu = READ_ONCE(d.rd->max_cap_orig_cpu);
+		int min_cpu = READ_ONCE(d.rd->min_cap_orig_cpu);
+
 		rq = cpu_rq(i);
 		sd = *per_cpu_ptr(d.sd, i);
 
 		/* Use READ_ONCE()/WRITE_ONCE() to avoid load/store tearing: */
 		if (rq->cpu_capacity_orig > READ_ONCE(d.rd->max_cpu_capacity))
 			WRITE_ONCE(d.rd->max_cpu_capacity, rq->cpu_capacity_orig);
+
+		if ((max_cpu < 0) || (cpu_rq(i)->cpu_capacity_orig >
+		    cpu_rq(max_cpu)->cpu_capacity_orig))
+			WRITE_ONCE(d.rd->max_cap_orig_cpu, i);
+
+		if ((min_cpu < 0) || (cpu_rq(i)->cpu_capacity_orig <
+		    cpu_rq(min_cpu)->cpu_capacity_orig))
+			WRITE_ONCE(d.rd->min_cap_orig_cpu, i);
 
 		cpu_attach_domain(sd, d.rd, i);
 	}
@@ -1854,7 +1994,17 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 	/* Let the architecture update CPU core mappings: */
 	new_topology = arch_update_cpu_topology();
 
-	n = doms_new ? ndoms_new : 0;
+	if (!doms_new) {
+		WARN_ON_ONCE(dattr_new);
+		n = 0;
+		doms_new = alloc_sched_domains(1);
+		if (doms_new) {
+			n = 1;
+			cpumask_andnot(doms_new[0], cpu_active_mask, cpu_isolated_map);
+		}
+	} else {
+		n = ndoms_new;
+	}
 
 	/* Destroy deleted domains: */
 	for (i = 0; i < ndoms_cur; i++) {
@@ -1870,11 +2020,10 @@ match1:
 	}
 
 	n = ndoms_cur;
-	if (doms_new == NULL) {
+	if (!doms_new) {
 		n = 0;
 		doms_new = &fallback_doms;
 		cpumask_andnot(doms_new[0], cpu_active_mask, cpu_isolated_map);
-		WARN_ON_ONCE(dattr_new);
 	}
 
 	/* Build new domains: */

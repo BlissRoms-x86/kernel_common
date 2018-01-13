@@ -21,6 +21,7 @@
 #include <linux/swap.h>
 #include <linux/splice.h>
 #include <linux/sched.h>
+#include <linux/freezer.h>
 
 MODULE_ALIAS_MISCDEV(FUSE_MINOR);
 MODULE_ALIAS("devname:fuse");
@@ -454,7 +455,9 @@ static void request_wait_answer(struct fuse_conn *fc, struct fuse_req *req)
 	 * Either request is already in userspace, or it was forced.
 	 * Wait it out.
 	 */
-	wait_event(req->waitq, test_bit(FR_FINISHED, &req->flags));
+	while (!test_bit(FR_FINISHED, &req->flags))
+		wait_event_freezable(req->waitq,
+				test_bit(FR_FINISHED, &req->flags));
 }
 
 static void __fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
@@ -1222,9 +1225,6 @@ static ssize_t fuse_dev_do_read(struct fuse_dev *fud, struct file *file,
 	struct fuse_in *in;
 	unsigned reqsize;
 
-	if (task_active_pid_ns(current) != fc->pid_ns)
-		return -EIO;
-
  restart:
 	spin_lock(&fiq->waitq.lock);
 	err = -EAGAIN;
@@ -1262,6 +1262,13 @@ static ssize_t fuse_dev_do_read(struct fuse_dev *fud, struct file *file,
 
 	in = &req->in;
 	reqsize = in->h.len;
+
+	if (task_active_pid_ns(current) != fc->pid_ns) {
+		rcu_read_lock();
+		in->h.pid = pid_vnr(find_pid_ns(in->h.pid, fc->pid_ns));
+		rcu_read_unlock();
+	}
+
 	/* If request is too large, reply with an error and restart the read */
 	if (nbytes < reqsize) {
 		req->out.h.error = -EIO;
@@ -1822,9 +1829,6 @@ static ssize_t fuse_dev_do_write(struct fuse_dev *fud,
 	struct fuse_pqueue *fpq = &fud->pq;
 	struct fuse_req *req;
 	struct fuse_out_header oh;
-
-	if (task_active_pid_ns(current) != fc->pid_ns)
-		return -EIO;
 
 	if (nbytes < sizeof(struct fuse_out_header))
 		return -EINVAL;

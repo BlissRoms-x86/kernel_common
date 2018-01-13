@@ -21,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/sched.h>
 #include <linux/sched/topology.h>
+#include <linux/sched_energy.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 
@@ -45,7 +46,7 @@ static int __init get_cpu_for_node(struct device_node *node)
 		}
 	}
 
-	pr_crit("Unable to find CPU node for %s\n", cpu_node->full_name);
+	pr_crit("Unable to find CPU node for %pOF\n", cpu_node);
 
 	of_node_put(cpu_node);
 	return -1;
@@ -71,8 +72,8 @@ static int __init parse_core(struct device_node *core, int cluster_id,
 				cpu_topology[cpu].core_id = core_id;
 				cpu_topology[cpu].thread_id = i;
 			} else {
-				pr_err("%s: Can't get CPU for thread\n",
-				       t->full_name);
+				pr_err("%pOF: Can't get CPU for thread\n",
+				       t);
 				of_node_put(t);
 				return -EINVAL;
 			}
@@ -84,15 +85,15 @@ static int __init parse_core(struct device_node *core, int cluster_id,
 	cpu = get_cpu_for_node(core);
 	if (cpu >= 0) {
 		if (!leaf) {
-			pr_err("%s: Core has both threads and CPU\n",
-			       core->full_name);
+			pr_err("%pOF: Core has both threads and CPU\n",
+			       core);
 			return -EINVAL;
 		}
 
 		cpu_topology[cpu].cluster_id = cluster_id;
 		cpu_topology[cpu].core_id = core_id;
 	} else if (leaf) {
-		pr_err("%s: Can't get CPU for leaf core\n", core->full_name);
+		pr_err("%pOF: Can't get CPU for leaf core\n", core);
 		return -EINVAL;
 	}
 
@@ -137,8 +138,8 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 			has_cores = true;
 
 			if (depth == 0) {
-				pr_err("%s: cpu-map children should be clusters\n",
-				       c->full_name);
+				pr_err("%pOF: cpu-map children should be clusters\n",
+				       c);
 				of_node_put(c);
 				return -EINVAL;
 			}
@@ -146,8 +147,8 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 			if (leaf) {
 				ret = parse_core(c, cluster_id, core_id++);
 			} else {
-				pr_err("%s: Non-leaf cluster with core %s\n",
-				       cluster->full_name, name);
+				pr_err("%pOF: Non-leaf cluster with core %s\n",
+				       cluster, name);
 				ret = -EINVAL;
 			}
 
@@ -159,7 +160,7 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 	} while (c);
 
 	if (leaf && !has_cores)
-		pr_warn("%s: empty cluster\n", cluster->full_name);
+		pr_warn("%pOF: empty cluster\n", cluster);
 
 	if (leaf)
 		cluster_id++;
@@ -186,6 +187,8 @@ static int __init parse_dt_topology(void)
 	map = of_get_child_by_name(cn, "cpu-map");
 	if (!map)
 		goto out;
+
+	init_sched_energy_costs();
 
 	ret = parse_cluster(map, 0);
 	if (ret != 0)
@@ -280,7 +283,88 @@ void store_cpu_topology(unsigned int cpuid)
 
 topology_populated:
 	update_siblings_masks(cpuid);
+	topology_detect_flags();
 }
+
+#ifdef CONFIG_SCHED_SMT
+static int smt_flags(void)
+{
+	return cpu_smt_flags() | topology_smt_flags();
+}
+#endif
+
+#ifdef CONFIG_SCHED_MC
+static int core_flags(void)
+{
+	return cpu_core_flags() | topology_core_flags();
+}
+#endif
+
+static int cpu_flags(void)
+{
+	return topology_cpu_flags();
+}
+
+static inline
+const struct sched_group_energy * const cpu_core_energy(int cpu)
+{
+	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL0];
+	unsigned long capacity;
+	int max_cap_idx;
+
+	if (!sge) {
+		pr_warn("Invalid sched_group_energy for CPU%d\n", cpu);
+		return NULL;
+	}
+
+	max_cap_idx = sge->nr_cap_states - 1;
+	capacity = sge->cap_states[max_cap_idx].cap;
+
+	printk_deferred("cpu=%d set cpu scale %lu from energy model\n",
+			cpu, capacity);
+
+	topology_set_cpu_scale(cpu, capacity);
+
+	return sge;
+}
+
+static inline
+const struct sched_group_energy * const cpu_cluster_energy(int cpu)
+{
+	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL1];
+
+	if (!sge) {
+		pr_warn("Invalid sched_group_energy for Cluster%d\n", cpu);
+		return NULL;
+	}
+
+	return sge;
+}
+
+static inline
+const struct sched_group_energy * const cpu_system_energy(int cpu)
+{
+	struct sched_group_energy *sge = sge_array[cpu][SD_LEVEL2];
+
+	if (!sge) {
+		pr_warn("Invalid sched_group_energy for System%d\n", cpu);
+		return NULL;
+	}
+
+	return sge;
+}
+
+static struct sched_domain_topology_level arm64_topology[] = {
+#ifdef CONFIG_SCHED_SMT
+	{ cpu_smt_mask, smt_flags, SD_INIT_NAME(SMT) },
+#endif
+#ifdef CONFIG_SCHED_MC
+	{ cpu_coregroup_mask, core_flags, cpu_core_energy, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, cpu_flags, cpu_cluster_energy, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, NULL, cpu_system_energy, SD_INIT_NAME(SYS) },
+	{ NULL, }
+};
 
 static void __init reset_cpu_topology(void)
 {
@@ -310,4 +394,6 @@ void __init init_cpu_topology(void)
 	 */
 	if (of_have_populated_dt() && parse_dt_topology())
 		reset_cpu_topology();
+	else
+		set_sched_topology(arm64_topology);
 }

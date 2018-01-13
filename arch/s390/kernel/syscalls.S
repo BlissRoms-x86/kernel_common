@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * definitions for sys_call_table, each line represents an
  * entry in the table in the form
@@ -369,10 +370,10 @@ SYSCALL(sys_recvmmsg,compat_sys_recvmmsg)
 SYSCALL(sys_sendmmsg,compat_sys_sendmmsg)
 SYSCALL(sys_socket,sys_socket)
 SYSCALL(sys_socketpair,compat_sys_socketpair)		/* 360 */
-SYSCALL(sys_bind,sys_bind)
-SYSCALL(sys_connect,sys_connect)
+SYSCALL(sys_bind,compat_sys_bind)
+SYSCALL(sys_connect,compat_sys_connect)
 SYSCALL(sys_listen,sys_listen)
-SYSCALL(sys_accept4,sys_accept4)
+SYSCALL(sys_accept4,compat_sys_accept4)
 SYSCALL(sys_getsockopt,compat_sys_getsockopt)		/* 365 */
 SYSCALL(sys_setsockopt,compat_sys_setsockopt)
 SYSCALL(sys_getsockname,compat_sys_getsockname)

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * IRQ subsystem internal functions and variables:
  *
@@ -151,7 +152,7 @@ static inline void chip_bus_sync_unlock(struct irq_desc *desc)
 #define IRQ_GET_DESC_CHECK_PERCPU	(_IRQ_DESC_CHECK | _IRQ_DESC_PERCPU)
 
 #define for_each_action_of_desc(desc, act)			\
-	for (act = desc->act; act; act = act->next)
+	for (act = desc->action; act; act = act->next)
 
 struct irq_desc *
 __irq_get_desc_lock(unsigned int irq, unsigned long *flags, bool bus,
@@ -225,6 +226,16 @@ static inline void irqd_set(struct irq_data *d, unsigned int mask)
 static inline bool irqd_has_set(struct irq_data *d, unsigned int mask)
 {
 	return __irqd_to_state(d) & mask;
+}
+
+static inline void irq_state_set_disabled(struct irq_desc *desc)
+{
+	irqd_set(&desc->irq_data, IRQD_IRQ_DISABLED);
+}
+
+static inline void irq_state_set_masked(struct irq_desc *desc)
+{
+	irqd_set(&desc->irq_data, IRQD_IRQ_MASKED);
 }
 
 #undef __irqd_to_state
@@ -437,7 +448,9 @@ static inline void irq_remove_debugfs_entry(struct irq_desc *desc)
 # ifdef CONFIG_IRQ_DOMAIN
 void irq_domain_debugfs_init(struct dentry *root);
 # else
-static inline void irq_domain_debugfs_init(struct dentry *root);
+static inline void irq_domain_debugfs_init(struct dentry *root)
+{
+}
 # endif
 #else /* CONFIG_GENERIC_IRQ_DEBUGFS */
 static inline void irq_add_debugfs_entry(unsigned int irq, struct irq_desc *d)

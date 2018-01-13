@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * dts file for Hisilicon Hi6220 SoC
  *
@@ -91,7 +92,9 @@
 			cooling-max-level = <0>;
 			#cooling-cells = <2>; /* min followed by max */
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
 			dynamic-power-coefficient = <311>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu1: cpu@1 {
@@ -102,6 +105,8 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu2: cpu@2 {
@@ -112,6 +117,7 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu3: cpu@3 {
@@ -122,6 +128,8 @@
 			next-level-cache = <&CLUSTER0_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu4: cpu@100 {
@@ -132,6 +140,7 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu5: cpu@101 {
@@ -142,6 +151,8 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu6: cpu@102 {
@@ -152,6 +163,8 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu7: cpu@103 {
@@ -162,6 +175,8 @@
 			next-level-cache = <&CLUSTER1_L2>;
 			operating-points-v2 = <&cpu_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
+			sched-energy-costs = <&CPU_COST &CLUSTER_COST &SYSTEM_COST>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		CLUSTER0_L2: l2-cache0 {
@@ -170,6 +185,50 @@
 
 		CLUSTER1_L2: l2-cache1 {
 			compatible = "cache";
+		};
+
+		energy-costs {
+			SYSTEM_COST: system-cost0 {
+				busy-cost-data = <
+					1024   0
+				>;
+				idle-cost-data = <
+					0
+					0
+					0
+					0
+				>;
+			};
+			CLUSTER_COST: cluster-cost0 {
+				busy-cost-data = <
+					178   16
+					369   29
+					622   47
+					819   75
+					1024  112
+				>;
+				idle-cost-data = <
+					107
+					107
+					 47
+					 0
+				>;
+			};
+			CPU_COST: core-cost0 {
+				busy-cost-data = <
+					178   69
+					369   125
+					622   224
+					819   367
+					1024  670
+				>;
+				idle-cost-data = <
+					15
+					15
+					 0
+					 0
+				>;
+			};
 		};
 	};
 
@@ -262,6 +321,12 @@
 			#clock-cells = <1>;
 		};
 
+		acpu_sctrl: acpu_sctrl@f6504000 {
+			compatible = "hisilicon,hi6220-acpu-sctrl", "syscon";
+			reg = <0x0 0xf6504000 0x0 0x1000>;
+			#clock-cells = <1>;
+		};
+
 		medianoc_ade: medianoc_ade@f4520000 {
 			compatible = "syscon";
 			reg = <0x0 0xf4520000 0x0 0x4000>;
@@ -330,6 +395,19 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart4_pmx_func &uart4_cfg_func>;
 			status = "disabled";
+		};
+
+		dma0: dma@f7370000 {
+			compatible = "hisilicon,k3-dma-1.0";
+			reg = <0x0 0xf7370000 0x0 0x1000>;
+			#dma-cells = <1>;
+			dma-channels = <15>;
+			dma-requests = <32>;
+			interrupts = <0 84 4>;
+			clocks = <&sys_ctrl HI6220_EDMAC_ACLK>;
+			dma-no-cci;
+			dma-type = "hi6220_dma";
+			status = "ok";
 		};
 
 		dual_timer0: timer@f8008000 {
@@ -742,7 +820,8 @@
 			dr_mode = "otg";
 			g-rx-fifo-size = <512>;
 			g-np-tx-fifo-size = <128>;
-			g-tx-fifo-size = <128 128 128 128 128 128>;
+			g-tx-fifo-size = <128 128 128 128 128 128 128 128
+					   16  16  16  16  16  16  16>;
 			interrupts = <0 77 0x4>;
 		};
 
@@ -803,6 +882,19 @@
 			clocks = <&sys_ctrl 22>;
 			clock-names = "thermal_clk";
 			#thermal-sensor-cells = <1>;
+		};
+
+		i2s0: i2s@f7118000{
+			compatible = "hisilicon,hi6210-i2s";
+			reg = <0x0 0xf7118000 0x0 0x8000>; /* i2s unit */
+			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>; /* 155 "DigACodec_intr"-32 */
+			clocks = <&sys_ctrl HI6220_DACODEC_PCLK>,
+				 <&sys_ctrl HI6220_BBPPLL0_DIV>;
+			clock-names = "dacodec", "i2s-base";
+			dmas = <&dma0 15 &dma0 14>;
+			dma-names = "rx", "tx";
+			hisilicon,sysctrl-syscon = <&sys_ctrl>;
+			#sound-dai-cells = <1>;
 		};
 
 		thermal-zones {

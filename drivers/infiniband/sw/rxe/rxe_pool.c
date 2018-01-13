@@ -188,7 +188,7 @@ int rxe_pool_init(
 	struct rxe_dev		*rxe,
 	struct rxe_pool		*pool,
 	enum rxe_elem_type	type,
-	unsigned		max_elem)
+	unsigned int		max_elem)
 {
 	int			err = 0;
 	size_t			size = rxe_type_info[type].size;
@@ -404,6 +404,8 @@ void *rxe_alloc(struct rxe_pool *pool)
 	elem = kmem_cache_zalloc(pool_cache(pool),
 				 (pool->flags & RXE_POOL_ATOMIC) ?
 				 GFP_ATOMIC : GFP_KERNEL);
+	if (!elem)
+		return NULL;
 
 	elem->pool = pool;
 	kref_init(&elem->ref_cnt);

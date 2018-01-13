@@ -81,8 +81,7 @@ static int rfkill_gpio_acpi_probe(struct device *dev,
 
 	rfkill->type = (unsigned)id->driver_data;
 
-	return acpi_dev_add_driver_gpios(ACPI_COMPANION(dev),
-					 acpi_rfkill_default_gpios);
+	return devm_acpi_dev_add_driver_gpios(dev, acpi_rfkill_default_gpios);
 }
 
 static int rfkill_gpio_probe(struct platform_device *pdev)
@@ -154,8 +153,6 @@ static int rfkill_gpio_remove(struct platform_device *pdev)
 	rfkill_unregister(rfkill->rfkill_dev);
 	rfkill_destroy(rfkill->rfkill_dev);
 
-	acpi_dev_remove_driver_gpios(ACPI_COMPANION(&pdev->dev));
-
 	return 0;
 }
 
@@ -163,6 +160,7 @@ static int rfkill_gpio_remove(struct platform_device *pdev)
 static const struct acpi_device_id rfkill_acpi_match[] = {
 	{ "BCM4752", RFKILL_TYPE_GPS },
 	{ "LNV4752", RFKILL_TYPE_GPS },
+	{ "OBDA8723", RFKILL_TYPE_BLUETOOTH },
 	{ },
 };
 MODULE_DEVICE_TABLE(acpi, rfkill_acpi_match);

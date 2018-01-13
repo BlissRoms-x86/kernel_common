@@ -256,7 +256,7 @@ static int do_gfs2_set_flags(struct file *filp, u32 reqflags, u32 mask)
 			goto out;
 	}
 	if ((flags ^ new_flags) & GFS2_DIF_JDATA) {
-		if (flags & GFS2_DIF_JDATA)
+		if (new_flags & GFS2_DIF_JDATA)
 			gfs2_log_flush(sdp, ip->i_gl, NORMAL_FLUSH);
 		error = filemap_fdatawrite(inode->i_mapping);
 		if (error)
@@ -264,6 +264,8 @@ static int do_gfs2_set_flags(struct file *filp, u32 reqflags, u32 mask)
 		error = filemap_fdatawait(inode->i_mapping);
 		if (error)
 			goto out;
+		if (new_flags & GFS2_DIF_JDATA)
+			gfs2_ordered_del_inode(ip);
 	}
 	error = gfs2_trans_begin(sdp, RES_DINODE, 0);
 	if (error)
@@ -668,12 +670,14 @@ static int gfs2_fsync(struct file *file, loff_t start, loff_t end,
 		if (ret)
 			return ret;
 		if (gfs2_is_jdata(ip))
-			filemap_write_and_wait(mapping);
+			ret = file_write_and_wait(file);
+		if (ret)
+			return ret;
 		gfs2_ail_flush(ip->i_gl, 1);
 	}
 
 	if (mapping->nrpages)
-		ret = filemap_fdatawait_range(mapping, start, end);
+		ret = file_fdatawait_range(file, start, end);
 
 	return ret ? ret : ret1;
 }
@@ -1030,8 +1034,7 @@ static int do_flock(struct file *file, int cmd, struct file_lock *fl)
 
 	mutex_lock(&fp->f_fl_mutex);
 
-	gl = fl_gh->gh_gl;
-	if (gl) {
+	if (gfs2_holder_initialized(fl_gh)) {
 		if (fl_gh->gh_state == state)
 			goto out;
 		locks_lock_file_wait(file,

@@ -496,14 +496,12 @@ static void vhost_scsi_evt_work(struct vhost_work *work)
 	struct vhost_scsi *vs = container_of(work, struct vhost_scsi,
 					vs_event_work);
 	struct vhost_virtqueue *vq = &vs->vqs[VHOST_SCSI_VQ_EVT].vq;
-	struct vhost_scsi_evt *evt;
+	struct vhost_scsi_evt *evt, *t;
 	struct llist_node *llnode;
 
 	mutex_lock(&vq->mutex);
 	llnode = llist_del_all(&vs->vs_event_list);
-	while (llnode) {
-		evt = llist_entry(llnode, struct vhost_scsi_evt, list);
-		llnode = llist_next(llnode);
+	llist_for_each_entry_safe(evt, t, llnode, list) {
 		vhost_scsi_do_evt_work(vs, evt);
 		vhost_scsi_free_evt(vs, evt);
 	}
@@ -529,10 +527,7 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 
 	bitmap_zero(signal, VHOST_SCSI_MAX_VQ);
 	llnode = llist_del_all(&vs->vs_completion_list);
-	while (llnode) {
-		cmd = llist_entry(llnode, struct vhost_scsi_cmd,
-				     tvc_completion_list);
-		llnode = llist_next(llnode);
+	llist_for_each_entry(cmd, llnode, tvc_completion_list) {
 		se_cmd = &cmd->tvc_se_cmd;
 
 		pr_debug("%s tv_cmd %p resid %u status %#02x\n", __func__,
@@ -693,6 +688,7 @@ vhost_scsi_iov_to_sgl(struct vhost_scsi_cmd *cmd, bool write,
 		      struct scatterlist *sg, int sg_count)
 {
 	size_t off = iter->iov_offset;
+	struct scatterlist *p = sg;
 	int i, ret;
 
 	for (i = 0; i < iter->nr_segs; i++) {
@@ -701,8 +697,8 @@ vhost_scsi_iov_to_sgl(struct vhost_scsi_cmd *cmd, bool write,
 
 		ret = vhost_scsi_map_to_sgl(cmd, base, len, sg, write);
 		if (ret < 0) {
-			for (i = 0; i < sg_count; i++) {
-				struct page *page = sg_page(&sg[i]);
+			while (p < sg) {
+				struct page *page = sg_page(p++);
 				if (page)
 					put_page(page);
 			}
@@ -1404,7 +1400,7 @@ static int vhost_scsi_open(struct inode *inode, struct file *f)
 	struct vhost_virtqueue **vqs;
 	int r = -ENOMEM, i;
 
-	vs = kzalloc(sizeof(*vs), GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
+	vs = kzalloc(sizeof(*vs), GFP_KERNEL | __GFP_NOWARN | __GFP_RETRY_MAYFAIL);
 	if (!vs) {
 		vs = vzalloc(sizeof(*vs));
 		if (!vs)

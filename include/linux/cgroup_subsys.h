@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * List of cgroup subsystems.
  *
@@ -18,6 +19,10 @@ SUBSYS(cpu)
 
 #if IS_ENABLED(CONFIG_CGROUP_CPUACCT)
 SUBSYS(cpuacct)
+#endif
+
+#if IS_ENABLED(CONFIG_SCHED_TUNE)
+SUBSYS(schedtune)
 #endif
 
 #if IS_ENABLED(CONFIG_BLK_CGROUP)

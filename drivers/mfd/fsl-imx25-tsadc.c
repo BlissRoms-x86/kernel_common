@@ -59,7 +59,7 @@ static int mx25_tsadc_domain_map(struct irq_domain *d, unsigned int irq,
 	return 0;
 }
 
-static struct irq_domain_ops mx25_tsadc_domain_ops = {
+static const struct irq_domain_ops mx25_tsadc_domain_ops = {
 	.map = mx25_tsadc_domain_map,
 	.xlate = irq_domain_xlate_onecell,
 };
@@ -129,7 +129,6 @@ static void mx25_tsadc_setup_clk(struct platform_device *pdev,
 static int mx25_tsadc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
 	struct mx25_tsadc *tsadc;
 	struct resource *res;
 	int ret;
@@ -178,7 +177,18 @@ static int mx25_tsadc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, tsadc);
 
-	of_platform_populate(np, NULL, NULL, dev);
+	return devm_of_platform_populate(dev);
+}
+
+static int mx25_tsadc_remove(struct platform_device *pdev)
+{
+	struct mx25_tsadc *tsadc = platform_get_drvdata(pdev);
+	int irq = platform_get_irq(pdev, 0);
+
+	if (irq) {
+		irq_set_chained_handler_and_data(irq, NULL, NULL);
+		irq_domain_remove(tsadc->domain);
+	}
 
 	return 0;
 }
@@ -195,6 +205,7 @@ static struct platform_driver mx25_tsadc_driver = {
 		.of_match_table = of_match_ptr(mx25_tsadc_ids),
 	},
 	.probe = mx25_tsadc_probe,
+	.remove = mx25_tsadc_remove,
 };
 module_platform_driver(mx25_tsadc_driver);
 

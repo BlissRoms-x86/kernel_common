@@ -21,7 +21,7 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
@@ -950,6 +950,7 @@ static void prepare_start_command(struct pxa3xx_nand_info *info, int command)
 
 	switch (command) {
 	case NAND_CMD_READ0:
+	case NAND_CMD_READOOB:
 	case NAND_CMD_PAGEPROG:
 		info->use_ecc = 1;
 		break;
@@ -1812,6 +1813,8 @@ static int alloc_nand_resource(struct platform_device *pdev)
 		chip->write_buf		= pxa3xx_nand_write_buf;
 		chip->options		|= NAND_NO_SUBPAGE_WRITE;
 		chip->cmdfunc		= nand_cmdfunc;
+		chip->onfi_set_features	= nand_onfi_get_set_features_notsupp;
+		chip->onfi_get_features	= nand_onfi_get_set_features_notsupp;
 	}
 
 	nand_hw_control_init(chip->controller);

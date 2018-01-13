@@ -135,7 +135,7 @@ static void ulpi_dev_release(struct device *dev)
 	kfree(to_ulpi_dev(dev));
 }
 
-static struct device_type ulpi_dev_type = {
+static const struct device_type ulpi_dev_type = {
 	.name = "ulpi_device",
 	.groups = ulpi_dev_attr_groups,
 	.release = ulpi_dev_release,
@@ -183,9 +183,9 @@ static int ulpi_of_register(struct ulpi *ulpi)
 	/* Find a ulpi bus underneath the parent or the grandparent */
 	parent = ulpi->dev.parent;
 	if (parent->of_node)
-		np = of_find_node_by_name(parent->of_node, "ulpi");
+		np = of_get_child_by_name(parent->of_node, "ulpi");
 	else if (parent->parent && parent->parent->of_node)
-		np = of_find_node_by_name(parent->parent->of_node, "ulpi");
+		np = of_get_child_by_name(parent->parent->of_node, "ulpi");
 	if (!np)
 		return 0;
 

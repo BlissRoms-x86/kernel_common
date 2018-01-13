@@ -38,7 +38,15 @@
 #define BIO_BUG_ON
 #endif
 
+#ifdef CONFIG_THP_SWAP
+#if HPAGE_PMD_NR > 256
+#define BIO_MAX_PAGES		HPAGE_PMD_NR
+#else
 #define BIO_MAX_PAGES		256
+#endif
+#else
+#define BIO_MAX_PAGES		256
+#endif
 
 #define bio_prio(bio)			(bio)->bi_ioprio
 #define bio_set_prio(bio, prio)		((bio)->bi_ioprio = prio)
@@ -165,10 +173,27 @@ static inline void bio_advance_iter(struct bio *bio, struct bvec_iter *iter,
 {
 	iter->bi_sector += bytes >> 9;
 
-	if (bio_no_advance_iter(bio))
+	if (bio_no_advance_iter(bio)) {
 		iter->bi_size -= bytes;
-	else
+		iter->bi_done += bytes;
+	} else {
 		bvec_iter_advance(bio->bi_io_vec, iter, bytes);
+		/* TODO: It is reasonable to complete bio with error here. */
+	}
+}
+
+static inline bool bio_rewind_iter(struct bio *bio, struct bvec_iter *iter,
+		unsigned int bytes)
+{
+	iter->bi_sector -= bytes >> 9;
+
+	if (bio_no_advance_iter(bio)) {
+		iter->bi_size += bytes;
+		iter->bi_done -= bytes;
+		return true;
+	}
+
+	return bvec_iter_rewind(bio->bi_io_vec, iter, bytes);
 }
 
 #define __bio_for_each_segment(bvl, bio, iter, start)			\
@@ -302,8 +327,6 @@ struct bio_integrity_payload {
 	struct bio		*bip_bio;	/* parent bio */
 
 	struct bvec_iter	bip_iter;
-
-	bio_end_io_t		*bip_end_io;	/* saved I/O completion fn */
 
 	unsigned short		bip_slab;	/* slab the bip came from */
 	unsigned short		bip_vcnt;	/* # of integrity bio_vecs */
@@ -448,10 +471,11 @@ extern struct bio *bio_copy_kern(struct request_queue *, void *, unsigned int,
 extern void bio_set_pages_dirty(struct bio *bio);
 extern void bio_check_pages_dirty(struct bio *bio);
 
-void generic_start_io_acct(int rw, unsigned long sectors,
-			   struct hd_struct *part);
-void generic_end_io_acct(int rw, struct hd_struct *part,
-			 unsigned long start_time);
+void generic_start_io_acct(struct request_queue *q, int rw,
+				unsigned long sectors, struct hd_struct *part);
+void generic_end_io_acct(struct request_queue *q, int rw,
+				struct hd_struct *part,
+				unsigned long start_time);
 
 #ifndef ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE
 # error	"You should define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE for your platform"
@@ -477,6 +501,26 @@ void zero_fill_bio(struct bio *bio);
 extern struct bio_vec *bvec_alloc(gfp_t, int, unsigned long *, mempool_t *);
 extern void bvec_free(mempool_t *, struct bio_vec *, unsigned int);
 extern unsigned int bvec_nr_vecs(unsigned short idx);
+
+#define bio_set_dev(bio, bdev) 			\
+do {						\
+	if ((bio)->bi_disk != (bdev)->bd_disk)	\
+		bio_clear_flag(bio, BIO_THROTTLED);\
+	(bio)->bi_disk = (bdev)->bd_disk;	\
+	(bio)->bi_partno = (bdev)->bd_partno;	\
+} while (0)
+
+#define bio_copy_dev(dst, src)			\
+do {						\
+	(dst)->bi_disk = (src)->bi_disk;	\
+	(dst)->bi_partno = (src)->bi_partno;	\
+} while (0)
+
+#define bio_dev(bio) \
+	disk_devt((bio)->bi_disk)
+
+#define bio_devname(bio, buf) \
+	__bdevname(bio_dev(bio), (buf))
 
 #ifdef CONFIG_BLK_CGROUP
 int bio_associate_blkcg(struct bio *bio, struct cgroup_subsys_state *blkcg_css);
@@ -722,13 +766,10 @@ struct biovec_slab {
 		bip_for_each_vec(_bvl, _bio->bi_integrity, _iter)
 
 extern struct bio_integrity_payload *bio_integrity_alloc(struct bio *, gfp_t, unsigned int);
-extern void bio_integrity_free(struct bio *);
 extern int bio_integrity_add_page(struct bio *, struct page *, unsigned int, unsigned int);
-extern bool bio_integrity_enabled(struct bio *bio);
-extern int bio_integrity_prep(struct bio *);
-extern void bio_integrity_endio(struct bio *);
+extern bool bio_integrity_prep(struct bio *);
 extern void bio_integrity_advance(struct bio *, unsigned int);
-extern void bio_integrity_trim(struct bio *, unsigned int, unsigned int);
+extern void bio_integrity_trim(struct bio *);
 extern int bio_integrity_clone(struct bio *, struct bio *, gfp_t);
 extern int bioset_integrity_create(struct bio_set *, int);
 extern void bioset_integrity_free(struct bio_set *);
@@ -741,11 +782,6 @@ static inline void *bio_integrity(struct bio *bio)
 	return NULL;
 }
 
-static inline bool bio_integrity_enabled(struct bio *bio)
-{
-	return false;
-}
-
 static inline int bioset_integrity_create(struct bio_set *bs, int pool_size)
 {
 	return 0;
@@ -756,14 +792,9 @@ static inline void bioset_integrity_free (struct bio_set *bs)
 	return;
 }
 
-static inline int bio_integrity_prep(struct bio *bio)
+static inline bool bio_integrity_prep(struct bio *bio)
 {
-	return 0;
-}
-
-static inline void bio_integrity_free(struct bio *bio)
-{
-	return;
+	return true;
 }
 
 static inline int bio_integrity_clone(struct bio *bio, struct bio *bio_src,
@@ -778,8 +809,7 @@ static inline void bio_integrity_advance(struct bio *bio,
 	return;
 }
 
-static inline void bio_integrity_trim(struct bio *bio, unsigned int offset,
-				      unsigned int sectors)
+static inline void bio_integrity_trim(struct bio *bio)
 {
 	return;
 }

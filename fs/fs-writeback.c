@@ -380,8 +380,8 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 		struct page *page = radix_tree_deref_slot_protected(slot,
 							&mapping->tree_lock);
 		if (likely(page) && PageDirty(page)) {
-			__dec_wb_stat(old_wb, WB_RECLAIMABLE);
-			__inc_wb_stat(new_wb, WB_RECLAIMABLE);
+			dec_wb_stat(old_wb, WB_RECLAIMABLE);
+			inc_wb_stat(new_wb, WB_RECLAIMABLE);
 		}
 	}
 
@@ -391,8 +391,8 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 							&mapping->tree_lock);
 		if (likely(page)) {
 			WARN_ON_ONCE(!PageWriteback(page));
-			__dec_wb_stat(old_wb, WB_WRITEBACK);
-			__inc_wb_stat(new_wb, WB_WRITEBACK);
+			dec_wb_stat(old_wb, WB_WRITEBACK);
+			inc_wb_stat(new_wb, WB_WRITEBACK);
 		}
 	}
 
@@ -2111,7 +2111,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	    (dirtytime && (inode->i_state & I_DIRTY_INODE)))
 		return;
 
-	if (unlikely(block_dump))
+	if (unlikely(block_dump > 1))
 		block_dump___mark_inode_dirty(inode);
 
 	spin_lock(&inode->i_lock);

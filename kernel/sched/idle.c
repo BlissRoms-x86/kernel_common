@@ -25,9 +25,10 @@ extern char __cpuidle_text_start[], __cpuidle_text_end[];
  * sched_idle_set_state - Record idle state for the current CPU.
  * @idle_state: State to record.
  */
-void sched_idle_set_state(struct cpuidle_state *idle_state)
+void sched_idle_set_state(struct cpuidle_state *idle_state, int index)
 {
 	idle_set_state(this_rq(), idle_state);
+	idle_set_state_idx(this_rq(), index);
 }
 
 static int __read_mostly cpu_idle_force_poll;
@@ -158,7 +159,7 @@ static void cpuidle_idle_call(void)
 	}
 
 	/*
-	 * Suspend-to-idle ("freeze") is a system state in which all user space
+	 * Suspend-to-idle ("s2idle") is a system state in which all user space
 	 * has been frozen, all I/O devices have been suspended and the only
 	 * activity happens here and in iterrupts (if any).  In that case bypass
 	 * the cpuidle governor and go stratight for the deepest idle state
@@ -167,9 +168,9 @@ static void cpuidle_idle_call(void)
 	 * until a proper wakeup interrupt happens.
 	 */
 
-	if (idle_should_freeze() || dev->use_deepest_state) {
-		if (idle_should_freeze()) {
-			entered_state = cpuidle_enter_freeze(drv, dev);
+	if (idle_should_enter_s2idle() || dev->use_deepest_state) {
+		if (idle_should_enter_s2idle()) {
+			entered_state = cpuidle_enter_s2idle(drv, dev);
 			if (entered_state > 0) {
 				local_irq_enable();
 				goto exit_idle;

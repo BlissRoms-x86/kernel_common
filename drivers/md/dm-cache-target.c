@@ -833,7 +833,7 @@ static bool is_discarded_oblock(struct cache *cache, dm_oblock_t b)
  *--------------------------------------------------------------*/
 static void remap_to_origin(struct cache *cache, struct bio *bio)
 {
-	bio->bi_bdev = cache->origin_dev->bdev;
+	bio_set_dev(bio, cache->origin_dev->bdev);
 }
 
 static void remap_to_cache(struct cache *cache, struct bio *bio,
@@ -842,7 +842,7 @@ static void remap_to_cache(struct cache *cache, struct bio *bio,
 	sector_t bi_sector = bio->bi_iter.bi_sector;
 	sector_t block = from_cblock(cblock);
 
-	bio->bi_bdev = cache->cache_dev->bdev;
+	bio_set_dev(bio, cache->cache_dev->bdev);
 	if (!block_size_is_power_of_two(cache))
 		bio->bi_iter.bi_sector =
 			(block * cache->sectors_per_block) +
@@ -1201,6 +1201,18 @@ static void background_work_end(struct cache *cache)
 
 /*----------------------------------------------------------------*/
 
+static bool bio_writes_complete_block(struct cache *cache, struct bio *bio)
+{
+	return (bio_data_dir(bio) == WRITE) &&
+		(bio->bi_iter.bi_size == (cache->sectors_per_block << SECTOR_SHIFT));
+}
+
+static bool optimisable_bio(struct cache *cache, struct bio *bio, dm_oblock_t block)
+{
+	return writeback_mode(&cache->features) &&
+		(is_discarded_oblock(cache, block) || bio_writes_complete_block(cache, bio));
+}
+
 static void quiesce(struct dm_cache_migration *mg,
 		    void (*continuation)(struct work_struct *))
 {
@@ -1474,12 +1486,50 @@ static void mg_upgrade_lock(struct work_struct *ws)
 	}
 }
 
+static void mg_full_copy(struct work_struct *ws)
+{
+	struct dm_cache_migration *mg = ws_to_mg(ws);
+	struct cache *cache = mg->cache;
+	struct policy_work *op = mg->op;
+	bool is_policy_promote = (op->op == POLICY_PROMOTE);
+
+	if ((!is_policy_promote && !is_dirty(cache, op->cblock)) ||
+	    is_discarded_oblock(cache, op->oblock)) {
+		mg_upgrade_lock(ws);
+		return;
+	}
+
+	init_continuation(&mg->k, mg_upgrade_lock);
+
+	if (copy(mg, is_policy_promote)) {
+		DMERR_LIMIT("%s: migration copy failed", cache_device_name(cache));
+		mg->k.input = BLK_STS_IOERR;
+		mg_complete(mg, false);
+	}
+}
+
 static void mg_copy(struct work_struct *ws)
 {
-	int r;
 	struct dm_cache_migration *mg = ws_to_mg(ws);
 
 	if (mg->overwrite_bio) {
+		/*
+		 * No exclusive lock was held when we last checked if the bio
+		 * was optimisable.  So we have to check again in case things
+		 * have changed (eg, the block may no longer be discarded).
+		 */
+		if (!optimisable_bio(mg->cache, mg->overwrite_bio, mg->op->oblock)) {
+			/*
+			 * Fallback to a real full copy after doing some tidying up.
+			 */
+			bool rb = bio_detain_shared(mg->cache, mg->op->oblock, mg->overwrite_bio);
+			BUG_ON(rb); /* An exclussive lock must _not_ be held for this block */
+			mg->overwrite_bio = NULL;
+			inc_io_migrations(mg->cache);
+			mg_full_copy(ws);
+			return;
+		}
+
 		/*
 		 * It's safe to do this here, even though it's new data
 		 * because all IO has been locked out of the block.
@@ -1489,26 +1539,8 @@ static void mg_copy(struct work_struct *ws)
 		 */
 		overwrite(mg, mg_update_metadata_after_copy);
 
-	} else {
-		struct cache *cache = mg->cache;
-		struct policy_work *op = mg->op;
-		bool is_policy_promote = (op->op == POLICY_PROMOTE);
-
-		if ((!is_policy_promote && !is_dirty(cache, op->cblock)) ||
-		    is_discarded_oblock(cache, op->oblock)) {
-			mg_upgrade_lock(ws);
-			return;
-		}
-
-		init_continuation(&mg->k, mg_upgrade_lock);
-
-		r = copy(mg, is_policy_promote);
-		if (r) {
-			DMERR_LIMIT("%s: migration copy failed", cache_device_name(cache));
-			mg->k.input = BLK_STS_IOERR;
-			mg_complete(mg, false);
-		}
-	}
+	} else
+		mg_full_copy(ws);
 }
 
 static int mg_lock_writes(struct dm_cache_migration *mg)
@@ -1747,18 +1779,6 @@ static void inc_miss_counter(struct cache *cache, struct bio *bio)
 }
 
 /*----------------------------------------------------------------*/
-
-static bool bio_writes_complete_block(struct cache *cache, struct bio *bio)
-{
-	return (bio_data_dir(bio) == WRITE) &&
-		(bio->bi_iter.bi_size == (cache->sectors_per_block << SECTOR_SHIFT));
-}
-
-static bool optimisable_bio(struct cache *cache, struct bio *bio, dm_oblock_t block)
-{
-	return writeback_mode(&cache->features) &&
-		(is_discarded_oblock(cache, block) || bio_writes_complete_block(cache, bio));
-}
 
 static int map_bio(struct cache *cache, struct bio *bio, dm_oblock_t block,
 		   bool *commit_needed)
@@ -2306,7 +2326,7 @@ static void init_features(struct cache_features *cf)
 static int parse_features(struct cache_args *ca, struct dm_arg_set *as,
 			  char **error)
 {
-	static struct dm_arg _args[] = {
+	static const struct dm_arg _args[] = {
 		{0, 2, "Invalid number of cache feature arguments"},
 	};
 
@@ -2348,7 +2368,7 @@ static int parse_features(struct cache_args *ca, struct dm_arg_set *as,
 static int parse_policy(struct cache_args *ca, struct dm_arg_set *as,
 			char **error)
 {
-	static struct dm_arg _args[] = {
+	static const struct dm_arg _args[] = {
 		{0, 1024, "Invalid number of policy arguments"},
 	};
 
@@ -3534,16 +3554,16 @@ static int __init dm_cache_init(void)
 {
 	int r;
 
-	r = dm_register_target(&cache_target);
-	if (r) {
-		DMERR("cache target registration failed: %d", r);
-		return r;
-	}
-
 	migration_cache = KMEM_CACHE(dm_cache_migration, 0);
 	if (!migration_cache) {
 		dm_unregister_target(&cache_target);
 		return -ENOMEM;
+	}
+
+	r = dm_register_target(&cache_target);
+	if (r) {
+		DMERR("cache target registration failed: %d", r);
+		return r;
 	}
 
 	return 0;

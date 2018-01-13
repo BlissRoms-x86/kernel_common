@@ -1510,21 +1510,19 @@ static struct nvmet_fabrics_ops nvmet_rdma_ops = {
 	.delete_ctrl		= nvmet_rdma_delete_ctrl,
 };
 
-static void nvmet_rdma_add_one(struct ib_device *ib_device)
-{
-}
-
 static void nvmet_rdma_remove_one(struct ib_device *ib_device, void *client_data)
 {
-	struct nvmet_rdma_queue *queue;
+	struct nvmet_rdma_queue *queue, *tmp;
 
 	/* Device is being removed, delete all queues using this device */
 	mutex_lock(&nvmet_rdma_queue_mutex);
-	list_for_each_entry(queue, &nvmet_rdma_queue_list, queue_list) {
+	list_for_each_entry_safe(queue, tmp, &nvmet_rdma_queue_list,
+				 queue_list) {
 		if (queue->dev->device != ib_device)
 			continue;
 
 		pr_info("Removing queue %d\n", queue->idx);
+		list_del_init(&queue->queue_list);
 		__nvmet_rdma_queue_disconnect(queue);
 	}
 	mutex_unlock(&nvmet_rdma_queue_mutex);
@@ -1534,7 +1532,6 @@ static void nvmet_rdma_remove_one(struct ib_device *ib_device, void *client_data
 
 static struct ib_client nvmet_rdma_ib_client = {
 	.name   = "nvmet_rdma",
-	.add = nvmet_rdma_add_one,
 	.remove = nvmet_rdma_remove_one
 };
 

@@ -27,9 +27,9 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <sound/soc-acpi.h>
 #include "../../codecs/da7213.h"
 #include "../atom/sst-atom-controls.h"
-#include "../common/sst-acpi.h"
 
 static const struct snd_kcontrol_new controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
@@ -56,6 +56,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"MIC1", NULL, "Headset Mic"},
 	{"MIC2", NULL, "Mic"},
 
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	/* SOC-codec link */
 	{"ssp2 Tx", NULL, "codec_out0"},
 	{"ssp2 Tx", NULL, "codec_out1"},
@@ -64,6 +65,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{"Playback", NULL, "ssp2 Tx"},
 	{"ssp2 Rx", NULL, "Capture"},
+#endif
 };
 
 static int codec_fixup(struct snd_soc_pcm_runtime *rtd,
@@ -185,19 +187,11 @@ static struct snd_soc_dai_link dailink[] = {
 		.dpcm_playback = 1,
 		.ops = &aif1_ops,
 	},
-	[MERR_DPCM_COMPR] = {
-		.name = "Compressed Port",
-		.stream_name = "Compress",
-		.cpu_dai_name = "compress-cpu-dai",
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
-		.platform_name = "sst-mfld-platform",
-	},
 	/* CODEC<->CODEC link */
 	/* back ends */
 	{
 		.name = "SSP2-Codec",
-		.id = 1,
+		.id = 0,
 		.cpu_dai_name = "ssp2-port",
 		.platform_name = "sst-mfld-platform",
 		.no_pcm = 1,
@@ -215,7 +209,11 @@ static struct snd_soc_dai_link dailink[] = {
 
 /* SoC card */
 static struct snd_soc_card bytcht_da7213_card = {
+#if !IS_ENABLED(CONFIG_SND_SOC_SOF_INTEL)
 	.name = "bytcht-da7213",
+#else
+	.name = "bytcht_da7213", // FIXME
+#endif
 	.owner = THIS_MODULE,
 	.dai_link = dailink,
 	.num_links = ARRAY_SIZE(dailink),
@@ -231,19 +229,18 @@ static char codec_name[16]; /* i2c-<HID>:00 with HID being 8 chars */
 
 static int bytcht_da7213_probe(struct platform_device *pdev)
 {
-	int ret_val = 0;
-	int i;
 	struct snd_soc_card *card;
-	struct sst_acpi_mach *mach;
+	struct snd_soc_acpi_mach *mach;
 	const char *i2c_name = NULL;
 	int dai_index = 0;
+	int ret_val = 0;
+	int i;
 
 	mach = (&pdev->dev)->platform_data;
 	card = &bytcht_da7213_card;
 	card->dev = &pdev->dev;
 
 	/* fix index of codec dai */
-	dai_index = MERR_DPCM_COMPR + 1;
 	for (i = 0; i < ARRAY_SIZE(dailink); i++) {
 		if (!strcmp(dailink[i].codec_name, "i2c-DLGS7213:00")) {
 			dai_index = i;
@@ -252,8 +249,8 @@ static int bytcht_da7213_probe(struct platform_device *pdev)
 	}
 
 	/* fixup codec name based on HID */
-	i2c_name = sst_acpi_find_name_from_hid(mach->id);
-	if (i2c_name != NULL) {
+	i2c_name = snd_soc_acpi_find_name_from_hid(mach->id);
+	if (i2c_name) {
 		snprintf(codec_name, sizeof(codec_name),
 			"%s%s", "i2c-", i2c_name);
 		dailink[dai_index].codec_name = codec_name;

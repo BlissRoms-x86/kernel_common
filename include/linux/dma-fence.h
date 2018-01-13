@@ -55,6 +55,7 @@ struct dma_fence_cb;
  * of the time.
  *
  * DMA_FENCE_FLAG_SIGNALED_BIT - fence is already signaled
+ * DMA_FENCE_FLAG_TIMESTAMP_BIT - timestamp recorded for fence signaling
  * DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT - enable_signaling might have been called
  * DMA_FENCE_FLAG_USER_BITS - start of the unused bits, can be used by the
  * implementer of the fence for its own purposes. Can be used in different
@@ -84,6 +85,7 @@ struct dma_fence {
 
 enum dma_fence_flag_bits {
 	DMA_FENCE_FLAG_SIGNALED_BIT,
+	DMA_FENCE_FLAG_TIMESTAMP_BIT,
 	DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT,
 	DMA_FENCE_FLAG_USER_BITS, /* must always be last member */
 };
@@ -109,6 +111,7 @@ struct dma_fence_cb {
  * @get_driver_name: returns the driver name.
  * @get_timeline_name: return the name of the context this fence belongs to.
  * @enable_signaling: enable software signaling of fence.
+ * @disable_signaling: disable software signaling of fence (optional).
  * @signaled: [optional] peek whether the fence is signaled, can be null.
  * @wait: custom wait implementation, or dma_fence_default_wait.
  * @release: [optional] called on destruction of fence, can be null
@@ -168,6 +171,7 @@ struct dma_fence_ops {
 	const char * (*get_driver_name)(struct dma_fence *fence);
 	const char * (*get_timeline_name)(struct dma_fence *fence);
 	bool (*enable_signaling)(struct dma_fence *fence);
+	void (*disable_signaling)(struct dma_fence *fence);
 	bool (*signaled)(struct dma_fence *fence);
 	signed long (*wait)(struct dma_fence *fence,
 			    bool intr, signed long timeout);
@@ -336,6 +340,19 @@ dma_fence_is_signaled(struct dma_fence *fence)
 }
 
 /**
+ * __dma_fence_is_later - return if f1 is chronologically later than f2
+ * @f1:	[in]	the first fence's seqno
+ * @f2:	[in]	the second fence's seqno from the same context
+ *
+ * Returns true if f1 is chronologically later than f2. Both fences must be
+ * from the same context, since a seqno is not common across contexts.
+ */
+static inline bool __dma_fence_is_later(u32 f1, u32 f2)
+{
+	return (int)(f1 - f2) > 0;
+}
+
+/**
  * dma_fence_is_later - return if f1 is chronologically later than f2
  * @f1:	[in]	the first fence from the same context
  * @f2:	[in]	the second fence from the same context
@@ -349,7 +366,7 @@ static inline bool dma_fence_is_later(struct dma_fence *f1,
 	if (WARN_ON(f1->context != f2->context))
 		return false;
 
-	return (int)(f1->seqno - f2->seqno) > 0;
+	return __dma_fence_is_later(f1->seqno, f2->seqno);
 }
 
 /**
@@ -416,8 +433,8 @@ int dma_fence_get_status(struct dma_fence *fence);
 static inline void dma_fence_set_error(struct dma_fence *fence,
 				       int error)
 {
-	BUG_ON(test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &fence->flags));
-	BUG_ON(error >= 0 || error < -MAX_ERRNO);
+	WARN_ON(test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &fence->flags));
+	WARN_ON(error >= 0 || error < -MAX_ERRNO);
 
 	fence->error = error;
 }

@@ -168,6 +168,19 @@ void irq_set_thread_affinity(struct irq_desc *desc)
 			set_bit(IRQTF_AFFINITY, &action->thread_flags);
 }
 
+static void irq_validate_effective_affinity(struct irq_data *data)
+{
+#ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
+	const struct cpumask *m = irq_data_get_effective_affinity_mask(data);
+	struct irq_chip *chip = irq_data_get_irq_chip(data);
+
+	if (!cpumask_empty(m))
+		return;
+	pr_warn_once("irq_chip %s did not update eff. affinity mask of irq %u\n",
+		     chip->name, data->irq);
+#endif
+}
+
 int irq_do_set_affinity(struct irq_data *data, const struct cpumask *mask,
 			bool force)
 {
@@ -175,12 +188,16 @@ int irq_do_set_affinity(struct irq_data *data, const struct cpumask *mask,
 	struct irq_chip *chip = irq_data_get_irq_chip(data);
 	int ret;
 
+	if (!chip || !chip->irq_set_affinity)
+		return -EINVAL;
+
 	ret = chip->irq_set_affinity(data, mask, force);
 	switch (ret) {
 	case IRQ_SET_MASK_OK:
 	case IRQ_SET_MASK_OK_DONE:
 		cpumask_copy(desc->irq_common_data.affinity, mask);
 	case IRQ_SET_MASK_OK_NOCOPY:
+		irq_validate_effective_affinity(data);
 		irq_set_thread_affinity(desc);
 		ret = 0;
 	}
@@ -400,8 +417,18 @@ int irq_set_vcpu_affinity(unsigned int irq, void *vcpu_info)
 		return -EINVAL;
 
 	data = irq_desc_get_irq_data(desc);
-	chip = irq_data_get_irq_chip(data);
-	if (chip && chip->irq_set_vcpu_affinity)
+	do {
+		chip = irq_data_get_irq_chip(data);
+		if (chip && chip->irq_set_vcpu_affinity)
+			break;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+		data = data->parent_data;
+#else
+		data = NULL;
+#endif
+	} while (data);
+
+	if (data)
 		ret = chip->irq_set_vcpu_affinity(data, vcpu_info);
 	irq_put_desc_unlock(desc, flags);
 
@@ -1090,6 +1117,16 @@ setup_irq_thread(struct irqaction *new, unsigned int irq, bool secondary)
 /*
  * Internal function to register an irqaction - typically used to
  * allocate special interrupts that are part of the architecture.
+ *
+ * Locking rules:
+ *
+ * desc->request_mutex	Provides serialization against a concurrent free_irq()
+ *   chip_bus_lock	Provides serialization for slow bus operations
+ *     desc->lock	Provides serialization against hard interrupts
+ *
+ * chip_bus_lock and desc->lock are sufficient for all other management and
+ * interrupt related functions. desc->request_mutex solely serializes
+ * request/free_irq().
  */
 static int
 __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
@@ -1168,7 +1205,34 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		new->flags &= ~IRQF_ONESHOT;
 
 	/*
+	 * Protects against a concurrent __free_irq() call which might wait
+	 * for synchronize_irq() to complete without holding the optional
+	 * chip bus lock and desc->lock.
+	 */
+	mutex_lock(&desc->request_mutex);
+
+	/*
+	 * Acquire bus lock as the irq_request_resources() callback below
+	 * might rely on the serialization or the magic power management
+	 * functions which are abusing the irq_bus_lock() callback,
+	 */
+	chip_bus_lock(desc);
+
+	/* First installed action requests resources. */
+	if (!desc->action) {
+		ret = irq_request_resources(desc);
+		if (ret) {
+			pr_err("Failed to request resources for %s (irq %d) on irqchip %s\n",
+			       new->name, irq, desc->irq_data.chip->name);
+			goto out_bus_unlock;
+		}
+	}
+
+	/*
 	 * The following block of code has to be executed atomically
+	 * protected against a concurrent interrupt and any of the other
+	 * management calls which are not serialized via
+	 * desc->request_mutex or the optional bus lock.
 	 */
 	raw_spin_lock_irqsave(&desc->lock, flags);
 	old_ptr = &desc->action;
@@ -1181,7 +1245,18 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		 * set the trigger type must match. Also all must
 		 * agree on ONESHOT.
 		 */
-		unsigned int oldtype = irqd_get_trigger_type(&desc->irq_data);
+		unsigned int oldtype;
+
+		/*
+		 * If nobody did set the configuration before, inherit
+		 * the one provided by the requester.
+		 */
+		if (irqd_trigger_type_was_set(&desc->irq_data)) {
+			oldtype = irqd_get_trigger_type(&desc->irq_data);
+		} else {
+			oldtype = new->flags & IRQF_TRIGGER_MASK;
+			irqd_set_trigger_type(&desc->irq_data, oldtype);
+		}
 
 		if (!((old->flags & new->flags) & IRQF_SHARED) ||
 		    (oldtype != (new->flags & IRQF_TRIGGER_MASK)) ||
@@ -1267,13 +1342,6 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	}
 
 	if (!shared) {
-		ret = irq_request_resources(desc);
-		if (ret) {
-			pr_err("Failed to request resources for %s (irq %d) on irqchip %s\n",
-			       new->name, irq, desc->irq_data.chip->name);
-			goto out_unlock;
-		}
-
 		init_waitqueue_head(&desc->wait_for_threads);
 
 		/* Setup the type (level, edge polarity) if configured: */
@@ -1281,10 +1349,8 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			ret = __irq_set_trigger(desc,
 						new->flags & IRQF_TRIGGER_MASK);
 
-			if (ret) {
-				irq_release_resources(desc);
+			if (ret)
 				goto out_unlock;
-			}
 		}
 
 		desc->istate &= ~(IRQS_AUTODETECT | IRQS_SPURIOUS_DISABLED | \
@@ -1347,6 +1413,8 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	}
 
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
+	chip_bus_sync_unlock(desc);
+	mutex_unlock(&desc->request_mutex);
 
 	irq_setup_timings(desc, new);
 
@@ -1377,6 +1445,12 @@ mismatch:
 
 out_unlock:
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
+
+	if (!desc->action)
+		irq_release_resources(desc);
+out_bus_unlock:
+	chip_bus_sync_unlock(desc);
+	mutex_unlock(&desc->request_mutex);
 
 out_thread:
 	if (new->thread) {
@@ -1417,9 +1491,7 @@ int setup_irq(unsigned int irq, struct irqaction *act)
 	if (retval < 0)
 		return retval;
 
-	chip_bus_lock(desc);
 	retval = __setup_irq(irq, desc, act);
-	chip_bus_sync_unlock(desc);
 
 	if (retval)
 		irq_chip_pm_put(&desc->irq_data);
@@ -1443,6 +1515,7 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 	if (!desc)
 		return NULL;
 
+	mutex_lock(&desc->request_mutex);
 	chip_bus_lock(desc);
 	raw_spin_lock_irqsave(&desc->lock, flags);
 
@@ -1458,6 +1531,7 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 			WARN(1, "Trying to free already-free IRQ %d\n", irq);
 			raw_spin_unlock_irqrestore(&desc->lock, flags);
 			chip_bus_sync_unlock(desc);
+			mutex_unlock(&desc->request_mutex);
 			return NULL;
 		}
 
@@ -1475,8 +1549,6 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 	if (!desc->action) {
 		irq_settings_clr_disable_unlazy(desc);
 		irq_shutdown(desc);
-		irq_release_resources(desc);
-		irq_remove_timings(desc);
 	}
 
 #ifdef CONFIG_SMP
@@ -1486,6 +1558,20 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 #endif
 
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
+	/*
+	 * Drop bus_lock here so the changes which were done in the chip
+	 * callbacks above are synced out to the irq chips which hang
+	 * behind a slow bus (I2C, SPI) before calling synchronize_irq().
+	 *
+	 * Aside of that the bus_lock can also be taken from the threaded
+	 * handler in irq_finalize_oneshot() which results in a deadlock
+	 * because synchronize_irq() would wait forever for the thread to
+	 * complete, which is blocked on the bus lock.
+	 *
+	 * The still held desc->request_mutex() protects against a
+	 * concurrent request_irq() of this irq so the release of resources
+	 * and timing data is properly serialized.
+	 */
 	chip_bus_sync_unlock(desc);
 
 	unregister_handler_proc(irq, action);
@@ -1517,6 +1603,20 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 			put_task_struct(action->secondary->thread);
 		}
 	}
+
+	/* Last action releases resources */
+	if (!desc->action) {
+		/*
+		 * Reaquire bus lock as irq_release_resources() might
+		 * require it to deallocate resources over the slow bus.
+		 */
+		chip_bus_lock(desc);
+		irq_release_resources(desc);
+		chip_bus_sync_unlock(desc);
+		irq_remove_timings(desc);
+	}
+
+	mutex_unlock(&desc->request_mutex);
 
 	irq_chip_pm_put(&desc->irq_data);
 	module_put(desc->owner);
@@ -1571,6 +1671,10 @@ const void *free_irq(unsigned int irq, void *dev_id)
 #endif
 
 	action = __free_irq(irq, dev_id);
+
+	if (!action)
+		return NULL;
+
 	devname = action->name;
 	kfree(action);
 	return devname;
@@ -1674,9 +1778,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		return retval;
 	}
 
-	chip_bus_lock(desc);
 	retval = __setup_irq(irq, desc, action);
-	chip_bus_sync_unlock(desc);
 
 	if (retval) {
 		irq_chip_pm_put(&desc->irq_data);
@@ -1924,9 +2026,7 @@ int setup_percpu_irq(unsigned int irq, struct irqaction *act)
 	if (retval < 0)
 		return retval;
 
-	chip_bus_lock(desc);
 	retval = __setup_irq(irq, desc, act);
-	chip_bus_sync_unlock(desc);
 
 	if (retval)
 		irq_chip_pm_put(&desc->irq_data);
@@ -1935,9 +2035,10 @@ int setup_percpu_irq(unsigned int irq, struct irqaction *act)
 }
 
 /**
- *	request_percpu_irq - allocate a percpu interrupt line
+ *	__request_percpu_irq - allocate a percpu interrupt line
  *	@irq: Interrupt line to allocate
  *	@handler: Function to be called when the IRQ occurs.
+ *	@flags: Interrupt type flags (IRQF_TIMER only)
  *	@devname: An ascii name for the claiming device
  *	@dev_id: A percpu cookie passed back to the handler function
  *
@@ -1950,8 +2051,9 @@ int setup_percpu_irq(unsigned int irq, struct irqaction *act)
  *	the handler gets called with the interrupted CPU's instance of
  *	that variable.
  */
-int request_percpu_irq(unsigned int irq, irq_handler_t handler,
-		       const char *devname, void __percpu *dev_id)
+int __request_percpu_irq(unsigned int irq, irq_handler_t handler,
+			 unsigned long flags, const char *devname,
+			 void __percpu *dev_id)
 {
 	struct irqaction *action;
 	struct irq_desc *desc;
@@ -1965,12 +2067,15 @@ int request_percpu_irq(unsigned int irq, irq_handler_t handler,
 	    !irq_settings_is_per_cpu_devid(desc))
 		return -EINVAL;
 
+	if (flags && flags != IRQF_TIMER)
+		return -EINVAL;
+
 	action = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
 	if (!action)
 		return -ENOMEM;
 
 	action->handler = handler;
-	action->flags = IRQF_PERCPU | IRQF_NO_SUSPEND;
+	action->flags = flags | IRQF_PERCPU | IRQF_NO_SUSPEND;
 	action->name = devname;
 	action->percpu_dev_id = dev_id;
 
@@ -1980,9 +2085,7 @@ int request_percpu_irq(unsigned int irq, irq_handler_t handler,
 		return retval;
 	}
 
-	chip_bus_lock(desc);
 	retval = __setup_irq(irq, desc, action);
-	chip_bus_sync_unlock(desc);
 
 	if (retval) {
 		irq_chip_pm_put(&desc->irq_data);
@@ -1991,7 +2094,7 @@ int request_percpu_irq(unsigned int irq, irq_handler_t handler,
 
 	return retval;
 }
-EXPORT_SYMBOL_GPL(request_percpu_irq);
+EXPORT_SYMBOL_GPL(__request_percpu_irq);
 
 /**
  *	irq_get_irqchip_state - returns the irqchip state of a interrupt.

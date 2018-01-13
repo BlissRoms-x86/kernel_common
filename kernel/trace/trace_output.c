@@ -340,31 +340,41 @@ static inline const char *kretprobed(const char *name)
 static void
 seq_print_sym_short(struct trace_seq *s, const char *fmt, unsigned long address)
 {
-#ifdef CONFIG_KALLSYMS
 	char str[KSYM_SYMBOL_LEN];
+#ifdef CONFIG_KALLSYMS
 	const char *name;
 
 	kallsyms_lookup(address, NULL, NULL, NULL, str);
 
 	name = kretprobed(str);
 
-	trace_seq_printf(s, fmt, name);
+	if (name && strlen(name)) {
+		trace_seq_printf(s, fmt, name);
+		return;
+	}
 #endif
+	snprintf(str, KSYM_SYMBOL_LEN, "0x%08lx", address);
+	trace_seq_printf(s, fmt, str);
 }
 
 static void
 seq_print_sym_offset(struct trace_seq *s, const char *fmt,
 		     unsigned long address)
 {
-#ifdef CONFIG_KALLSYMS
 	char str[KSYM_SYMBOL_LEN];
+#ifdef CONFIG_KALLSYMS
 	const char *name;
 
 	sprint_symbol(str, address);
 	name = kretprobed(str);
 
-	trace_seq_printf(s, fmt, name);
+	if (name && strlen(name)) {
+		trace_seq_printf(s, fmt, name);
+		return;
+	}
 #endif
+	snprintf(str, KSYM_SYMBOL_LEN, "0x%08lx", address);
+	trace_seq_printf(s, fmt, str);
 }
 
 #ifndef CONFIG_64BIT
@@ -587,6 +597,15 @@ int trace_print_context(struct trace_iterator *iter)
 	trace_seq_printf(s, "%16s-%-5d [%03d] ",
 			       comm, entry->pid, iter->cpu);
 
+	if (tr->trace_flags & TRACE_ITER_RECORD_TGID) {
+		unsigned int tgid = trace_find_tgid(entry->pid);
+
+		if (!tgid)
+			trace_seq_printf(s, "(-----) ");
+		else
+			trace_seq_printf(s, "(%5d) ", tgid);
+	}
+
 	if (tr->trace_flags & TRACE_ITER_IRQ_INFO)
 		trace_print_lat_fmt(s, entry);
 
@@ -635,15 +654,6 @@ int trace_print_lat_context(struct trace_iterator *iter)
 	lat_print_timestamp(iter, next_ts);
 
 	return !trace_seq_has_overflowed(s);
-}
-
-static const char state_to_char[] = TASK_STATE_TO_CHAR_STR;
-
-static int task_state_char(unsigned long state)
-{
-	int bit = state ? __ffs(state) + 1 : 0;
-
-	return bit < sizeof(state_to_char) - 1 ? state_to_char[bit] : '?';
 }
 
 /**
@@ -900,6 +910,174 @@ static struct trace_event trace_fn_event = {
 	.funcs		= &trace_fn_funcs,
 };
 
+/* TRACE_GRAPH_ENT */
+static enum print_line_t trace_graph_ent_trace(struct trace_iterator *iter, int flags,
+					struct trace_event *event)
+{
+	struct trace_seq *s = &iter->seq;
+	struct ftrace_graph_ent_entry *field;
+
+	trace_assign_type(field, iter->ent);
+
+	trace_seq_puts(s, "graph_ent: func=");
+	if (trace_seq_has_overflowed(s))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	if (!seq_print_ip_sym(s, field->graph_ent.func, flags))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	trace_seq_puts(s, "\n");
+	if (trace_seq_has_overflowed(s))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ent_raw(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ent_entry *field;
+
+	trace_assign_type(field, iter->ent);
+
+	trace_seq_printf(&iter->seq, "%lx %d\n",
+			      field->graph_ent.func,
+			      field->graph_ent.depth);
+	if (trace_seq_has_overflowed(&iter->seq))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ent_hex(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ent_entry *field;
+	struct trace_seq *s = &iter->seq;
+
+	trace_assign_type(field, iter->ent);
+
+	SEQ_PUT_HEX_FIELD(s, field->graph_ent.func);
+	SEQ_PUT_HEX_FIELD(s, field->graph_ent.depth);
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ent_bin(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ent_entry *field;
+	struct trace_seq *s = &iter->seq;
+
+	trace_assign_type(field, iter->ent);
+
+	SEQ_PUT_FIELD(s, field->graph_ent.func);
+	SEQ_PUT_FIELD(s, field->graph_ent.depth);
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static struct trace_event_functions trace_graph_ent_funcs = {
+	.trace		= trace_graph_ent_trace,
+	.raw		= trace_graph_ent_raw,
+	.hex		= trace_graph_ent_hex,
+	.binary		= trace_graph_ent_bin,
+};
+
+static struct trace_event trace_graph_ent_event = {
+	.type		= TRACE_GRAPH_ENT,
+	.funcs		= &trace_graph_ent_funcs,
+};
+
+/* TRACE_GRAPH_RET */
+static enum print_line_t trace_graph_ret_trace(struct trace_iterator *iter, int flags,
+					struct trace_event *event)
+{
+	struct trace_seq *s = &iter->seq;
+	struct trace_entry *entry = iter->ent;
+	struct ftrace_graph_ret_entry *field;
+
+	trace_assign_type(field, entry);
+
+	trace_seq_puts(s, "graph_ret: func=");
+	if (trace_seq_has_overflowed(s))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	if (!seq_print_ip_sym(s, field->ret.func, flags))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	trace_seq_puts(s, "\n");
+	if (trace_seq_has_overflowed(s))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ret_raw(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ret_entry *field;
+
+	trace_assign_type(field, iter->ent);
+
+	trace_seq_printf(&iter->seq, "%lx %lld %lld %ld %d\n",
+			      field->ret.func,
+			      field->ret.calltime,
+			      field->ret.rettime,
+			      field->ret.overrun,
+			      field->ret.depth);
+	if (trace_seq_has_overflowed(&iter->seq))
+		return TRACE_TYPE_PARTIAL_LINE;
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ret_hex(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ret_entry *field;
+	struct trace_seq *s = &iter->seq;
+
+	trace_assign_type(field, iter->ent);
+
+	SEQ_PUT_HEX_FIELD(s, field->ret.func);
+	SEQ_PUT_HEX_FIELD(s, field->ret.calltime);
+	SEQ_PUT_HEX_FIELD(s, field->ret.rettime);
+	SEQ_PUT_HEX_FIELD(s, field->ret.overrun);
+	SEQ_PUT_HEX_FIELD(s, field->ret.depth);
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static enum print_line_t trace_graph_ret_bin(struct trace_iterator *iter, int flags,
+				      struct trace_event *event)
+{
+	struct ftrace_graph_ret_entry *field;
+	struct trace_seq *s = &iter->seq;
+
+	trace_assign_type(field, iter->ent);
+
+	SEQ_PUT_FIELD(s, field->ret.func);
+	SEQ_PUT_FIELD(s, field->ret.calltime);
+	SEQ_PUT_FIELD(s, field->ret.rettime);
+	SEQ_PUT_FIELD(s, field->ret.overrun);
+	SEQ_PUT_FIELD(s, field->ret.depth);
+
+	return TRACE_TYPE_HANDLED;
+}
+
+static struct trace_event_functions trace_graph_ret_funcs = {
+	.trace		= trace_graph_ret_trace,
+	.raw		= trace_graph_ret_raw,
+	.hex		= trace_graph_ret_hex,
+	.binary		= trace_graph_ret_bin,
+};
+
+static struct trace_event trace_graph_ret_event = {
+	.type		= TRACE_GRAPH_RET,
+	.funcs		= &trace_graph_ret_funcs,
+};
+
 /* TRACE_CTX an TRACE_WAKE */
 static enum print_line_t trace_ctxwake_print(struct trace_iterator *iter,
 					     char *delim)
@@ -911,8 +1089,8 @@ static enum print_line_t trace_ctxwake_print(struct trace_iterator *iter,
 
 	trace_assign_type(field, iter->ent);
 
-	T = task_state_char(field->next_state);
-	S = task_state_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
+	S = __task_state_to_char(field->prev_state);
 	trace_find_cmdline(field->next_pid, comm);
 	trace_seq_printf(&iter->seq,
 			 " %5d:%3d:%c %s [%03d] %5d:%3d:%c %s\n",
@@ -947,8 +1125,8 @@ static int trace_ctxwake_raw(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = task_state_char(field->prev_state);
-	T = task_state_char(field->next_state);
+		S = __task_state_to_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
 	trace_seq_printf(&iter->seq, "%d %d %c %d %d %d %c\n",
 			 field->prev_pid,
 			 field->prev_prio,
@@ -983,8 +1161,8 @@ static int trace_ctxwake_hex(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = task_state_char(field->prev_state);
-	T = task_state_char(field->next_state);
+		S = __task_state_to_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
 
 	SEQ_PUT_HEX_FIELD(s, field->prev_pid);
 	SEQ_PUT_HEX_FIELD(s, field->prev_prio);
@@ -1371,6 +1549,8 @@ static struct trace_event trace_raw_data_event = {
 
 static struct trace_event *events[] __initdata = {
 	&trace_fn_event,
+	&trace_graph_ent_event,
+	&trace_graph_ret_event,
 	&trace_ctx_event,
 	&trace_wake_event,
 	&trace_stack_event,

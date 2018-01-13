@@ -183,6 +183,8 @@ struct chv_pinctrl {
 	struct chv_pin_context *saved_pin_context;
 };
 
+#define CHV_INVALID_HWIRQ	((unsigned)INVALID_HWIRQ)
+
 #define ALTERNATE_FUNCTION(p, m, i)		\
 	{					\
 		.pin = (p),			\
@@ -897,7 +899,7 @@ static int chv_gpio_request_enable(struct pinctrl_dev *pctldev,
 		/* Reset the interrupt mapping */
 		for (i = 0; i < ARRAY_SIZE(pctrl->intr_lines); i++) {
 			if (pctrl->intr_lines[i] == offset) {
-				pctrl->intr_lines[i] = 0;
+				pctrl->intr_lines[i] = CHV_INVALID_HWIRQ;
 				break;
 			}
 		}
@@ -1424,7 +1426,7 @@ static unsigned chv_gpio_irq_startup(struct irq_data *d)
 		else
 			handler = handle_edge_irq;
 
-		if (!pctrl->intr_lines[intsel]) {
+		if (pctrl->intr_lines[intsel] == CHV_INVALID_HWIRQ) {
 			irq_set_handler_locked(d, handler);
 			pctrl->intr_lines[intsel] = offset;
 		}
@@ -1548,6 +1550,13 @@ static const struct dmi_system_id chv_no_valid_mask[] = {
 		},
 	},
 	{
+		.ident = "HP Chromebook 11 G5 (Setzer)",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Setzer"),
+		},
+	},
+	{
 		.ident = "Acer Chromebook R11 (Cyan)",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "GOOGLE"),
@@ -1570,6 +1579,7 @@ static int chv_gpio_probe(struct chv_pinctrl *pctrl, int irq)
 	struct gpio_chip *chip = &pctrl->chip;
 	bool need_valid_mask = !dmi_check_system(chv_no_valid_mask);
 	int ret, i, offset;
+	int irq_base;
 
 	*chip = chv_gpio_chip;
 
@@ -1612,10 +1622,41 @@ static int chv_gpio_probe(struct chv_pinctrl *pctrl, int irq)
 			clear_bit(i, chip->irq_valid_mask);
 	}
 
+	/*
+	 * The same set of machines in chv_no_valid_mask[] have incorrectly
+	 * configured GPIOs that generate spurious interrupts so we use
+	 * this same list to apply another quirk for them.
+	 *
+	 * See also https://bugzilla.kernel.org/show_bug.cgi?id=197953.
+	 */
+	if (!need_valid_mask) {
+		/*
+		 * Mask all interrupts the community is able to generate
+		 * but leave the ones that can only generate GPEs unmasked.
+		 */
+		chv_writel(GENMASK(31, pctrl->community->nirqs),
+			   pctrl->regs + CHV_INTMASK);
+	}
+
 	/* Clear all interrupts */
 	chv_writel(0xffff, pctrl->regs + CHV_INTSTAT);
 
-	ret = gpiochip_irqchip_add(chip, &chv_gpio_irqchip, 0,
+	/* Initialize local cache of interrupt line mapping */
+	for (i = 0; i < ARRAY_SIZE(pctrl->intr_lines); i++)
+		pctrl->intr_lines[i] = CHV_INVALID_HWIRQ;
+
+	if (!need_valid_mask) {
+		irq_base = devm_irq_alloc_descs(pctrl->dev, -1, 0,
+						chip->ngpio, NUMA_NO_NODE);
+		if (irq_base < 0) {
+			dev_err(pctrl->dev, "Failed to allocate IRQ numbers\n");
+			return irq_base;
+		}
+	} else {
+		irq_base = 0;
+	}
+
+	ret = gpiochip_irqchip_add(chip, &chv_gpio_irqchip, irq_base,
 				   handle_bad_irq, IRQ_TYPE_NONE);
 	if (ret) {
 		dev_err(pctrl->dev, "failed to add IRQ chip\n");

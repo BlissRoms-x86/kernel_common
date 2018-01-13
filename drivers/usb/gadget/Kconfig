@@ -130,7 +130,7 @@ config USB_GADGET_STORAGE_NUM_BUFFERS
 
 config U_SERIAL_CONSOLE
 	bool "Serial gadget console support"
-	depends on USB_G_SERIAL
+	depends on USB_U_SERIAL
 	help
 	   It supports the serial gadget can be used as a console.
 
@@ -213,6 +213,12 @@ config USB_F_PRINTER
 	tristate
 
 config USB_F_TCM
+	tristate
+
+config USB_F_AUDIO_SRC
+	tristate
+
+config USB_F_ACC
 	tristate
 
 # this first set of drivers all depend on bulk-capable hardware.
@@ -367,6 +373,30 @@ config USB_CONFIGFS_F_FS
 	  of composite gadgets such that some of the functions are
 	  implemented in kernel space (for instance Ethernet, serial or
 	  mass storage) and other are implemented in user space.
+
+config USB_CONFIGFS_F_ACC
+	boolean "Accessory gadget"
+	depends on USB_CONFIGFS
+	select USB_F_ACC
+	help
+	  USB gadget Accessory support
+
+config USB_CONFIGFS_F_AUDIO_SRC
+	boolean "Audio Source gadget"
+	depends on USB_CONFIGFS && USB_CONFIGFS_F_ACC
+	depends on SND
+	select SND_PCM
+	select USB_F_AUDIO_SRC
+	help
+	  USB gadget Audio Source support
+
+config USB_CONFIGFS_UEVENT
+	boolean "Uevent notification of Gadget state"
+	depends on USB_CONFIGFS
+	help
+	  Enable uevent notifications to userspace when the gadget
+	  state changes. The gadget can be in any of the following
+	  three states: "CONNECTED/DISCONNECTED/CONFIGURED"
 
 config USB_CONFIGFS_F_UAC1
 	bool "Audio Class 1.0"

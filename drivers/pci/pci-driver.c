@@ -415,6 +415,8 @@ static int pci_device_probe(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 	struct pci_driver *drv = to_pci_driver(dev->driver);
 
+	pci_assign_irq(pci_dev);
+
 	error = pcibios_alloc_irq(pci_dev);
 	if (error < 0)
 		return error;
@@ -509,6 +511,7 @@ static int pci_restore_standard_config(struct pci_dev *pci_dev)
 	}
 
 	pci_restore_state(pci_dev);
+	pci_pme_restore(pci_dev);
 	return 0;
 }
 
@@ -520,6 +523,7 @@ static void pci_pm_default_resume_early(struct pci_dev *pci_dev)
 {
 	pci_power_up(pci_dev);
 	pci_restore_state(pci_dev);
+	pci_pme_restore(pci_dev);
 	pci_fixup_device(pci_fixup_resume_early, pci_dev);
 }
 
@@ -643,9 +647,7 @@ static int pci_legacy_resume(struct device *dev)
 static void pci_pm_default_resume(struct pci_dev *pci_dev)
 {
 	pci_fixup_device(pci_fixup_resume, pci_dev);
-
-	if (!pci_has_subordinate(pci_dev))
-		pci_enable_wake(pci_dev, PCI_D0, false);
+	pci_enable_wake(pci_dev, PCI_D0, false);
 }
 
 static void pci_pm_default_suspend(struct pci_dev *pci_dev)
@@ -966,7 +968,13 @@ static int pci_pm_thaw_noirq(struct device *dev)
 	if (pci_has_legacy_pm_support(pci_dev))
 		return pci_legacy_resume_early(dev);
 
-	pci_update_current_state(pci_dev, PCI_D0);
+	/*
+	 * pci_restore_state() requires the device to be in D0 (because of MSI
+	 * restoration among other things), so force it into D0 in case the
+	 * driver's "freeze" callbacks put it into a low-power state directly.
+	 */
+	pci_set_power_state(pci_dev, PCI_D0);
+	pci_restore_state(pci_dev);
 
 	if (drv && drv->pm && drv->pm->thaw_noirq)
 		error = drv->pm->thaw_noirq(dev);
@@ -1219,7 +1227,7 @@ static int pci_pm_runtime_resume(struct device *dev)
 
 	pci_restore_standard_config(pci_dev);
 	pci_fixup_device(pci_fixup_resume_early, pci_dev);
-	__pci_enable_wake(pci_dev, PCI_D0, true, false);
+	pci_enable_wake(pci_dev, PCI_D0, false);
 	pci_fixup_device(pci_fixup_resume, pci_dev);
 
 	rc = pm->runtime_resume(dev);
@@ -1302,6 +1310,7 @@ int __pci_register_driver(struct pci_driver *drv, struct module *owner,
 	drv->driver.bus = &pci_bus_type;
 	drv->driver.owner = owner;
 	drv->driver.mod_name = mod_name;
+	drv->driver.groups = drv->groups;
 
 	spin_lock_init(&drv->dynids.lock);
 	INIT_LIST_HEAD(&drv->dynids.list);

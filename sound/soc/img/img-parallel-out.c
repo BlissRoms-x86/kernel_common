@@ -164,9 +164,11 @@ static int img_prl_out_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
+	pm_runtime_get_sync(prl->dev);
 	reg = img_prl_out_readl(prl, IMG_PRL_OUT_CTL);
 	reg = (reg & ~IMG_PRL_OUT_CTL_EDGE_MASK) | control_set;
 	img_prl_out_writel(prl, reg, IMG_PRL_OUT_CTL);
+	pm_runtime_put(prl->dev);
 
 	return 0;
 }
@@ -224,7 +226,7 @@ static int img_prl_out_probe(struct platform_device *pdev)
 
 	prl->base = base;
 
-	prl->rst = devm_reset_control_get(&pdev->dev, "rst");
+	prl->rst = devm_reset_control_get_exclusive(&pdev->dev, "rst");
 	if (IS_ERR(prl->rst)) {
 		if (PTR_ERR(prl->rst) != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "No top level reset found\n");

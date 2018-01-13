@@ -26,7 +26,7 @@
  */
 static int pblk_read_from_cache(struct pblk *pblk, struct bio *bio,
 				sector_t lba, struct ppa_addr ppa,
-				int bio_iter)
+				int bio_iter, bool advanced_bio)
 {
 #ifdef CONFIG_NVM_DEBUG
 	/* Callers must ensure that the ppa points to a cache address */
@@ -34,7 +34,8 @@ static int pblk_read_from_cache(struct pblk *pblk, struct bio *bio,
 	BUG_ON(!pblk_addr_in_cache(ppa));
 #endif
 
-	return pblk_rb_copy_to_bio(&pblk->rwb, bio, lba, ppa, bio_iter);
+	return pblk_rb_copy_to_bio(&pblk->rwb, bio, lba, ppa,
+						bio_iter, advanced_bio);
 }
 
 static void pblk_read_ppalist_rq(struct pblk *pblk, struct nvm_rq *rqd,
@@ -44,7 +45,7 @@ static void pblk_read_ppalist_rq(struct pblk *pblk, struct nvm_rq *rqd,
 	struct ppa_addr ppas[PBLK_MAX_REQ_ADDRS];
 	sector_t blba = pblk_get_lba(bio);
 	int nr_secs = rqd->nr_ppas;
-	int advanced_bio = 0;
+	bool advanced_bio = false;
 	int i, j = 0;
 
 	/* logic error: lba out-of-bounds. Ignore read request */
@@ -62,19 +63,26 @@ static void pblk_read_ppalist_rq(struct pblk *pblk, struct nvm_rq *rqd,
 retry:
 		if (pblk_ppa_empty(p)) {
 			WARN_ON(test_and_set_bit(i, read_bitmap));
-			continue;
+
+			if (unlikely(!advanced_bio)) {
+				bio_advance(bio, (i) * PBLK_EXPOSED_PAGE_SIZE);
+				advanced_bio = true;
+			}
+
+			goto next;
 		}
 
 		/* Try to read from write buffer. The address is later checked
 		 * on the write buffer to prevent retrieving overwritten data.
 		 */
 		if (pblk_addr_in_cache(p)) {
-			if (!pblk_read_from_cache(pblk, bio, lba, p, i)) {
+			if (!pblk_read_from_cache(pblk, bio, lba, p, i,
+								advanced_bio)) {
 				pblk_lookup_l2p_seq(pblk, &p, lba, 1);
 				goto retry;
 			}
 			WARN_ON(test_and_set_bit(i, read_bitmap));
-			advanced_bio = 1;
+			advanced_bio = true;
 #ifdef CONFIG_NVM_DEBUG
 			atomic_long_inc(&pblk->cache_reads);
 #endif
@@ -83,6 +91,7 @@ retry:
 			rqd->ppa_list[j++] = p;
 		}
 
+next:
 		if (advanced_bio)
 			bio_advance(bio, PBLK_EXPOSED_PAGE_SIZE);
 	}
@@ -229,7 +238,7 @@ static int pblk_fill_partial_read_bio(struct pblk *pblk, struct nvm_rq *rqd,
 		kunmap_atomic(src_p);
 		kunmap_atomic(dst_p);
 
-		mempool_free(src_bv.bv_page, pblk->page_pool);
+		mempool_free(src_bv.bv_page, pblk->page_bio_pool);
 
 		hole = find_next_zero_bit(read_bitmap, nr_secs, hole + 1);
 	} while (hole < nr_secs);
@@ -282,7 +291,7 @@ retry:
 	 * write buffer to prevent retrieving overwritten data.
 	 */
 	if (pblk_addr_in_cache(ppa)) {
-		if (!pblk_read_from_cache(pblk, bio, lba, ppa, 0)) {
+		if (!pblk_read_from_cache(pblk, bio, lba, ppa, 0, 1)) {
 			pblk_lookup_l2p_seq(pblk, &ppa, lba, 1);
 			goto retry;
 		}
@@ -490,7 +499,7 @@ int pblk_submit_read_gc(struct pblk *pblk, u64 *lba_list, void *data,
 
 	data_len = (*secs_to_gc) * geo->sec_size;
 	bio = pblk_bio_map_addr(pblk, data, *secs_to_gc, data_len,
-						PBLK_KMALLOC_META, GFP_KERNEL);
+						PBLK_VMALLOC_META, GFP_KERNEL);
 	if (IS_ERR(bio)) {
 		pr_err("pblk: could not allocate GC bio (%lu)\n", PTR_ERR(bio));
 		goto err_free_dma;
@@ -510,7 +519,7 @@ int pblk_submit_read_gc(struct pblk *pblk, u64 *lba_list, void *data,
 	if (ret) {
 		bio_endio(bio);
 		pr_err("pblk: GC read request failed\n");
-		goto err_free_dma;
+		goto err_free_bio;
 	}
 
 	if (!wait_for_completion_io_timeout(&wait,
@@ -532,10 +541,13 @@ int pblk_submit_read_gc(struct pblk *pblk, u64 *lba_list, void *data,
 	atomic_long_sub(*secs_to_gc, &pblk->inflight_reads);
 #endif
 
+	bio_put(bio);
 out:
 	nvm_dev_dma_free(dev->parent, rqd.meta_list, rqd.dma_meta_list);
 	return NVM_IO_OK;
 
+err_free_bio:
+	bio_put(bio);
 err_free_dma:
 	nvm_dev_dma_free(dev->parent, rqd.meta_list, rqd.dma_meta_list);
 	return NVM_IO_ERR;

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_TIMER_H
 #define _LINUX_TIMER_H
 
@@ -168,6 +169,20 @@ static inline void init_timer_on_stack_key(struct timer_list *timer,
 #define setup_pinned_deferrable_timer_on_stack(timer, fn, data)		\
 	__setup_timer_on_stack((timer), (fn), (data), TIMER_DEFERRABLE | TIMER_PINNED)
 
+#define TIMER_DATA_TYPE		unsigned long
+#define TIMER_FUNC_TYPE		void (*)(TIMER_DATA_TYPE)
+
+static inline void timer_setup(struct timer_list *timer,
+			       void (*callback)(struct timer_list *),
+			       unsigned int flags)
+{
+	__setup_timer(timer, (TIMER_FUNC_TYPE)callback,
+		      (TIMER_DATA_TYPE)timer, flags);
+}
+
+#define from_timer(var, callback_timer, timer_fieldname) \
+	container_of(callback_timer, typeof(*var), timer_fieldname)
+
 /**
  * timer_pending - is a timer pending?
  * @timer: the timer in question
@@ -231,9 +246,11 @@ unsigned long round_jiffies_up(unsigned long j);
 unsigned long round_jiffies_up_relative(unsigned long j);
 
 #ifdef CONFIG_HOTPLUG_CPU
+int timers_prepare_cpu(unsigned int cpu);
 int timers_dead_cpu(unsigned int cpu);
 #else
-#define timers_dead_cpu NULL
+#define timers_prepare_cpu	NULL
+#define timers_dead_cpu		NULL
 #endif
 
 #endif

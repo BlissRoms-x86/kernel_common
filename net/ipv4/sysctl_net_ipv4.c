@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * sysctl_net_ipv4.c: sysctl interface to net IPV4 subsystem.
  *
@@ -44,6 +45,9 @@ static int tcp_syn_retries_min = 1;
 static int tcp_syn_retries_max = MAX_TCP_SYNCNT;
 static int ip_ping_group_range_min[] = { 0, 0 };
 static int ip_ping_group_range_max[] = { GID_T_MAX, GID_T_MAX };
+
+/* obsolete */
+static int sysctl_tcp_low_latency __read_mostly;
 
 /* Update system visible IP port range */
 static void set_local_port_range(struct net *net, int range[2])
@@ -189,6 +193,21 @@ static int ipv4_ping_group_range(struct ctl_table *table, int write,
 		}
 		set_ping_group_range(table, low, high);
 	}
+
+	return ret;
+}
+
+/* Validate changes from /proc interface. */
+static int proc_tcp_default_init_rwnd(struct ctl_table *ctl, int write,
+				      void __user *buffer,
+				      size_t *lenp, loff_t *ppos)
+{
+	int old_value = *(int *)ctl->data;
+	int ret = proc_dointvec(ctl, write, buffer, lenp, ppos);
+	int new_value = *(int *)ctl->data;
+
+	if (write && ret == 0 && (new_value < 3 || new_value > 100))
+		*(int *)ctl->data = old_value;
 
 	return ret;
 }
@@ -360,31 +379,29 @@ static int proc_tfo_blackhole_detect_timeout(struct ctl_table *table,
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (write && ret == 0)
 		tcp_fastopen_active_timeout_reset();
+
+	return ret;
+}
+
+static int proc_tcp_available_ulp(struct ctl_table *ctl,
+				  int write,
+				  void __user *buffer, size_t *lenp,
+				  loff_t *ppos)
+{
+	struct ctl_table tbl = { .maxlen = TCP_ULP_BUF_MAX, };
+	int ret;
+
+	tbl.data = kmalloc(tbl.maxlen, GFP_USER);
+	if (!tbl.data)
+		return -ENOMEM;
+	tcp_get_available_ulp(tbl.data, TCP_ULP_BUF_MAX);
+	ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
+	kfree(tbl.data);
+
 	return ret;
 }
 
 static struct ctl_table ipv4_table[] = {
-	{
-		.procname	= "tcp_timestamps",
-		.data		= &sysctl_tcp_timestamps,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec
-	},
-	{
-		.procname	= "tcp_window_scaling",
-		.data		= &sysctl_tcp_window_scaling,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec
-	},
-	{
-		.procname	= "tcp_sack",
-		.data		= &sysctl_tcp_sack,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec
-	},
 	{
 		.procname	= "tcp_retrans_collapse",
 		.data		= &sysctl_tcp_retrans_collapse,
@@ -705,6 +722,19 @@ static struct ctl_table ipv4_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_ms_jiffies,
+	},
+	{
+		.procname	= "tcp_available_ulp",
+		.maxlen		= TCP_ULP_BUF_MAX,
+		.mode		= 0444,
+		.proc_handler   = proc_tcp_available_ulp,
+	},
+	{
+		.procname       = "tcp_default_init_rwnd",
+		.data           = &sysctl_tcp_default_init_rwnd,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_tcp_default_init_rwnd
 	},
 	{
 		.procname	= "icmp_msgs_per_sec",
@@ -1116,6 +1146,27 @@ static struct ctl_table ipv4_net_table[] = {
 		.extra2		= &one,
 	},
 #endif
+	{
+		.procname	= "tcp_sack",
+		.data		= &init_net.ipv4.sysctl_tcp_sack,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
+	},
+	{
+		.procname	= "tcp_window_scaling",
+		.data		= &init_net.ipv4.sysctl_tcp_window_scaling,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
+	},
+	{
+		.procname	= "tcp_timestamps",
+		.data		= &init_net.ipv4.sysctl_tcp_timestamps,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
+	},
 	{ }
 };
 

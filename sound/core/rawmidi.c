@@ -579,15 +579,14 @@ static int snd_rawmidi_info_user(struct snd_rawmidi_substream *substream,
 	return 0;
 }
 
-int snd_rawmidi_info_select(struct snd_card *card, struct snd_rawmidi_info *info)
+static int __snd_rawmidi_info_select(struct snd_card *card,
+				     struct snd_rawmidi_info *info)
 {
 	struct snd_rawmidi *rmidi;
 	struct snd_rawmidi_str *pstr;
 	struct snd_rawmidi_substream *substream;
 
-	mutex_lock(&register_mutex);
 	rmidi = snd_rawmidi_search(card, info->device);
-	mutex_unlock(&register_mutex);
 	if (!rmidi)
 		return -ENXIO;
 	if (info->stream < 0 || info->stream > 1)
@@ -602,6 +601,16 @@ int snd_rawmidi_info_select(struct snd_card *card, struct snd_rawmidi_info *info
 			return snd_rawmidi_info(substream, info);
 	}
 	return -ENXIO;
+}
+
+int snd_rawmidi_info_select(struct snd_card *card, struct snd_rawmidi_info *info)
+{
+	int ret;
+
+	mutex_lock(&register_mutex);
+	ret = __snd_rawmidi_info_select(card, info);
+	mutex_unlock(&register_mutex);
+	return ret;
 }
 EXPORT_SYMBOL(snd_rawmidi_info_select);
 
@@ -1610,7 +1619,7 @@ static int snd_rawmidi_dev_free(struct snd_device *device)
 	return snd_rawmidi_free(rmidi);
 }
 
-#if IS_REACHABLE(CONFIG_SND_SEQUENCER)
+#if IS_ENABLED(CONFIG_SND_SEQUENCER)
 static void snd_rawmidi_dev_seq_free(struct snd_seq_device *device)
 {
 	struct snd_rawmidi *rmidi = device->private_data;
@@ -1691,7 +1700,7 @@ static int snd_rawmidi_dev_register(struct snd_device *device)
 		}
 	}
 	rmidi->proc_entry = entry;
-#if IS_REACHABLE(CONFIG_SND_SEQUENCER)
+#if IS_ENABLED(CONFIG_SND_SEQUENCER)
 	if (!rmidi->ops || !rmidi->ops->dev_register) { /* own registration mechanism */
 		if (snd_seq_device_new(rmidi->card, rmidi->device, SNDRV_SEQ_DEV_ID_MIDISYNTH, 0, &rmidi->seq_dev) >= 0) {
 			rmidi->seq_dev->private_data = rmidi;

@@ -160,17 +160,19 @@ static void do_fpu_end(void)
 static void fix_processor_context(void)
 {
 	int cpu = smp_processor_id();
-	struct tss_struct *t = &per_cpu(cpu_tss, cpu);
 #ifdef CONFIG_X86_64
 	struct desc_struct *desc = get_cpu_gdt_rw(cpu);
 	tss_desc tss;
 #endif
-	set_tss_desc(cpu, t);	/*
-				 * This just modifies memory; should not be
-				 * necessary. But... This is necessary, because
-				 * 386 hardware has concept of busy TSS or some
-				 * similar stupidity.
-				 */
+
+	/*
+	 * We need to reload TR, which requires that we change the
+	 * GDT entry to indicate "available" first.
+	 *
+	 * XXX: This could probably all be replaced by a call to
+	 * force_reload_TR().
+	 */
+	set_tss_desc(cpu, &get_cpu_entry_area(cpu)->tss.x86_tss);
 
 #ifdef CONFIG_X86_64
 	memcpy(&tss, &desc[GDT_ENTRY_TSS], sizeof(tss_desc));
@@ -181,6 +183,7 @@ static void fix_processor_context(void)
 #endif
 	load_TR_desc();				/* This does ltr */
 	load_mm_ldt(current->active_mm);	/* This does lldt */
+	initialize_tlbstate_and_flush();
 
 	fpu__resume_cpu();
 
@@ -427,7 +430,7 @@ static int msr_initialize_bdw(const struct dmi_system_id *d)
 	return msr_init_context(bdw_msr_id, ARRAY_SIZE(bdw_msr_id));
 }
 
-static struct dmi_system_id msr_save_dmi_table[] = {
+static const struct dmi_system_id msr_save_dmi_table[] = {
 	{
 	 .callback = msr_initialize_bdw,
 	 .ident = "BROADWELL BDX_EP",

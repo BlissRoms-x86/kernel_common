@@ -611,7 +611,7 @@ static void msm_hc_select_hs400(struct sdhci_host *host)
  * HS400 - divided clock (free running MCLK/2)
  * All other modes - default (free running MCLK)
  */
-void sdhci_msm_hc_select_mode(struct sdhci_host *host)
+static void sdhci_msm_hc_select_mode(struct sdhci_host *host)
 {
 	struct mmc_ios ios = host->mmc->ios;
 
@@ -1049,7 +1049,7 @@ static unsigned int sdhci_msm_get_min_clock(struct sdhci_host *host)
  * instead directly control the GCC clock as per
  * HW recommendation.
  **/
-void __sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
+static void __sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 {
 	u16 clk;
 	/*
@@ -1133,6 +1133,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	if (IS_ERR(host))
 		return PTR_ERR(host);
 
+	host->sdma_boundary = 0;
 	pltfm_host = sdhci_priv(host);
 	msm_host = sdhci_pltfm_priv(pltfm_host);
 	msm_host->mmc = host->mmc;
@@ -1250,6 +1251,21 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 			       CORE_VENDOR_SPEC_CAPABILITIES0);
 	}
 
+	/*
+	 * Power on reset state may trigger power irq if previous status of
+	 * PWRCTL was either BUS_ON or IO_HIGH_V. So before enabling pwr irq
+	 * interrupt in GIC, any pending power irq interrupt should be
+	 * acknowledged. Otherwise power irq interrupt handler would be
+	 * fired prematurely.
+	 */
+	sdhci_msm_voltage_switch(host);
+
+	/*
+	 * Ensure that above writes are propogated before interrupt enablement
+	 * in GIC.
+	 */
+	mb();
+
 	/* Setup IRQ for handling power/voltage tasks with PMIC */
 	msm_host->pwr_irq = platform_get_irq_byname(pdev, "pwr_irq");
 	if (msm_host->pwr_irq < 0) {
@@ -1258,6 +1274,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		ret = msm_host->pwr_irq;
 		goto clk_disable;
 	}
+
+	/* Enable pwr irq interrupts */
+	writel_relaxed(INT_MASK, msm_host->core_mem + CORE_PWRCTL_MASK);
 
 	ret = devm_request_threaded_irq(&pdev->dev, msm_host->pwr_irq, NULL,
 					sdhci_msm_pwr_irq, IRQF_ONESHOT,

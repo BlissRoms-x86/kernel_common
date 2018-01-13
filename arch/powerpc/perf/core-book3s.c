@@ -410,8 +410,12 @@ static __u64 power_pmu_bhrb_to(u64 addr)
 	int ret;
 	__u64 target;
 
-	if (is_kernel_addr(addr))
-		return branch_target((unsigned int *)addr);
+	if (is_kernel_addr(addr)) {
+		if (probe_kernel_read(&instr, (void *)addr, sizeof(instr)))
+			return 0;
+
+		return branch_target(&instr);
+	}
 
 	/* Userspace: need copy instruction here then translate it */
 	pagefault_disable();
@@ -792,6 +796,11 @@ void perf_event_print_debug(void)
 	unsigned long sdar, sier, flags;
 	u32 pmcs[MAX_HWEVENTS];
 	int i;
+
+	if (!ppmu) {
+		pr_info("Performance monitor hardware not registered.\n");
+		return;
+	}
 
 	if (!ppmu->n_counter)
 		return;
@@ -2039,7 +2048,8 @@ static void record_and_restart(struct perf_event *event, unsigned long val,
 
 		perf_sample_data_init(&data, ~0ULL, event->hw.last_period);
 
-		if (event->attr.sample_type & PERF_SAMPLE_ADDR)
+		if (event->attr.sample_type &
+		    (PERF_SAMPLE_ADDR | PERF_SAMPLE_PHYS_ADDR))
 			perf_get_data_addr(regs, &data.addr);
 
 		if (event->attr.sample_type & PERF_SAMPLE_BRANCH_STACK) {

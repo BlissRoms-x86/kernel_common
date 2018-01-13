@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/ceph/ceph_debug.h>
 
 #include <linux/fs.h>
@@ -7,7 +8,6 @@
 #include <linux/sched.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
-#include <linux/utsname.h>
 #include <linux/ratelimit.h>
 
 #include "super.h"
@@ -408,7 +408,7 @@ struct ceph_mds_session *__ceph_lookup_mds_session(struct ceph_mds_client *mdsc,
 {
 	struct ceph_mds_session *session;
 
-	if (mds >= mdsc->max_sessions || mdsc->sessions[mds] == NULL)
+	if (mds >= mdsc->max_sessions || !mdsc->sessions[mds])
 		return NULL;
 	session = mdsc->sessions[mds];
 	dout("lookup_mds_session %p %d\n", session,
@@ -483,7 +483,7 @@ static struct ceph_mds_session *register_session(struct ceph_mds_client *mdsc,
 
 		dout("register_session realloc to %d\n", newmax);
 		sa = kcalloc(newmax, sizeof(void *), GFP_NOFS);
-		if (sa == NULL)
+		if (!sa)
 			goto fail_realloc;
 		if (mdsc->sessions) {
 			memcpy(sa, mdsc->sessions,
@@ -731,8 +731,16 @@ static int __choose_mds(struct ceph_mds_client *mdsc,
 
 	inode = NULL;
 	if (req->r_inode) {
-		inode = req->r_inode;
-		ihold(inode);
+		if (ceph_snap(req->r_inode) != CEPH_SNAPDIR) {
+			inode = req->r_inode;
+			ihold(inode);
+		} else {
+			/* req->r_dentry is non-null for LSSNAP request */
+			rcu_read_lock();
+			inode = get_nonsnap_parent(req->r_dentry);
+			rcu_read_unlock();
+			dout("__choose_mds using snapdir's parent %p\n", inode);
+		}
 	} else if (req->r_dentry) {
 		/* ignore race with rename; old or new d_parent is okay */
 		struct dentry *parent;
@@ -877,8 +885,8 @@ static struct ceph_msg *create_session_open_msg(struct ceph_mds_client *mdsc, u6
 	void *p;
 
 	const char* metadata[][2] = {
-		{"hostname", utsname()->nodename},
-		{"kernel_version", utsname()->release},
+		{"hostname", mdsc->nodename},
+		{"kernel_version", init_utsname()->release},
 		{"entity_id", opt->name ? : ""},
 		{"root", fsopt->server_path ? : "/"},
 		{NULL, NULL}
@@ -886,7 +894,7 @@ static struct ceph_msg *create_session_open_msg(struct ceph_mds_client *mdsc, u6
 
 	/* Calculate serialized length of metadata */
 	metadata_bytes = 4;  /* map length */
-	for (i = 0; metadata[i][0] != NULL; ++i) {
+	for (i = 0; metadata[i][0]; ++i) {
 		metadata_bytes += 8 + strlen(metadata[i][0]) +
 			strlen(metadata[i][1]);
 		metadata_key_count++;
@@ -919,7 +927,7 @@ static struct ceph_msg *create_session_open_msg(struct ceph_mds_client *mdsc, u6
 	ceph_encode_32(&p, metadata_key_count);
 
 	/* Two length-prefixed strings for each entry in the map */
-	for (i = 0; metadata[i][0] != NULL; ++i) {
+	for (i = 0; metadata[i][0]; ++i) {
 		size_t const key_len = strlen(metadata[i][0]);
 		size_t const val_len = strlen(metadata[i][1]);
 
@@ -1122,7 +1130,7 @@ static int iterate_session_caps(struct ceph_mds_session *session,
 
 		spin_lock(&session->s_cap_lock);
 		p = p->next;
-		if (cap->ci == NULL) {
+		if (!cap->ci) {
 			dout("iterate_session_caps  finishing cap %p removal\n",
 			     cap);
 			BUG_ON(cap->session != session);
@@ -1420,6 +1428,29 @@ static int __close_session(struct ceph_mds_client *mdsc,
 	return request_close_session(mdsc, session);
 }
 
+static bool drop_negative_children(struct dentry *dentry)
+{
+	struct dentry *child;
+	bool all_negative = true;
+
+	if (!d_is_dir(dentry))
+		goto out;
+
+	spin_lock(&dentry->d_lock);
+	list_for_each_entry(child, &dentry->d_subdirs, d_child) {
+		if (d_really_is_positive(child)) {
+			all_negative = false;
+			break;
+		}
+	}
+	spin_unlock(&dentry->d_lock);
+
+	if (all_negative)
+		shrink_dcache_parent(dentry);
+out:
+	return all_negative;
+}
+
 /*
  * Trim old(er) caps.
  *
@@ -1465,16 +1496,27 @@ static int trim_caps_cb(struct inode *inode, struct ceph_cap *cap, void *arg)
 	if ((used | wanted) & ~oissued & mine)
 		goto out;   /* we need these caps */
 
-	session->s_trim_caps--;
 	if (oissued) {
 		/* we aren't the only cap.. just remove us */
 		__ceph_remove_cap(cap, true);
+		session->s_trim_caps--;
 	} else {
+		struct dentry *dentry;
 		/* try dropping referring dentries */
 		spin_unlock(&ci->i_ceph_lock);
-		d_prune_aliases(inode);
-		dout("trim_caps_cb %p cap %p  pruned, count now %d\n",
-		     inode, cap, atomic_read(&inode->i_count));
+		dentry = d_find_any_alias(inode);
+		if (dentry && drop_negative_children(dentry)) {
+			int count;
+			dput(dentry);
+			d_prune_aliases(inode);
+			count = atomic_read(&inode->i_count);
+			if (count == 1)
+				session->s_trim_caps--;
+			dout("trim_caps_cb %p cap %p pruned, count now %d\n",
+			     inode, cap, count);
+		} else {
+			dput(dentry);
+		}
 		return 0;
 	}
 
@@ -1748,7 +1790,7 @@ char *ceph_mdsc_build_path(struct dentry *dentry, int *plen, u64 *base,
 	int len, pos;
 	unsigned seq;
 
-	if (dentry == NULL)
+	if (!dentry)
 		return ERR_PTR(-EINVAL);
 
 retry:
@@ -1771,7 +1813,7 @@ retry:
 		len--;  /* no leading '/' */
 
 	path = kmalloc(len+1, GFP_NOFS);
-	if (path == NULL)
+	if (!path)
 		return ERR_PTR(-ENOMEM);
 	pos = len;
 	path[pos] = 0;	/* trailing null */
@@ -2875,7 +2917,7 @@ static int encode_caps_cb(struct inode *inode, struct ceph_cap *cap,
 	}
 
 	if (list_empty(&ci->i_cap_snaps)) {
-		snap_follows = 0;
+		snap_follows = ci->i_head_snapc ? ci->i_head_snapc->seq : 0;
 	} else {
 		struct ceph_cap_snap *capsnap =
 			list_first_entry(&ci->i_cap_snaps,
@@ -3133,7 +3175,7 @@ static void check_new_map(struct ceph_mds_client *mdsc,
 	     newmap->m_epoch, oldmap->m_epoch);
 
 	for (i = 0; i < oldmap->m_num_mds && i < mdsc->max_sessions; i++) {
-		if (mdsc->sessions[i] == NULL)
+		if (!mdsc->sessions[i])
 			continue;
 		s = mdsc->sessions[i];
 		oldstate = ceph_mdsmap_get_state(oldmap, i);
@@ -3280,7 +3322,7 @@ static void handle_lease(struct ceph_mds_client *mdsc,
 	mutex_lock(&session->s_mutex);
 	session->s_seq++;
 
-	if (inode == NULL) {
+	if (!inode) {
 		dout("handle_lease no inode %llx\n", vino.ino);
 		goto release;
 	}
@@ -3438,7 +3480,7 @@ static void delayed_work(struct work_struct *work)
 
 	for (i = 0; i < mdsc->max_sessions; i++) {
 		struct ceph_mds_session *s = __ceph_lookup_mds_session(mdsc, i);
-		if (s == NULL)
+		if (!s)
 			continue;
 		if (s->s_state == CEPH_MDS_SESSION_CLOSING) {
 			dout("resending session close request for mds%d\n",
@@ -3490,7 +3532,7 @@ int ceph_mdsc_init(struct ceph_fs_client *fsc)
 	fsc->mdsc = mdsc;
 	mutex_init(&mdsc->mutex);
 	mdsc->mdsmap = kzalloc(sizeof(*mdsc->mdsmap), GFP_NOFS);
-	if (mdsc->mdsmap == NULL) {
+	if (!mdsc->mdsmap) {
 		kfree(mdsc);
 		return -ENOMEM;
 	}
@@ -3532,6 +3574,8 @@ int ceph_mdsc_init(struct ceph_fs_client *fsc)
 	init_rwsem(&mdsc->pool_perm_rwsem);
 	mdsc->pool_perm_tree = RB_ROOT;
 
+	strncpy(mdsc->nodename, utsname()->nodename,
+		sizeof(mdsc->nodename) - 1);
 	return 0;
 }
 
@@ -3769,12 +3813,12 @@ static void ceph_mdsc_stop(struct ceph_mds_client *mdsc)
 void ceph_mdsc_destroy(struct ceph_fs_client *fsc)
 {
 	struct ceph_mds_client *mdsc = fsc->mdsc;
-
 	dout("mdsc_destroy %p\n", mdsc);
-	ceph_mdsc_stop(mdsc);
 
 	/* flush out any connection work with references to us */
 	ceph_msgr_flush();
+
+	ceph_mdsc_stop(mdsc);
 
 	fsc->mdsc = NULL;
 	kfree(mdsc);

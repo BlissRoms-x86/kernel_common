@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _PARISC_DMA_MAPPING_H
 #define _PARISC_DMA_MAPPING_H
 
@@ -19,8 +20,6 @@
 ** categories will need to modify the needed drivers to perform
 ** flush/purge and allocate "regular" cacheable pages for everything.
 */
-
-#define DMA_ERROR_CODE	(~(dma_addr_t)0)
 
 #ifdef CONFIG_PA11
 extern const struct dma_map_ops pcxl_dma_ops;

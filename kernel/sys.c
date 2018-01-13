@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/kernel/sys.c
  *
@@ -41,6 +42,8 @@
 #include <linux/syscore_ops.h>
 #include <linux/version.h>
 #include <linux/ctype.h>
+#include <linux/mm.h>
+#include <linux/mempolicy.h>
 
 #include <linux/compat.h>
 #include <linux/syscalls.h>
@@ -886,7 +889,7 @@ SYSCALL_DEFINE0(getegid)
 	return from_kgid_munged(current_user_ns(), current_egid());
 }
 
-void do_sys_times(struct tms *tms)
+static void do_sys_times(struct tms *tms)
 {
 	u64 tgutime, tgstime, cutime, cstime;
 
@@ -911,6 +914,32 @@ SYSCALL_DEFINE1(times, struct tms __user *, tbuf)
 	force_successful_syscall_return();
 	return (long) jiffies_64_to_clock_t(get_jiffies_64());
 }
+
+#ifdef CONFIG_COMPAT
+static compat_clock_t clock_t_to_compat_clock_t(clock_t x)
+{
+	return compat_jiffies_to_clock_t(clock_t_to_jiffies(x));
+}
+
+COMPAT_SYSCALL_DEFINE1(times, struct compat_tms __user *, tbuf)
+{
+	if (tbuf) {
+		struct tms tms;
+		struct compat_tms tmp;
+
+		do_sys_times(&tms);
+		/* Convert our struct tms to the compat version. */
+		tmp.tms_utime = clock_t_to_compat_clock_t(tms.tms_utime);
+		tmp.tms_stime = clock_t_to_compat_clock_t(tms.tms_stime);
+		tmp.tms_cutime = clock_t_to_compat_clock_t(tms.tms_cutime);
+		tmp.tms_cstime = clock_t_to_compat_clock_t(tms.tms_cstime);
+		if (copy_to_user(tbuf, &tmp, sizeof(tmp)))
+			return -EFAULT;
+	}
+	force_successful_syscall_return();
+	return compat_jiffies_to_clock_t(jiffies);
+}
+#endif
 
 /*
  * This needs some heavy checking ...
@@ -1306,6 +1335,54 @@ SYSCALL_DEFINE2(getrlimit, unsigned int, resource, struct rlimit __user *, rlim)
 	return ret;
 }
 
+#ifdef CONFIG_COMPAT
+
+COMPAT_SYSCALL_DEFINE2(setrlimit, unsigned int, resource,
+		       struct compat_rlimit __user *, rlim)
+{
+	struct rlimit r;
+	struct compat_rlimit r32;
+
+	if (copy_from_user(&r32, rlim, sizeof(struct compat_rlimit)))
+		return -EFAULT;
+
+	if (r32.rlim_cur == COMPAT_RLIM_INFINITY)
+		r.rlim_cur = RLIM_INFINITY;
+	else
+		r.rlim_cur = r32.rlim_cur;
+	if (r32.rlim_max == COMPAT_RLIM_INFINITY)
+		r.rlim_max = RLIM_INFINITY;
+	else
+		r.rlim_max = r32.rlim_max;
+	return do_prlimit(current, resource, &r, NULL);
+}
+
+COMPAT_SYSCALL_DEFINE2(getrlimit, unsigned int, resource,
+		       struct compat_rlimit __user *, rlim)
+{
+	struct rlimit r;
+	int ret;
+
+	ret = do_prlimit(current, resource, NULL, &r);
+	if (!ret) {
+		struct compat_rlimit r32;
+		if (r.rlim_cur > COMPAT_RLIM_INFINITY)
+			r32.rlim_cur = COMPAT_RLIM_INFINITY;
+		else
+			r32.rlim_cur = r.rlim_cur;
+		if (r.rlim_max > COMPAT_RLIM_INFINITY)
+			r32.rlim_max = COMPAT_RLIM_INFINITY;
+		else
+			r32.rlim_max = r.rlim_max;
+
+		if (copy_to_user(rlim, &r32, sizeof(struct compat_rlimit)))
+			return -EFAULT;
+	}
+	return ret;
+}
+
+#endif
+
 #ifdef __ARCH_WANT_SYS_OLD_GETRLIMIT
 
 /*
@@ -1327,6 +1404,30 @@ SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
 		x.rlim_max = 0x7FFFFFFF;
 	return copy_to_user(rlim, &x, sizeof(x)) ? -EFAULT : 0;
 }
+
+#ifdef CONFIG_COMPAT
+COMPAT_SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
+		       struct compat_rlimit __user *, rlim)
+{
+	struct rlimit r;
+
+	if (resource >= RLIM_NLIMITS)
+		return -EINVAL;
+
+	task_lock(current->group_leader);
+	r = current->signal->rlim[resource];
+	task_unlock(current->group_leader);
+	if (r.rlim_cur > 0x7FFFFFFF)
+		r.rlim_cur = 0x7FFFFFFF;
+	if (r.rlim_max > 0x7FFFFFFF)
+		r.rlim_max = 0x7FFFFFFF;
+
+	if (put_user(r.rlim_cur, &rlim->rlim_cur) ||
+	    put_user(r.rlim_max, &rlim->rlim_max))
+		return -EFAULT;
+	return 0;
+}
+#endif
 
 #endif
 
@@ -1552,7 +1653,7 @@ static void accumulate_thread_rusage(struct task_struct *t, struct rusage *r)
 	r->ru_oublock += task_io_get_oublock(t);
 }
 
-static void k_getrusage(struct task_struct *p, int who, struct rusage *r)
+void getrusage(struct task_struct *p, int who, struct rusage *r)
 {
 	struct task_struct *t;
 	unsigned long flags;
@@ -1626,20 +1727,16 @@ out:
 	r->ru_maxrss = maxrss * (PAGE_SIZE / 1024); /* convert pages to KBs */
 }
 
-int getrusage(struct task_struct *p, int who, struct rusage __user *ru)
+SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
 {
 	struct rusage r;
 
-	k_getrusage(p, who, &r);
-	return copy_to_user(ru, &r, sizeof(r)) ? -EFAULT : 0;
-}
-
-SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
-{
 	if (who != RUSAGE_SELF && who != RUSAGE_CHILDREN &&
 	    who != RUSAGE_THREAD)
 		return -EINVAL;
-	return getrusage(current, who, ru);
+
+	getrusage(current, who, &r);
+	return copy_to_user(ru, &r, sizeof(r)) ? -EFAULT : 0;
 }
 
 #ifdef CONFIG_COMPAT
@@ -1651,7 +1748,7 @@ COMPAT_SYSCALL_DEFINE2(getrusage, int, who, struct compat_rusage __user *, ru)
 	    who != RUSAGE_THREAD)
 		return -EINVAL;
 
-	k_getrusage(current, who, &r);
+	getrusage(current, who, &r);
 	return put_compat_rusage(&r, ru);
 }
 #endif
@@ -1802,15 +1899,11 @@ static int validate_prctl_map(struct prctl_mm_map *prctl_map)
 
 	/*
 	 * Finally, make sure the caller has the rights to
-	 * change /proc/pid/exe link: only local root should
+	 * change /proc/pid/exe link: only local sys admin should
 	 * be allowed to.
 	 */
 	if (prctl_map->exe_fd != (u32)-1) {
-		struct user_namespace *ns = current_user_ns();
-		const struct cred *cred = current_cred();
-
-		if (!uid_eq(cred->uid, make_kuid(ns, 0)) ||
-		    !gid_eq(cred->gid, make_kgid(ns, 0)))
+		if (!ns_capable(current_user_ns(), CAP_SYS_ADMIN))
 			goto out;
 	}
 
@@ -2093,6 +2186,153 @@ static int propagate_has_child_subreaper(struct task_struct *p, void *data)
 	return 1;
 }
 
+#ifdef CONFIG_MMU
+static int prctl_update_vma_anon_name(struct vm_area_struct *vma,
+		struct vm_area_struct **prev,
+		unsigned long start, unsigned long end,
+		const char __user *name_addr)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	int error = 0;
+	pgoff_t pgoff;
+
+	if (name_addr == vma_get_anon_name(vma)) {
+		*prev = vma;
+		goto out;
+	}
+
+	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
+	*prev = vma_merge(mm, *prev, start, end, vma->vm_flags, vma->anon_vma,
+				vma->vm_file, pgoff, vma_policy(vma),
+				vma->vm_userfaultfd_ctx, name_addr);
+	if (*prev) {
+		vma = *prev;
+		goto success;
+	}
+
+	*prev = vma;
+
+	if (start != vma->vm_start) {
+		error = split_vma(mm, vma, start, 1);
+		if (error)
+			goto out;
+	}
+
+	if (end != vma->vm_end) {
+		error = split_vma(mm, vma, end, 0);
+		if (error)
+			goto out;
+	}
+
+success:
+	if (!vma->vm_file)
+		vma->anon_name = name_addr;
+
+out:
+	if (error == -ENOMEM)
+		error = -EAGAIN;
+	return error;
+}
+
+static int prctl_set_vma_anon_name(unsigned long start, unsigned long end,
+			unsigned long arg)
+{
+	unsigned long tmp;
+	struct vm_area_struct *vma, *prev;
+	int unmapped_error = 0;
+	int error = -EINVAL;
+
+	/*
+	 * If the interval [start,end) covers some unmapped address
+	 * ranges, just ignore them, but return -ENOMEM at the end.
+	 * - this matches the handling in madvise.
+	 */
+	vma = find_vma_prev(current->mm, start, &prev);
+	if (vma && start > vma->vm_start)
+		prev = vma;
+
+	for (;;) {
+		/* Still start < end. */
+		error = -ENOMEM;
+		if (!vma)
+			return error;
+
+		/* Here start < (end|vma->vm_end). */
+		if (start < vma->vm_start) {
+			unmapped_error = -ENOMEM;
+			start = vma->vm_start;
+			if (start >= end)
+				return error;
+		}
+
+		/* Here vma->vm_start <= start < (end|vma->vm_end) */
+		tmp = vma->vm_end;
+		if (end < tmp)
+			tmp = end;
+
+		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
+		error = prctl_update_vma_anon_name(vma, &prev, start, tmp,
+				(const char __user *)arg);
+		if (error)
+			return error;
+		start = tmp;
+		if (prev && start < prev->vm_end)
+			start = prev->vm_end;
+		error = unmapped_error;
+		if (start >= end)
+			return error;
+		if (prev)
+			vma = prev->vm_next;
+		else	/* madvise_remove dropped mmap_sem */
+			vma = find_vma(current->mm, start);
+	}
+}
+
+static int prctl_set_vma(unsigned long opt, unsigned long start,
+		unsigned long len_in, unsigned long arg)
+{
+	struct mm_struct *mm = current->mm;
+	int error;
+	unsigned long len;
+	unsigned long end;
+
+	if (start & ~PAGE_MASK)
+		return -EINVAL;
+	len = (len_in + ~PAGE_MASK) & PAGE_MASK;
+
+	/* Check to see whether len was rounded up from small -ve to zero */
+	if (len_in && !len)
+		return -EINVAL;
+
+	end = start + len;
+	if (end < start)
+		return -EINVAL;
+
+	if (end == start)
+		return 0;
+
+	down_write(&mm->mmap_sem);
+
+	switch (opt) {
+	case PR_SET_VMA_ANON_NAME:
+		error = prctl_set_vma_anon_name(start, end, arg);
+		break;
+	default:
+		error = -EINVAL;
+	}
+
+	up_write(&mm->mmap_sem);
+
+	return error;
+}
+#else /* CONFIG_MMU */
+static int prctl_set_vma(unsigned long opt, unsigned long start,
+		unsigned long len_in, unsigned long arg)
+{
+	return -EINVAL;
+}
+#endif
+
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2266,7 +2506,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	case PR_GET_THP_DISABLE:
 		if (arg2 || arg3 || arg4 || arg5)
 			return -EINVAL;
-		error = !!(me->mm->def_flags & VM_NOHUGEPAGE);
+		error = !!test_bit(MMF_DISABLE_THP, &me->mm->flags);
 		break;
 	case PR_SET_THP_DISABLE:
 		if (arg3 || arg4 || arg5)
@@ -2274,9 +2514,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		if (down_write_killable(&me->mm->mmap_sem))
 			return -EINTR;
 		if (arg2)
-			me->mm->def_flags |= VM_NOHUGEPAGE;
+			set_bit(MMF_DISABLE_THP, &me->mm->flags);
 		else
-			me->mm->def_flags &= ~VM_NOHUGEPAGE;
+			clear_bit(MMF_DISABLE_THP, &me->mm->flags);
 		up_write(&me->mm->mmap_sem);
 		break;
 	case PR_MPX_ENABLE_MANAGEMENT:
@@ -2294,6 +2534,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		break;
 	case PR_GET_FP_MODE:
 		error = GET_FP_MODE(me);
+		break;
+	case PR_SET_VMA:
+		error = prctl_set_vma(arg2, arg3, arg4, arg5);
 		break;
 	default:
 		error = -EINVAL;

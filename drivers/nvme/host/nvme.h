@@ -75,6 +75,11 @@ enum nvme_quirks {
 	 * The deepest sleep state should not be used.
 	 */
 	NVME_QUIRK_NO_DEEPEST_PS		= (1 << 5),
+
+	/*
+	 * Supports the LighNVM command set if indicated in vs[1].
+	 */
+	NVME_QUIRK_LIGHTNVM			= (1 << 6),
 };
 
 /*
@@ -103,7 +108,7 @@ static inline struct nvme_request *nvme_req(struct request *req)
  * NVME_QUIRK_DELAY_BEFORE_CHK_RDY quirk enabled. The value (in ms) was
  * found empirically.
  */
-#define NVME_QUIRK_DELAY_AMOUNT		2000
+#define NVME_QUIRK_DELAY_AMOUNT		2300
 
 enum nvme_ctrl_state {
 	NVME_CTRL_NEW,
@@ -125,6 +130,7 @@ struct nvme_ctrl {
 	struct kref kref;
 	int instance;
 	struct blk_mq_tag_set *tagset;
+	struct blk_mq_tag_set *admin_tagset;
 	struct list_head namespaces;
 	struct mutex namespaces_mutex;
 	struct device *device;	/* char device */
@@ -142,7 +148,10 @@ struct nvme_ctrl {
 	u16 cntlid;
 
 	u32 ctrl_config;
+	u16 mtfa;
+	u32 queue_count;
 
+	u64 cap;
 	u32 page_size;
 	u32 max_hw_sectors;
 	u16 oncs;
@@ -158,6 +167,7 @@ struct nvme_ctrl {
 	u16 kas;
 	u8 npss;
 	u8 apsta;
+	unsigned int shutdown_timeout;
 	unsigned int kato;
 	bool subsystem;
 	unsigned long quirks;
@@ -165,13 +175,17 @@ struct nvme_ctrl {
 	struct work_struct scan_work;
 	struct work_struct async_event_work;
 	struct delayed_work ka_work;
+	struct work_struct fw_act_work;
 
 	/* Power saving configuration */
 	u64 ps_max_latency_us;
 	bool apst_enabled;
 
+	/* PCIe only: */
 	u32 hmpre;
 	u32 hmmin;
+	u32 hmminds;
+	u16 hmmaxd;
 
 	/* Fabrics only */
 	u16 sqsize;
@@ -205,13 +219,9 @@ struct nvme_ns {
 	bool ext;
 	u8 pi_type;
 	unsigned long flags;
-	u16 noiob;
-
 #define NVME_NS_REMOVING 0
 #define NVME_NS_DEAD     1
-
-	u64 mode_select_num_blocks;
-	u32 mode_select_block_len;
+	u16 noiob;
 };
 
 struct nvme_ctrl_ops {
@@ -278,6 +288,8 @@ int nvme_shutdown_ctrl(struct nvme_ctrl *ctrl);
 int nvme_init_ctrl(struct nvme_ctrl *ctrl, struct device *dev,
 		const struct nvme_ctrl_ops *ops, unsigned long quirks);
 void nvme_uninit_ctrl(struct nvme_ctrl *ctrl);
+void nvme_start_ctrl(struct nvme_ctrl *ctrl);
+void nvme_stop_ctrl(struct nvme_ctrl *ctrl);
 void nvme_put_ctrl(struct nvme_ctrl *ctrl);
 int nvme_init_identify(struct nvme_ctrl *ctrl);
 
@@ -310,20 +322,12 @@ int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 		union nvme_result *result, void *buffer, unsigned bufflen,
 		unsigned timeout, int qid, int at_head, int flags);
-int nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
-		void __user *ubuffer, unsigned bufflen, u32 *result,
-		unsigned timeout);
-int __nvme_submit_user_cmd(struct request_queue *q, struct nvme_command *cmd,
-		void __user *ubuffer, unsigned bufflen,
-		void __user *meta_buffer, unsigned meta_len, u32 meta_seed,
-		u32 *result, unsigned timeout);
 int nvme_set_queue_count(struct nvme_ctrl *ctrl, int *count);
 void nvme_start_keep_alive(struct nvme_ctrl *ctrl);
 void nvme_stop_keep_alive(struct nvme_ctrl *ctrl);
 int nvme_reset_ctrl(struct nvme_ctrl *ctrl);
 
 #ifdef CONFIG_NVM
-int nvme_nvm_ns_supported(struct nvme_ns *ns, struct nvme_id_ns *id);
 int nvme_nvm_register(struct nvme_ns *ns, char *disk_name, int node);
 void nvme_nvm_unregister(struct nvme_ns *ns);
 int nvme_nvm_register_sysfs(struct nvme_ns *ns);
@@ -342,10 +346,6 @@ static inline int nvme_nvm_register_sysfs(struct nvme_ns *ns)
 	return 0;
 }
 static inline void nvme_nvm_unregister_sysfs(struct nvme_ns *ns) {};
-static inline int nvme_nvm_ns_supported(struct nvme_ns *ns, struct nvme_id_ns *id)
-{
-	return 0;
-}
 static inline int nvme_nvm_ioctl(struct nvme_ns *ns, unsigned int cmd,
 							unsigned long arg)
 {
