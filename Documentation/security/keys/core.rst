@@ -16,17 +16,7 @@ The key service can be configured on by enabling:
 
 This document has the following sections:
 
-	- Key overview
-	- Key service overview
-	- Key access permissions
-	- SELinux support
-	- New procfs files
-	- Userspace system call interface
-	- Kernel services
-	- Notes on accessing payload contents
-	- Defining a key type
-	- Request-key callback service
-	- Garbage collection
+.. contents:: :local:
 
 
 Key Overview
@@ -443,7 +433,7 @@ The main syscalls are:
      /sbin/request-key will be invoked in an attempt to obtain a key. The
      callout_info string will be passed as an argument to the program.
 
-     See also Documentation/security/keys-request-key.txt.
+     See also Documentation/security/keys/request-key.rst.
 
 
 The keyctl syscall functions are:
@@ -894,6 +884,12 @@ The keyctl syscall functions are:
      To apply a keyring restriction the process must have Set Attribute
      permission and the keyring must not be previously restricted.
 
+     One application of restricted keyrings is to verify X.509 certificate
+     chains or individual certificate signatures using the asymmetric key type.
+     See Documentation/crypto/asymmetric-keys.txt for specific restrictions
+     applicable to the asymmetric key type.
+
+
 Kernel Services
 ===============
 
@@ -967,7 +963,7 @@ payload contents" for more information.
     If successful, the key will have been attached to the default keyring for
     implicitly obtained request-key keys, as set by KEYCTL_SET_REQKEY_KEYRING.
 
-    See also Documentation/security/keys-request-key.txt.
+    See also Documentation/security/keys/request-key.rst.
 
 
  *  To search for a key, passing auxiliary data to the upcaller, call::

@@ -106,7 +106,7 @@ static void multipath_end_request(struct bio *bio)
 	rdev_dec_pending(rdev, conf->mddev);
 }
 
-static void multipath_make_request(struct mddev *mddev, struct bio * bio)
+static bool multipath_make_request(struct mddev *mddev, struct bio * bio)
 {
 	struct mpconf *conf = mddev->private;
 	struct multipath_bh * mp_bh;
@@ -114,7 +114,7 @@ static void multipath_make_request(struct mddev *mddev, struct bio * bio)
 
 	if (unlikely(bio->bi_opf & REQ_PREFLUSH)) {
 		md_flush_request(mddev, bio);
-		return;
+		return true;
 	}
 
 	mp_bh = mempool_alloc(conf->pool, GFP_NOIO);
@@ -126,7 +126,7 @@ static void multipath_make_request(struct mddev *mddev, struct bio * bio)
 	if (mp_bh->path < 0) {
 		bio_io_error(bio);
 		mempool_free(mp_bh, conf->pool);
-		return;
+		return true;
 	}
 	multipath = conf->multipaths + mp_bh->path;
 
@@ -134,14 +134,14 @@ static void multipath_make_request(struct mddev *mddev, struct bio * bio)
 	__bio_clone_fast(&mp_bh->bio, bio);
 
 	mp_bh->bio.bi_iter.bi_sector += multipath->rdev->data_offset;
-	mp_bh->bio.bi_bdev = multipath->rdev->bdev;
+	bio_set_dev(&mp_bh->bio, multipath->rdev->bdev);
 	mp_bh->bio.bi_opf |= REQ_FAILFAST_TRANSPORT;
 	mp_bh->bio.bi_end_io = multipath_end_request;
 	mp_bh->bio.bi_private = mp_bh;
 	mddev_check_writesame(mddev, &mp_bh->bio);
 	mddev_check_write_zeroes(mddev, &mp_bh->bio);
 	generic_make_request(&mp_bh->bio);
-	return;
+	return true;
 }
 
 static void multipath_status(struct seq_file *seq, struct mddev *mddev)
@@ -345,17 +345,17 @@ static void multipathd(struct md_thread *thread)
 
 		if ((mp_bh->path = multipath_map (conf))<0) {
 			pr_err("multipath: %s: unrecoverable IO read error for block %llu\n",
-			       bdevname(bio->bi_bdev,b),
+			       bio_devname(bio, b),
 			       (unsigned long long)bio->bi_iter.bi_sector);
 			multipath_end_bh_io(mp_bh, BLK_STS_IOERR);
 		} else {
 			pr_err("multipath: %s: redirecting sector %llu to another IO path\n",
-			       bdevname(bio->bi_bdev,b),
+			       bio_devname(bio, b),
 			       (unsigned long long)bio->bi_iter.bi_sector);
 			*bio = *(mp_bh->master_bio);
 			bio->bi_iter.bi_sector +=
 				conf->multipaths[mp_bh->path].rdev->data_offset;
-			bio->bi_bdev = conf->multipaths[mp_bh->path].rdev->bdev;
+			bio_set_dev(bio, conf->multipaths[mp_bh->path].rdev->bdev);
 			bio->bi_opf |= REQ_FAILFAST_TRANSPORT;
 			bio->bi_end_io = multipath_end_request;
 			bio->bi_private = mp_bh;

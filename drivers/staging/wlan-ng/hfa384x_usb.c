@@ -1344,16 +1344,14 @@ hfa384x_docmd(struct hfa384x *hw,
 	if (result != 0) {
 		kfree(ctlx);
 	} else if (mode == DOWAIT) {
-		struct usbctlx_cmd_completor completor;
+		struct usbctlx_cmd_completor cmd_completor;
+		struct usbctlx_completor *completor;
 
-		result =
-		    hfa384x_usbctlx_complete_sync(hw, ctlx,
-						  init_cmd_completor(&completor,
-								     &ctlx->
-								     inbuf.
-								     cmdresp,
-								     &cmd->
-								     result));
+		completor = init_cmd_completor(&cmd_completor,
+					       &ctlx->inbuf.cmdresp,
+					       &cmd->result);
+
+		result = hfa384x_usbctlx_complete_sync(hw, ctlx, completor);
 	}
 
 done:
@@ -3529,13 +3527,11 @@ static void hfa384x_int_rxmonitor(struct wlandevice *wlandev,
 	/* Copy the 802.11 header to the skb
 	 * (ctl frames may be less than a full header)
 	 */
-	datap = skb_put(skb, hdrlen);
-	memcpy(datap, &rxdesc->frame_control, hdrlen);
+	skb_put_data(skb, &rxdesc->frame_control, hdrlen);
 
 	/* If any, copy the data from the card to the skb */
 	if (datalen > 0) {
-		datap = skb_put(skb, datalen);
-		memcpy(datap, rxfrm->data, datalen);
+		datap = skb_put_data(skb, rxfrm->data, datalen);
 
 		/* check for unencrypted stuff if WEP bit set. */
 		if (*(datap - hdrlen + 1) & 0x40)	/* wep set */

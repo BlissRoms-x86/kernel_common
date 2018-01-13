@@ -1114,6 +1114,17 @@ config TOUCHSCREEN_ST1232
 	  To compile this driver as a module, choose M here: the
 	  module will be called st1232_ts.
 
+config TOUCHSCREEN_STMFTS
+	tristate "STMicroelectronics STMFTS touchscreen"
+	depends on I2C
+	depends on LEDS_CLASS
+	help
+	  Say Y here if you want support for STMicroelectronics
+	  STMFTS touchscreen.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called stmfts.
+
 config TOUCHSCREEN_STMPE
 	tristate "STMicroelectronics STMPE touchscreens"
 	depends on MFD_STMPE
@@ -1234,5 +1245,27 @@ config TOUCHSCREEN_ROHM_BU21023
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called bu21023_ts.
+
+config TOUCHSCREEN_NWFERMI
+	tristate "NextWindow touchscreen"
+	depends on USB
+	help
+	  Say Y here if you have the NextWindow touchscreen connected to
+	  your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called nw-fermi.
+
+config TOUCHSCREEN_DWAV_USB_MT
+	tristate "D-WAV Scientific USB(HID) MultiTouch Screen Driver"
+	depends on USB
+	help
+	  Say Y here if you have a D-WAV Scientific USB(HID) MultiTouch Screen
+	  connected to your system.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called dwav-usb-mt.
 
 endif

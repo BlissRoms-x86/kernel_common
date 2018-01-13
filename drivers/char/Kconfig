@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 #
 # Character device configuration
 #
@@ -17,6 +18,8 @@ config DEVMEM
 
 config DEVKMEM
 	bool "/dev/kmem virtual device support"
+	# On arm64, VMALLOC_START < PAGE_OFFSET, which confuses kmem read/write
+	depends on !ARM64
 	help
 	  Say Y here if you want to support the /dev/kmem device. The
 	  /dev/kmem device is rarely used, but can be used for certain
@@ -159,7 +162,7 @@ config VIRTIO_CONSOLE
 	depends on VIRTIO && TTY
 	select HVC_DRIVER
 	help
-	  Virtio console for use with lguest and other hypervisors.
+	  Virtio console for use with hypervisors.
 
 	  Also serves as a general-purpose serial device for data
 	  transfer between the guest and host.  Character devices at

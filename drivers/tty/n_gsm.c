@@ -2607,6 +2607,14 @@ static int gsmld_ioctl(struct tty_struct *tty, struct file *file,
 	}
 }
 
+#ifdef CONFIG_COMPAT
+static long gsmld_compat_ioctl(struct tty_struct *tty, struct file *file,
+		       unsigned int cmd, unsigned long arg)
+{
+	return gsmld_ioctl(tty, file, cmd, arg);
+}
+#endif
+
 /*
  *	Network interface
  *
@@ -2704,7 +2712,7 @@ static void gsm_mux_rx_netchar(struct gsm_dlci *dlci,
 		return;
 	}
 	skb_reserve(skb, NET_IP_ALIGN);
-	memcpy(skb_put(skb, size), in_buf, size);
+	skb_put_data(skb, in_buf, size);
 
 	skb->dev = net;
 	skb->protocol = htons(ETH_P_IP);
@@ -2818,6 +2826,9 @@ static struct tty_ldisc_ops tty_ldisc_packet = {
 	.flush_buffer    = gsmld_flush_buffer,
 	.read            = gsmld_read,
 	.write           = gsmld_write,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl    = gsmld_compat_ioctl,
+#endif
 	.ioctl           = gsmld_ioctl,
 	.poll            = gsmld_poll,
 	.receive_buf     = gsmld_receive_buf,
