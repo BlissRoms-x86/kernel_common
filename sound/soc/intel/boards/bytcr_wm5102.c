@@ -24,6 +24,7 @@
 #include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/dmi.h>
+#include <linux/gpio.h>
 #include <linux/slab.h>
 #include <asm/cpu_device_id.h>
 #include <asm/platform_sst_audio.h>
@@ -56,6 +57,8 @@ enum {
 
 #define WM5102_MAX_SYSCLK_1 49152000 /*max sysclk for 4K family*/
 #define WM5102_MAX_SYSCLK_2 45158400 /*max sysclk for 11.025K family*/
+
+#define EXT_SPEAKERS_ENABLE_PIN 240 // GPIO3 - Enable speakers supply
 
 struct byt_wm5102_private {
 	struct clk *mclk;
@@ -162,11 +165,26 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int byt_ext_speakers_event(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *k, int event)
+{
+	pr_debug("%s()\n", __func__);
+
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		pr_info("%s, ON\n", __func__);
+        gpio_set_value_cansleep(EXT_SPEAKERS_ENABLE_PIN, 1);
+	} else {
+		pr_info("%s, OFF\n", __func__);
+        gpio_set_value_cansleep(EXT_SPEAKERS_ENABLE_PIN, 0);
+    }
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget byt_wm5102_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("Internal Mic", NULL),
-	SND_SOC_DAPM_SPK("Speaker", NULL),
+	SND_SOC_DAPM_SPK("Speaker", byt_ext_speakers_event),
 	SND_SOC_DAPM_SUPPLY("Platform Clock", SND_SOC_NOPM, 0, 0,
 			    platform_clock_control, SND_SOC_DAPM_PRE_PMU |
 			    SND_SOC_DAPM_POST_PMD),
@@ -614,6 +632,12 @@ static int snd_byt_wm5102_mc_probe(struct platform_device *pdev)
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_ATOMIC);
 	if (!priv)
 		return -ENOMEM;
+
+	ret_val = devm_gpio_request_one(&pdev->dev, EXT_SPEAKERS_ENABLE_PIN, GPIOF_DIR_OUT|GPIOF_INIT_LOW, "SPK POWER");
+	if (ret_val) {
+		pr_err("snd_byt_mc_probe() spk power gpio config failed %d\n", ret_val);
+		return -EINVAL;
+}
 
 	/* register the soc card */
 	byt_wm5102_card.dev = &pdev->dev;
