@@ -12,6 +12,7 @@ menuconfig DRM
 	select I2C
 	select I2C_ALGOBIT
 	select DMA_SHARED_BUFFER
+	select SYNC_FILE
 	help
 	  Kernel-level support for the Direct Rendering Infrastructure (DRI)
 	  introduced in XFree86 4.0. If you say Y here, you need to select
@@ -32,6 +33,13 @@ config DRM_DP_AUX_CHARDEV
 	  Choose this option to enable a /dev/drm_dp_auxN node that allows to
 	  read and write values to arbitrary DPCD registers on the DP aux
 	  channel.
+
+config NO_GPU_AUTHENTICATION
+	bool "Disable GPU authentication"
+	depends on DRM
+	default n
+	help
+	  Choose this option if you want to disable GPU authentication.
 
 config DRM_KMS_HELPER
 	tristate

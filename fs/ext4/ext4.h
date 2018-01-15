@@ -96,6 +96,18 @@ typedef __u32 ext4_lblk_t;
 /* data type for block group number */
 typedef unsigned int ext4_group_t;
 
+void __ext4_corrupted_block_group(struct super_block *sb,
+				  ext4_group_t group, unsigned int flags,
+				  const char *function, unsigned int line);
+
+#define ext4_corrupted_block_group(sb, group, flags, fmt, ...)		\
+	do {								\
+		__ext4_warning(sb, __func__, __LINE__, fmt,		\
+				##__VA_ARGS__);				\
+		__ext4_corrupted_block_group(sb, group, flags,		\
+					__func__, __LINE__);		\
+	} while (0)
+
 enum SHIFT_DIRECTION {
 	SHIFT_LEFT = 0,
 	SHIFT_RIGHT,
@@ -2450,7 +2462,8 @@ extern int ext4_mb_add_groupinfo(struct super_block *sb,
 		ext4_group_t i, struct ext4_group_desc *desc);
 extern int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 				ext4_fsblk_t block, unsigned long count);
-extern int ext4_trim_fs(struct super_block *, struct fstrim_range *);
+extern int ext4_trim_fs(struct super_block *, struct fstrim_range *,
+				unsigned long blkdev_flags);
 
 /* inode.c */
 int ext4_inode_is_fast_symlink(struct inode *inode);
@@ -2897,7 +2910,11 @@ struct ext4_group_info {
 #define EXT4_GROUP_INFO_NEED_INIT_BIT		0
 #define EXT4_GROUP_INFO_WAS_TRIMMED_BIT		1
 #define EXT4_GROUP_INFO_BBITMAP_CORRUPT_BIT	2
+#define EXT4_GROUP_INFO_BBITMAP_CORRUPT		\
+	(1 << EXT4_GROUP_INFO_BBITMAP_CORRUPT_BIT)
 #define EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT	3
+#define EXT4_GROUP_INFO_IBITMAP_CORRUPT		\
+	(1 << EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT)
 
 #define EXT4_MB_GRP_NEED_INIT(grp)	\
 	(test_bit(EXT4_GROUP_INFO_NEED_INIT_BIT, &((grp)->bb_state)))

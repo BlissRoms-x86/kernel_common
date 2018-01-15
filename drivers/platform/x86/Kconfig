@@ -363,6 +363,18 @@ config IDEAPAD_LAPTOP
 	  This is a driver for Lenovo IdeaPad netbooks contains drivers for
 	  rfkill switch, hotkey, fan control and backlight control.
 
+config SURFACE3_WMI
+	tristate "Surface 3 WMI Driver"
+	depends on ACPI_WMI
+	depends on DMI
+	depends on INPUT
+	depends on SPI
+	---help---
+	  Say Y here if you have a Surface 3.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called surface3-wmi.
+
 config THINKPAD_ACPI
 	tristate "ThinkPad ACPI Laptop Extras"
 	depends on ACPI
@@ -650,6 +662,16 @@ config MSI_WMI
 	 To compile this driver as a module, choose M here: the module will
 	 be called msi-wmi.
 
+config S103T_WMI
+	tristate "Lenovo S10-3T Rotate Button Support"
+	depends on ACPI_WMI
+	depends on INPUT
+	---help---
+	  This is a driver for the Lenovo ideapad S10-3T rotate button.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called lsrot.
+
 config TOPSTAR_LAPTOP
 	tristate "Topstar Laptop Extras"
 	depends on ACPI
@@ -761,6 +783,25 @@ config ACPI_CMPC
 	  Support for Intel Classmate PC ACPI devices, including some
 	  keys as input device, backlight device, tablet and accelerometer
 	  devices.
+
+config INTEL_INT0002_VGPIO
+	tristate "Intel ACPI INT0002 Virtual GPIO driver"
+	depends on GPIOLIB && ACPI
+	select GPIOLIB_IRQCHIP
+	---help---
+	  Some peripherals on Bay Trail and Cherry Trail platforms signal a
+	  Power Management Event (PME) to the Power Management Controller (PMC)
+	  to wakeup the system. When this happens software needs to explicitly
+	  clear the PME bus 0 status bit in the GPE0a_STS register to avoid an
+	  IRQ storm on IRQ 9.
+
+	  This is modelled in ACPI through the INT0002 ACPI device, which is
+	  called a "Virtual GPIO controller" in ACPI because it defines the
+	  event handler to call when the PME triggers through _AEI and _L02
+	  methods as would be done for a real GPIO interrupt in ACPI.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called intel_int0002_vgpio.
 
 config INTEL_HID_EVENT
 	tristate "INTEL HID Event"
@@ -1011,6 +1052,18 @@ config SURFACE_PRO3_BUTTON
 	---help---
 	  This driver handles the power/home/volume buttons on the Microsoft Surface Pro 3/4 tablet.
 
+config SURFACE_3_BUTTON
+	tristate "Power/home/volume buttons driver for Microsoft Surface 3 tablet"
+	depends on ACPI && KEYBOARD_GPIO
+	---help---
+	  This driver handles the power/home/volume buttons on the Microsoft Surface 3 tablet.
+
+config DV11P_TABLET
+	tristate "Dell Venue 11 Pro Tablet support"
+	depends on ACPI
+	---help---
+	  This driver provides power button support and docking events for the Dell Venue 11 Pro tablet.
+
 config INTEL_PUNIT_IPC
 	tristate "Intel P-Unit IPC Driver"
 	---help---
@@ -1028,3 +1081,8 @@ config INTEL_TELEMETRY
 	  directly via debugfs files. Various tools may use
 	  this interface for SoC state monitoring.
 endif # X86_PLATFORM_DEVICES
+
+config PMC_ATOM
+	def_bool y
+        depends on PCI
+	select COMMON_CLK

@@ -176,7 +176,7 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	irq_handler_t handler = NULL;
 	struct gpio_desc *desc;
 	unsigned long irqflags;
-	int ret, pin, irq;
+	int ret, pin, irq, value;
 
 	if (ares->type != ACPI_RESOURCE_TYPE_GPIO)
 		return AE_OK;
@@ -214,6 +214,8 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	}
 
 	gpiod_direction_input(desc);
+
+	value = gpiod_get_value(desc);
 
 	ret = gpiochip_lock_as_irq(chip, pin);
 	if (ret) {
@@ -266,7 +268,19 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 		goto fail_free_event;
 	}
 
+	if (agpio->wake_capable == ACPI_WAKE_CAPABLE)
+		enable_irq_wake(irq);
+
 	list_add_tail(&event->node, &acpi_gpio->events);
+
+	/*
+	 * Make sure we trigger the initial state of the IRQ when
+	 * using RISING or FALLING.
+	 */
+	if (((irqflags & IRQF_TRIGGER_RISING) && value == 1) ||
+	    ((irqflags & IRQF_TRIGGER_FALLING) && value == 0))
+		handler(-1, event);
+
 	return AE_OK;
 
 fail_free_event:
@@ -338,6 +352,9 @@ void acpi_gpiochip_free_interrupts(struct gpio_chip *chip)
 
 	list_for_each_entry_safe_reverse(event, ep, &acpi_gpio->events, node) {
 		struct gpio_desc *desc;
+
+		if (irqd_is_wakeup_set(irq_get_irq_data(event->irq)))
+			disable_irq_wake(event->irq);
 
 		free_irq(event->irq, event);
 		desc = event->desc;
@@ -655,20 +672,24 @@ int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 {
 	int idx, i;
 	unsigned int irq_flags;
-	int ret = -ENOENT;
 
 	for (i = 0, idx = 0; idx <= index; i++) {
 		struct acpi_gpio_info info;
 		struct gpio_desc *desc;
 
 		desc = acpi_get_gpiod_by_index(adev, NULL, i, &info);
-		if (IS_ERR(desc)) {
-			ret = PTR_ERR(desc);
-			break;
-		}
-		if (info.gpioint && idx++ == index) {
-			int irq = gpiod_to_irq(desc);
 
+		/* Ignore -EPROBE_DEFER, it only matters if idx matches */
+		if (IS_ERR(desc) && PTR_ERR(desc) != -EPROBE_DEFER)
+			return PTR_ERR(desc);
+
+		if (info.gpioint && idx++ == index) {
+			int irq;
+
+			if (IS_ERR(desc))
+				return PTR_ERR(desc);
+
+			irq = gpiod_to_irq(desc);
 			if (irq < 0)
 				return irq;
 
@@ -684,7 +705,7 @@ int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 		}
 
 	}
-	return ret;
+	return -ENOENT;
 }
 EXPORT_SYMBOL_GPL(acpi_dev_gpio_irq_get);
 

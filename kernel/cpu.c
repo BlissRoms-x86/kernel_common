@@ -410,11 +410,26 @@ static int notify_online(unsigned int cpu)
 	return 0;
 }
 
+static void __cpuhp_kick_ap_work(struct cpuhp_cpu_state *st);
+
 static int bringup_wait_for_ap(unsigned int cpu)
 {
 	struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
 
+	/* Wait for the CPU to reach CPUHP_AP_ONLINE_IDLE */
 	wait_for_completion(&st->done);
+	if (WARN_ON_ONCE((!cpu_online(cpu))))
+		return -ECANCELED;
+
+	/* Unpark the stopper thread and the hotplug thread of the target cpu */
+	stop_machine_unpark(cpu);
+	kthread_unpark(st->thread);
+
+	/* Should we go further up ? */
+	if (st->target > CPUHP_AP_ONLINE_IDLE) {
+		__cpuhp_kick_ap_work(st);
+		wait_for_completion(&st->done);
+	}
 	return st->result;
 }
 
@@ -437,9 +452,7 @@ static int bringup_cpu(unsigned int cpu)
 		cpu_notify(CPU_UP_CANCELED, cpu);
 		return ret;
 	}
-	ret = bringup_wait_for_ap(cpu);
-	BUG_ON(!cpu_online(cpu));
-	return ret;
+	return bringup_wait_for_ap(cpu);
 }
 
 /*
@@ -974,31 +987,20 @@ void notify_cpu_starting(unsigned int cpu)
 }
 
 /*
- * Called from the idle task. We need to set active here, so we can kick off
- * the stopper thread and unpark the smpboot threads. If the target state is
- * beyond CPUHP_AP_ONLINE_IDLE we kick cpuhp thread and let it bring up the
- * cpu further.
+ * Called from the idle task. Wake up the controlling task which brings the
+ * stopper and the hotplug thread of the upcoming CPU up and then delegates
+ * the rest of the online bringup to the hotplug thread.
  */
 void cpuhp_online_idle(enum cpuhp_state state)
 {
 	struct cpuhp_cpu_state *st = this_cpu_ptr(&cpuhp_state);
-	unsigned int cpu = smp_processor_id();
 
 	/* Happens for the boot cpu */
 	if (state != CPUHP_AP_ONLINE_IDLE)
 		return;
 
 	st->state = CPUHP_AP_ONLINE_IDLE;
-
-	/* Unpark the stopper thread and the hotplug thread of this cpu */
-	stop_machine_unpark(cpu);
-	kthread_unpark(st->thread);
-
-	/* Should we go further up ? */
-	if (st->target > CPUHP_AP_ONLINE_IDLE)
-		__cpuhp_kick_ap_work(st);
-	else
-		complete(&st->done);
+	complete(&st->done);
 }
 
 /* Requires cpu_add_remove_lock to be held */
@@ -1154,6 +1156,7 @@ void __weak arch_enable_nonboot_cpus_end(void)
 void enable_nonboot_cpus(void)
 {
 	int cpu, error;
+	struct device *cpu_device;
 
 	/* Allow everyone to use the CPU hotplug again */
 	cpu_maps_update_begin();
@@ -1171,6 +1174,12 @@ void enable_nonboot_cpus(void)
 		trace_suspend_resume(TPS("CPU_ON"), cpu, false);
 		if (!error) {
 			pr_info("CPU%d is up\n", cpu);
+			cpu_device = get_cpu_device(cpu);
+			if (!cpu_device)
+				pr_err("%s: failed to get cpu%d device\n",
+				       __func__, cpu);
+			else
+				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 			continue;
 		}
 		pr_warn("Error taking CPU%d up: %d\n", cpu, error);
@@ -1933,3 +1942,23 @@ void __init boot_cpu_state_init(void)
 {
 	per_cpu_ptr(&cpuhp_state, smp_processor_id())->state = CPUHP_ONLINE;
 }
+
+static ATOMIC_NOTIFIER_HEAD(idle_notifier);
+
+void idle_notifier_register(struct notifier_block *n)
+{
+	atomic_notifier_chain_register(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_register);
+
+void idle_notifier_unregister(struct notifier_block *n)
+{
+	atomic_notifier_chain_unregister(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_unregister);
+
+void idle_notifier_call_chain(unsigned long val)
+{
+	atomic_notifier_call_chain(&idle_notifier, val, NULL);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_call_chain);

@@ -68,6 +68,7 @@ MODULE_LICENSE("GPL");
 #define MT_QUIRK_HOVERING		(1 << 11)
 #define MT_QUIRK_CONTACT_CNT_ACCURATE	(1 << 12)
 #define MT_QUIRK_FORCE_GET_FEATURE	(1 << 13)
+#define MT_QUIRK_INVALID_CONTACTID_FFFF	(1 << 14)
 
 #define MT_INPUTMODE_TOUCHSCREEN	0x02
 #define MT_INPUTMODE_TOUCHPAD		0x03
@@ -158,6 +159,8 @@ static void mt_post_parse(struct mt_device *td);
 #define MT_CLS_GENERALTOUCH_TWOFINGERS		0x0108
 #define MT_CLS_GENERALTOUCH_PWT_TENFINGERS	0x0109
 #define MT_CLS_VTL				0x0110
+#define MT_CLS_NTRIG				0x0111
+#define MT_CLS_UIWORKS				0x0105
 
 #define MT_DEFAULT_MAXCONTACT	10
 #define MT_MAX_MAXCONTACT	250
@@ -238,6 +241,9 @@ static struct mt_class mt_classes[] = {
 		.sn_move = 4096,
 		.sn_pressure = 32,
 	},
+	{ .name = MT_CLS_UIWORKS,
+		.quirks =  MT_QUIRK_ALWAYS_VALID,
+	},
 	{ .name = MT_CLS_TOPSEED,
 		.quirks = MT_QUIRK_ALWAYS_VALID,
 		.is_indirect = true,
@@ -267,6 +273,10 @@ static struct mt_class mt_classes[] = {
 		.quirks = MT_QUIRK_ALWAYS_VALID |
 			MT_QUIRK_CONTACT_CNT_ACCURATE |
 			MT_QUIRK_FORCE_GET_FEATURE,
+	},
+	{ .name = MT_CLS_NTRIG,
+		.quirks = MT_QUIRK_ALWAYS_VALID |
+			MT_QUIRK_INVALID_CONTACTID_FFFF,
 	},
 	{ }
 };
@@ -569,6 +579,14 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 	case HID_UP_BUTTON:
 		code = BTN_MOUSE + ((usage->hid - 1) & HID_USAGE);
+		/*
+		 * MS PTP spec says that external buttons left and right have
+		 * usages 2 and 3.
+		 */
+		if (cls->name == MT_CLS_WIN_8 &&
+		    field->application == HID_DG_TOUCHPAD &&
+		    (usage->hid & HID_USAGE) > 1)
+			code--;
 		hid_map_usage(hi, usage, bit, max, EV_KEY, code);
 		input_set_capability(hi->input, EV_KEY, code);
 		return 1;
@@ -606,6 +624,10 @@ static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
 
 	if (quirks & MT_QUIRK_SLOT_IS_CONTACTID_MINUS_ONE)
 		return td->curdata.contactid - 1;
+
+	if (quirks & MT_QUIRK_INVALID_CONTACTID_FFFF &&
+	    td->curdata.contactid == 0xffff)
+		return -1;
 
 	return input_mt_get_slot_by_key(input, td->curdata.contactid);
 }
@@ -1328,6 +1350,9 @@ static const struct hid_device_id mt_devices[] = {
 			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72D0) },
 	{ .driver_data = MT_CLS_EGALAX,
 		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
+			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72E9) },
+	{ .driver_data = MT_CLS_EGALAX,
+		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
 			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72FA) },
 	{ .driver_data = MT_CLS_EGALAX,
 		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
@@ -1439,6 +1464,12 @@ static const struct hid_device_id mt_devices[] = {
 		MT_USB_DEVICE(USB_VENDOR_ID_TURBOX,
 			USB_DEVICE_ID_TURBOX_TOUCHSCREEN_MOSART) },
 
+	/* N-trig */
+	{ .driver_data = MT_CLS_NTRIG,
+		HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8,
+			USB_VENDOR_ID_NTRIG,
+			I2C_DEVICE_ID_NTRIG_TOUCH_SCREEN) },
+
 	/* Panasonic panels */
 	{ .driver_data = MT_CLS_PANASONIC,
 		MT_USB_DEVICE(USB_VENDOR_ID_PANASONIC,
@@ -1492,6 +1523,16 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_NSMU,
 		MT_USB_DEVICE(USB_VENDOR_ID_TOUCH_INTL,
 			USB_DEVICE_ID_TOUCH_INTL_MULTI_TOUCH) },
+
+	/* Uiworks */
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1600) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1601) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1602) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1603) },
 
 	/* Unitec panels */
 	{ .driver_data = MT_CLS_NSMU,

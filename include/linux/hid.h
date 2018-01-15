@@ -172,6 +172,7 @@ struct hid_item {
 #define HID_UP_LOGIVENDOR3   0xff430000
 #define HID_UP_LNVENDOR		0xffa00000
 #define HID_UP_SENSOR		0x00200000
+#define HID_UP_ASUSVENDOR	0xff310000
 
 #define HID_USAGE		0x0000ffff
 
@@ -479,6 +480,7 @@ struct hid_input {
 	struct list_head list;
 	struct hid_report *report;
 	struct input_dev *input;
+	bool registered;
 };
 
 enum hid_type {

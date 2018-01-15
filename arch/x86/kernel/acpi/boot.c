@@ -176,10 +176,15 @@ static int acpi_register_lapic(int id, u32 acpiid, u8 enabled)
 		return -EINVAL;
 	}
 
+	if (!enabled) {
+		++disabled_cpus;
+		return -EINVAL;
+	}
+
 	if (boot_cpu_physical_apicid != -1U)
 		ver = boot_cpu_apic_version;
 
-	cpu = __generic_processor_info(id, ver, enabled);
+	cpu = generic_processor_info(id, ver);
 	if (cpu >= 0)
 		early_per_cpu(x86_cpu_to_acpiid, cpu) = acpiid;
 
@@ -338,6 +343,14 @@ static void __init mp_override_legacy_irq(u8 bus_irq, u8 polarity, u8 trigger,
 	struct mpc_intsrc mp_irq;
 
 	/*
+	 * Check bus_irq boundary.
+	 */
+	if (bus_irq >= NR_IRQS_LEGACY) {
+		pr_warn("Invalid bus_irq %u for legacy override\n", bus_irq);
+		return;
+	}
+
+	/*
 	 * Convert 'gsi' to 'ioapic.pin'.
 	 */
 	ioapic = mp_find_ioapic(gsi);
@@ -425,8 +438,12 @@ acpi_parse_ioapic(struct acpi_subtable_header * header, const unsigned long end)
 
 	acpi_table_print_madt_entry(header);
 
-	/* Statically assign IRQ numbers for IOAPICs hosting legacy IRQs */
-	if (ioapic->global_irq_base < nr_legacy_irqs())
+	/*
+	 * Statically assign IRQ numbers for IOAPICs hosting legacy IRQs,
+	 * Or for the platform in Hardware-reduced ACPI model
+	 */
+	if (ioapic->global_irq_base < nr_legacy_irqs() ||
+		acpi_gbl_reduced_hardware)
 		cfg.type = IOAPIC_DOMAIN_LEGACY;
 
 	mp_register_ioapic(ioapic->id, ioapic->address, ioapic->global_irq_base,
