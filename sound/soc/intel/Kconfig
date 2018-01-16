@@ -215,6 +215,18 @@ config SND_SOC_INTEL_CHT_BSW_RT5645_MACH
 	  platforms with RT5645/5650 audio codec.
 	  If unsure select "N".
 
+config SND_SOC_INTEL_CHT_BSW_NAU8824_MACH
+	tristate "ASoC Audio driver for Intel Cherrytrail & Braswell with NAU8824 codec"
+	depends on X86_INTEL_LPSS && I2C && ACPI
+	select SND_SOC_NAU8824
+	select SND_SST_ATOM_HIFI2_PLATFORM
+	select SND_SST_IPC_ACPI
+	select SND_SOC_INTEL_SST_MATCH if ACPI
+	help
+	  This adds support for ASoC machine driver for Intel(R) Cherrytrail & Braswell
+	  platforms with NAU8824 audio codec.
+	  If unsure select "N".
+	  
 config SND_SOC_INTEL_CHT_BSW_MAX98090_TI_MACH
 	tristate "ASoC Audio driver for Intel Cherrytrail & Braswell with MAX98090 & TI codec"
 	depends on X86_INTEL_LPSS && I2C && ACPI

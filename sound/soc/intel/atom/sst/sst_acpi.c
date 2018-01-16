@@ -626,7 +626,13 @@ static struct sst_acpi_mach sst_acpi_chv[] = {
 		.board = "cht-bsw",
 		.pdata = &chv_platform_data
 	},
-
+	{
+		.id = "10508824",
+		.drv_name = "cht-bsw-nau8824",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
 	{
 		.id = "193C9890",
 		.drv_name = "cht-bsw-max98090",
