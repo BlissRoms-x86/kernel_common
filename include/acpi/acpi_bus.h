@@ -88,6 +88,7 @@ acpi_evaluate_dsm_typed(acpi_handle handle, const u8 *uuid, u64 rev, u64 func,
 	}
 
 bool acpi_dev_found(const char *hid);
+bool acpi_dev_present(const char *hid, const char *uid, s64 hrv);
 
 #ifdef CONFIG_ACPI
 
@@ -522,6 +523,8 @@ void acpi_bus_trim(struct acpi_device *start);
 acpi_status acpi_bus_get_ejd(acpi_handle handle, acpi_handle * ejd);
 int acpi_match_device_ids(struct acpi_device *device,
 			  const struct acpi_device_id *ids);
+void acpi_set_modalias(struct acpi_device *adev, const char *default_id,
+		       char *modalias, size_t len);
 int acpi_create_dir(struct acpi_device *);
 void acpi_remove_dir(struct acpi_device *);
 
@@ -581,6 +584,15 @@ struct acpi_pci_root *acpi_pci_find_root(acpi_handle handle);
 
 int acpi_enable_wakeup_device_power(struct acpi_device *dev, int state);
 int acpi_disable_wakeup_device_power(struct acpi_device *dev);
+
+#ifdef CONFIG_X86
+bool acpi_device_always_present(struct acpi_device *adev);
+#else
+static inline bool acpi_device_always_present(struct acpi_device *adev)
+{
+	return false;
+}
+#endif
 
 #ifdef CONFIG_PM
 acpi_status acpi_add_pm_notifier(struct acpi_device *adev, struct device *dev,
