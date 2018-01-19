@@ -20,7 +20,7 @@ typedef enum usb_role (*usb_role_switch_get_t)(struct device *dev);
  * @usb3_port: Optional reference to the host controller port device (USB3)
  * @udc: Optional reference to the peripheral controller device
  * @set: Callback for setting the role
- * @set: Callback for getting the role
+ * @get: Callback for getting the role (optional)
  * @allow_userspace_control: If true userspace may change the role through sysfs
  *
  * @usb2_port and @usb3_port will point to the USB host port and @udc to the USB
