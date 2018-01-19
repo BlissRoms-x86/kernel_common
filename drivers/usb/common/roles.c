@@ -49,14 +49,12 @@ int usb_role_switch_set_role(struct usb_role_switch *sw, enum usb_role role)
 	mutex_lock(&sw->lock);
 
 	ret = sw->set(sw->dev.parent, role);
-	if (ret)
-		return ret;
-
-	sw->role = role;
+	if (!ret)
+		sw->role = role;
 
 	mutex_unlock(&sw->lock);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(usb_role_switch_set_role);
 
@@ -151,13 +149,9 @@ static ssize_t
 role_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct usb_role_switch *sw = to_role_switch(dev);
-	ssize_t ret;
+	enum usb_role role = usb_role_switch_get_role(sw);
 
-	mutex_lock(&sw->lock);
-	ret = sprintf(buf, "%s\n", usb_roles[sw->role]);
-	mutex_unlock(&sw->lock);
-
-	return ret;
+	return sprintf(buf, "%s\n", usb_roles[role]);
 }
 
 static ssize_t role_store(struct device *dev, struct device_attribute *attr,
@@ -175,6 +169,10 @@ static ssize_t role_store(struct device *dev, struct device_attribute *attr,
 		if (ret || res)
 			return -EINVAL;
 	}
+
+	/* Catch users doing a chmod on the sysfs attr */
+	if (!sw->allow_userspace_control)
+		return -EPERM;
 
 	ret = usb_role_switch_set_role(sw, ret);
 	if (!ret)
