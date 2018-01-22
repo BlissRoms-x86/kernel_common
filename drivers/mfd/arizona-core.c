@@ -1086,8 +1086,8 @@ int arizona_dev_init(struct arizona *arizona)
 	arizona->pdata.reset = 246;
 	arizona->pdata.irq_gpio = 342;
 	arizona->pdata.irq_flags = IRQF_TRIGGER_FALLING;
-	arizona->pdata.gpio_base = 300;
-	arizona->pdata.micd_pol_gpio = 304;
+	arizona->pdata.gpio_base = 238;
+	arizona->pdata.micd_pol_gpio = 242;
 	arizona->pdata.clk32k_src = 2;
 
 	/* remove kernel warnning to defer probe */
