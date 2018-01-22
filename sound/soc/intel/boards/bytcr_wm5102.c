@@ -199,6 +199,8 @@ static const struct snd_soc_dapm_route byt_wm5102_audio_map[] = {
 
 	{"Headset Mic", NULL, "MICBIAS1"},
 	{"IN1L", NULL, "Headset Mic"},
+	{"Internal Mic", NULL, "MICBIAS3"},
+	{"IN3L", NULL, "Internal Mic"},
 	{"Headphone", NULL, "HPOUT1L"},
 	{"Headphone", NULL, "HPOUT1R"},
 };
@@ -209,16 +211,6 @@ static const struct snd_soc_dapm_route byt_wm5102_intmic_dmic1_map[] = {
 
 static const struct snd_soc_dapm_route byt_wm5102_intmic_dmic2_map[] = {
 	{"DMIC2", NULL, "Internal Mic"},
-};
-
-static const struct snd_soc_dapm_route byt_wm5102_hsmic_in1_map[] = {
-	{"Headset Mic", NULL, "MICBIAS1"},
-	{"IN1L", NULL, "Headset Mic"},
-};
-
-static const struct snd_soc_dapm_route byt_wm5102_intmic_in3_map[] = {
-	{"Internal Mic", NULL, "MICBIAS3"},
-	{"IN3L", NULL, "Internal Mic"},
 };
 
 static const struct snd_soc_dapm_route byt_wm5102_ssp2_aif1_map[] = {
