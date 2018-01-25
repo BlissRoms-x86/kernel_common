@@ -840,18 +840,22 @@ find_panel_sequence_block(const struct bdb_mipi_sequence *sequence,
 	return NULL;
 }
 
-static int goto_next_sequence(const u8 *data, int index, int total)
+int intel_bios_sequence_len(const u8 *data, int index, int total, int stop_at)
 {
 	u16 len;
 
 	/* Skip Sequence Byte. */
 	for (index = index + 1; index < total; index += len) {
 		u8 operation_byte = *(data + index);
+
+		if (operation_byte == stop_at)
+			return index;
+
 		index++;
 
 		switch (operation_byte) {
 		case MIPI_SEQ_ELEM_END:
-			return index;
+			return (stop_at == -1) ? index : 0;
 		case MIPI_SEQ_ELEM_SEND_PKT:
 			if (index + 4 > total)
 				return 0;
@@ -876,6 +880,11 @@ static int goto_next_sequence(const u8 *data, int index, int total)
 	}
 
 	return 0;
+}
+
+static int goto_next_sequence(const u8 *data, int index, int total)
+{
+	return intel_bios_sequence_len(data, index, total, -1);
 }
 
 static int goto_next_sequence_v3(const u8 *data, int index, int total)
