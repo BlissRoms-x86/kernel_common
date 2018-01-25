@@ -499,6 +499,86 @@ int intel_dsi_vbt_get_modes(struct intel_dsi *intel_dsi)
 	return 1;
 }
 
+/*
+ * Get len of pre-fixed deassert from init OTP, skip all delay + gpio operands
+ * and stop at the first DSI packet op.
+ */
+static int intel_vbi_get_deassert_len(const u8 *data, int total)
+{
+	int index, len;
+
+	/* index = 1 to skip sequence byte */
+	for (index = 1; index < total; index += len) {
+		switch (data[index]) {
+		case MIPI_SEQ_ELEM_SEND_PKT:
+			return index;
+		case MIPI_SEQ_ELEM_DELAY:
+			len = 5; /* 1 byte for operand + uint32 */
+			break;
+		case MIPI_SEQ_ELEM_GPIO:
+			len = 3; /* 1 byte for op, 1 for gpio_nr, 1 for value */
+			break;
+		default:
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Some v1 VBT MIPI sequences do the deassert in the init OTP sequence.
+ * The deassert must be done before calling intel_dsi_device_ready, so for
+ * these devices we split the init OTP sequence into a deassert sequence and
+ * the actual init OTP part.
+ */
+static void intel_dsi_fixup_dsi_sequences(struct intel_dsi *intel_dsi)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dsi->base.base.dev);
+	int init_otp_index, len;
+	u8 *init_otp;
+
+	/* Limit this to VLV for now. */
+	if (!IS_VALLEYVIEW(dev_priv))
+		return;
+
+	/* Limit this to v1 vid-mode sequences */
+	if (intel_dsi->operation_mode != INTEL_DSI_VIDEO_MODE ||
+	    dev_priv->vbt.dsi.seq_version != 1)
+		return;
+
+	/* Only do this if there are otp and assert seqs and no deassert seq */
+	if (!dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] ||
+	    !dev_priv->vbt.dsi.sequence[MIPI_SEQ_ASSERT_RESET] ||
+	    dev_priv->vbt.dsi.sequence[MIPI_SEQ_DEASSERT_RESET])
+		return;
+
+	/* The deassert-sequence ends at the first DSI packet */
+	init_otp_index = dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] -
+			 (const u8 *)dev_priv->vbt.dsi.data;
+	init_otp = dev_priv->vbt.dsi.data + init_otp_index;
+	len = dev_priv->vbt.dsi.size - init_otp_index;
+	len = intel_vbi_get_deassert_len(init_otp, len);
+	if (!len)
+		return;
+
+	DRM_DEBUG_KMS("Using init OTP fragment to deassert reset\n");
+
+	/* Copy the fragment, update seq byte and terminate it */
+	intel_dsi->deassert_seq = kmemdup(init_otp, len + 1, GFP_KERNEL);
+	if (!intel_dsi->deassert_seq)
+		return;
+	intel_dsi->deassert_seq[0] = MIPI_SEQ_DEASSERT_RESET;
+	intel_dsi->deassert_seq[len] = MIPI_SEQ_ELEM_END;
+	/* Use the copy for deassert */
+	dev_priv->vbt.dsi.sequence[MIPI_SEQ_DEASSERT_RESET] =
+		intel_dsi->deassert_seq;
+	/* Replace the last byte of the fragment with init OTP seq byte */
+	init_otp[len - 1] = MIPI_SEQ_INIT_OTP;
+	/* And make MIPI_MIPI_SEQ_INIT_OTP point to it */
+	dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] = init_otp + len - 1;
+}
+
 bool intel_dsi_vbt_init(struct intel_dsi *intel_dsi, u16 panel_id)
 {
 	struct drm_device *dev = intel_dsi->base.base.dev;
@@ -793,6 +873,8 @@ bool intel_dsi_vbt_init(struct intel_dsi *intel_dsi, u16 panel_id)
 	for_each_dsi_port(port, intel_dsi->ports) {
 		mipi_dsi_attach(intel_dsi->dsi_hosts[port]->device);
 	}
+
+	intel_dsi_fixup_dsi_sequences(intel_dsi);
 
 	return true;
 }
