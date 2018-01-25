@@ -46,6 +46,8 @@ struct intel_dsi {
 
 	struct intel_connector *attached_connector;
 
+	u8 *deassert_seq;
+
 	/* bit mask of ports being driven */
 	u16 ports;
 
