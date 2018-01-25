@@ -4051,6 +4051,7 @@ bool intel_bios_is_port_hpd_inverted(struct drm_i915_private *dev_priv,
 				     enum port port);
 bool intel_bios_is_lspcon_present(struct drm_i915_private *dev_priv,
 				enum port port);
+int intel_bios_sequence_len(const u8 *data, int index, int total, int stop_at);
 
 
 /* intel_opregion.c */
