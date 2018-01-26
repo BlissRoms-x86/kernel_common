@@ -253,7 +253,7 @@ BEGIN_FTR_SECTION
 	LOAD_HANDLER(r12, machine_check_handle_early)
 1:	mtspr	SPRN_SRR0,r12
 	mtspr	SPRN_SRR1,r11
-	rfid
+	RFI_TO_KERNEL
 	b	.	/* prevent speculative execution */
 2:
 	/* Stack overflow. Stay on emergency stack and panic.
@@ -442,7 +442,7 @@ EXC_COMMON_BEGIN(machine_check_handle_early)
 	li	r3,MSR_ME
 	andc	r10,r10,r3		/* Turn off MSR_ME */
 	mtspr	SPRN_SRR1,r10
-	rfid
+	RFI_TO_KERNEL
 	b	.
 2:
 	/*
@@ -460,7 +460,7 @@ EXC_COMMON_BEGIN(machine_check_handle_early)
 	 */
 	bl	machine_check_queue_event
 	MACHINE_CHECK_HANDLER_WINDUP
-	rfid
+	RFI_TO_USER_OR_KERNEL
 9:
 	/* Deliver the machine check to host kernel in V mode. */
 	MACHINE_CHECK_HANDLER_WINDUP
@@ -595,6 +595,9 @@ EXC_COMMON_BEGIN(slb_miss_common)
 	stw	r9,PACA_EXSLB+EX_CCR(r13)	/* save CR in exc. frame */
 	std	r10,PACA_EXSLB+EX_LR(r13)	/* save LR */
 
+	andi.	r9,r11,MSR_PR	 /* check for exception from userspace */
+	cmpdi	cr4,r9,MSR_PR
+
 	/*
 	 * Test MSR_RI before calling slb_allocate_realmode, because the
 	 * MSR in r11 gets clobbered. However we still want to allocate
@@ -621,9 +624,12 @@ END_MMU_FTR_SECTION_IFCLR(MMU_FTR_TYPE_RADIX)
 
 	/* All done -- return from exception. */
 
+	bne	cr4,1f		/* returning to kernel */
+
 .machine	push
 .machine	"power4"
 	mtcrf	0x80,r9
+	mtcrf	0x08,r9		/* MSR[PR] indication is in cr4 */
 	mtcrf	0x04,r9		/* MSR[RI] indication is in cr5 */
 	mtcrf	0x02,r9		/* I/D indication is in cr6 */
 	mtcrf	0x01,r9		/* slb_allocate uses cr0 and cr7 */
@@ -637,8 +643,29 @@ END_MMU_FTR_SECTION_IFCLR(MMU_FTR_TYPE_RADIX)
 	ld	r11,PACA_EXSLB+EX_R11(r13)
 	ld	r12,PACA_EXSLB+EX_R12(r13)
 	ld	r13,PACA_EXSLB+EX_R13(r13)
-	rfid
+	RFI_TO_USER
 	b	.	/* prevent speculative execution */
+1:
+.machine	push
+.machine	"power4"
+	mtcrf	0x80,r9
+	mtcrf	0x08,r9		/* MSR[PR] indication is in cr4 */
+	mtcrf	0x04,r9		/* MSR[RI] indication is in cr5 */
+	mtcrf	0x02,r9		/* I/D indication is in cr6 */
+	mtcrf	0x01,r9		/* slb_allocate uses cr0 and cr7 */
+.machine	pop
+
+	RESTORE_CTR(r9, PACA_EXSLB)
+	RESTORE_PPR_PACA(PACA_EXSLB, r9)
+	mr	r3,r12
+	ld	r9,PACA_EXSLB+EX_R9(r13)
+	ld	r10,PACA_EXSLB+EX_R10(r13)
+	ld	r11,PACA_EXSLB+EX_R11(r13)
+	ld	r12,PACA_EXSLB+EX_R12(r13)
+	ld	r13,PACA_EXSLB+EX_R13(r13)
+	RFI_TO_KERNEL
+	b	.	/* prevent speculative execution */
+
 
 2:	std     r3,PACA_EXSLB+EX_DAR(r13)
 	mr	r3,r12
@@ -648,7 +675,7 @@ END_MMU_FTR_SECTION_IFCLR(MMU_FTR_TYPE_RADIX)
 	mtspr	SPRN_SRR0,r10
 	ld	r10,PACAKMSR(r13)
 	mtspr	SPRN_SRR1,r10
-	rfid
+	RFI_TO_KERNEL
 	b	.
 
 8:	std     r3,PACA_EXSLB+EX_DAR(r13)
@@ -659,7 +686,7 @@ END_MMU_FTR_SECTION_IFCLR(MMU_FTR_TYPE_RADIX)
 	mtspr	SPRN_SRR0,r10
 	ld	r10,PACAKMSR(r13)
 	mtspr	SPRN_SRR1,r10
-	rfid
+	RFI_TO_KERNEL
 	b	.
 
 EXC_COMMON_BEGIN(unrecov_slb)
@@ -734,7 +761,29 @@ EXC_REAL(program_check, 0x700, 0x100)
 EXC_VIRT(program_check, 0x4700, 0x100, 0x700)
 TRAMP_KVM(PACA_EXGEN, 0x700)
 EXC_COMMON_BEGIN(program_check_common)
-	EXCEPTION_PROLOG_COMMON(0x700, PACA_EXGEN)
+	/*
+	 * It's possible to receive a TM Bad Thing type program check with
+	 * userspace register values (in particular r1), but with SRR1 reporting
+	 * that we came from the kernel. Normally that would confuse the bad
+	 * stack logic, and we would report a bad kernel stack pointer. Instead
+	 * we switch to the emergency stack if we're taking a TM Bad Thing from
+	 * the kernel.
+	 */
+	li	r10,MSR_PR		/* Build a mask of MSR_PR ..	*/
+	oris	r10,r10,0x200000@h	/* .. and SRR1_PROGTM		*/
+	and	r10,r10,r12		/* Mask SRR1 with that.		*/
+	srdi	r10,r10,8		/* Shift it so we can compare	*/
+	cmpldi	r10,(0x200000 >> 8)	/* .. with an immediate.	*/
+	bne 1f				/* If != go to normal path.	*/
+
+	/* SRR1 had PR=0 and SRR1_PROGTM=1, so use the emergency stack	*/
+	andi.	r10,r12,MSR_PR;		/* Set CR0 correctly for label	*/
+					/* 3 in EXCEPTION_PROLOG_COMMON	*/
+	mr	r10,r1			/* Save r1			*/
+	ld	r1,PACAEMERGSP(r13)	/* Use emergency stack		*/
+	subi	r1,r1,INT_FRAME_SIZE	/* alloc stack frame		*/
+	b 3f				/* Jump into the macro !!	*/
+1:	EXCEPTION_PROLOG_COMMON(0x700, PACA_EXGEN)
 	bl	save_nvgprs
 	RECONCILE_IRQ_STATE(r10, r11)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
@@ -775,7 +824,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
 
 
-EXC_REAL_MASKABLE(decrementer, 0x900, 0x80)
+EXC_REAL_OOL_MASKABLE(decrementer, 0x900, 0x80)
 EXC_VIRT_MASKABLE(decrementer, 0x4900, 0x80, 0x900)
 TRAMP_KVM(PACA_EXGEN, 0x900)
 EXC_COMMON_ASYNC(decrementer_common, 0x900, timer_interrupt)
@@ -882,7 +931,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_REAL_LE)				\
 	mtspr	SPRN_SRR0,r10 ; 				\
 	ld	r10,PACAKMSR(r13) ;				\
 	mtspr	SPRN_SRR1,r10 ; 				\
-	rfid ; 							\
+	RFI_TO_KERNEL ;						\
 	b	. ;	/* prevent speculative execution */
 
 #define SYSCALL_FASTENDIAN					\
@@ -891,7 +940,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_REAL_LE)				\
 	xori	r12,r12,MSR_LE ;				\
 	mtspr	SPRN_SRR1,r12 ;					\
 	mr	r13,r9 ;					\
-	rfid ;		/* return to userspace */		\
+	RFI_TO_USER ;	/* return to userspace */		\
 	b	. ;	/* prevent speculative execution */
 
 #if defined(CONFIG_RELOCATABLE)
@@ -1010,6 +1059,8 @@ TRAMP_REAL_BEGIN(hmi_exception_early)
 	EXCEPTION_PROLOG_COMMON_3(0xe60)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	BRANCH_LINK_TO_FAR(hmi_exception_realmode) /* Function call ABI */
+	cmpdi	cr0,r3,0
+
 	/* Windup the stack. */
 	/* Move original HSRR0 and HSRR1 into the respective regs */
 	ld	r9,_MSR(r1)
@@ -1026,10 +1077,15 @@ TRAMP_REAL_BEGIN(hmi_exception_early)
 	REST_8GPRS(2, r1)
 	REST_GPR(10, r1)
 	ld	r11,_CCR(r1)
+	REST_2GPRS(12, r1)
+	bne	1f
 	mtcr	r11
 	REST_GPR(11, r1)
-	REST_2GPRS(12, r1)
-	/* restore original r1. */
+	ld	r1,GPR1(r1)
+	HRFI_TO_USER_OR_KERNEL
+
+1:	mtcr	r11
+	REST_GPR(11, r1)
 	ld	r1,GPR1(r1)
 
 	/*
@@ -1042,8 +1098,9 @@ hmi_exception_after_realmode:
 	EXCEPTION_PROLOG_0(PACA_EXGEN)
 	b	tramp_real_hmi_exception
 
-EXC_COMMON_ASYNC(hmi_exception_common, 0xe60, handle_hmi_exception)
-
+EXC_COMMON_BEGIN(hmi_exception_common)
+EXCEPTION_COMMON(PACA_EXGEN, 0xe60, hmi_exception_common, handle_hmi_exception,
+        ret_from_except, FINISH_NAP;ADD_NVGPRS;ADD_RECONCILE;RUNLATCH_ON)
 
 EXC_REAL_OOL_MASKABLE_HV(h_doorbell, 0xe80, 0x20)
 EXC_VIRT_OOL_MASKABLE_HV(h_doorbell, 0x4e80, 0x20, 0xe80)
@@ -1276,7 +1333,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CFAR)
 	ld	r11,PACA_EXGEN+EX_R11(r13)
 	ld	r12,PACA_EXGEN+EX_R12(r13)
 	ld	r13,PACA_EXGEN+EX_R13(r13)
-	HRFID
+	HRFI_TO_UNKNOWN
 	b	.
 #endif
 
@@ -1383,9 +1440,93 @@ masked_##_H##interrupt:					\
 	ld	r10,PACA_EXGEN+EX_R10(r13);		\
 	ld	r11,PACA_EXGEN+EX_R11(r13);		\
 	GET_SCRATCH0(r13);				\
-	##_H##rfid;					\
+	##_H##RFI_TO_KERNEL;				\
 	b	.;					\
 	MASKED_DEC_HANDLER(_H)
+
+TRAMP_REAL_BEGIN(rfi_flush_fallback)
+	SET_SCRATCH0(r13);
+	GET_PACA(r13);
+	std	r9,PACA_EXRFI+EX_R9(r13)
+	std	r10,PACA_EXRFI+EX_R10(r13)
+	std	r11,PACA_EXRFI+EX_R11(r13)
+	std	r12,PACA_EXRFI+EX_R12(r13)
+	std	r8,PACA_EXRFI+EX_R13(r13)
+	mfctr	r9
+	ld	r10,PACA_RFI_FLUSH_FALLBACK_AREA(r13)
+	ld	r11,PACA_L1D_FLUSH_SETS(r13)
+	ld	r12,PACA_L1D_FLUSH_CONGRUENCE(r13)
+	/*
+	 * The load adresses are at staggered offsets within cachelines,
+	 * which suits some pipelines better (on others it should not
+	 * hurt.
+	 */
+	addi	r12,r12,8
+	mtctr	r11
+	DCBT_STOP_ALL_STREAM_IDS(r11) /* Stop prefetch streams */
+
+	/* order ld/st prior to dcbt stop all streams with flushing */
+	hwsync
+1:	li	r8,0
+	.rept	8 /* 8-way set associative */
+	ldx	r11,r10,r8
+	add	r8,r8,r12
+	xor	r11,r11,r11	// Ensure r11 is 0 even if fallback area is not
+	add	r8,r8,r11	// Add 0, this creates a dependency on the ldx
+	.endr
+	addi	r10,r10,128 /* 128 byte cache line */
+	bdnz	1b
+
+	mtctr	r9
+	ld	r9,PACA_EXRFI+EX_R9(r13)
+	ld	r10,PACA_EXRFI+EX_R10(r13)
+	ld	r11,PACA_EXRFI+EX_R11(r13)
+	ld	r12,PACA_EXRFI+EX_R12(r13)
+	ld	r8,PACA_EXRFI+EX_R13(r13)
+	GET_SCRATCH0(r13);
+	rfid
+
+TRAMP_REAL_BEGIN(hrfi_flush_fallback)
+	SET_SCRATCH0(r13);
+	GET_PACA(r13);
+	std	r9,PACA_EXRFI+EX_R9(r13)
+	std	r10,PACA_EXRFI+EX_R10(r13)
+	std	r11,PACA_EXRFI+EX_R11(r13)
+	std	r12,PACA_EXRFI+EX_R12(r13)
+	std	r8,PACA_EXRFI+EX_R13(r13)
+	mfctr	r9
+	ld	r10,PACA_RFI_FLUSH_FALLBACK_AREA(r13)
+	ld	r11,PACA_L1D_FLUSH_SETS(r13)
+	ld	r12,PACA_L1D_FLUSH_CONGRUENCE(r13)
+	/*
+	 * The load adresses are at staggered offsets within cachelines,
+	 * which suits some pipelines better (on others it should not
+	 * hurt.
+	 */
+	addi	r12,r12,8
+	mtctr	r11
+	DCBT_STOP_ALL_STREAM_IDS(r11) /* Stop prefetch streams */
+
+	/* order ld/st prior to dcbt stop all streams with flushing */
+	hwsync
+1:	li	r8,0
+	.rept	8 /* 8-way set associative */
+	ldx	r11,r10,r8
+	add	r8,r8,r12
+	xor	r11,r11,r11	// Ensure r11 is 0 even if fallback area is not
+	add	r8,r8,r11	// Add 0, this creates a dependency on the ldx
+	.endr
+	addi	r10,r10,128 /* 128 byte cache line */
+	bdnz	1b
+
+	mtctr	r9
+	ld	r9,PACA_EXRFI+EX_R9(r13)
+	ld	r10,PACA_EXRFI+EX_R10(r13)
+	ld	r11,PACA_EXRFI+EX_R11(r13)
+	ld	r12,PACA_EXRFI+EX_R12(r13)
+	ld	r8,PACA_EXRFI+EX_R13(r13)
+	GET_SCRATCH0(r13);
+	hrfid
 
 /*
  * Real mode exceptions actually use this too, but alternate
@@ -1406,7 +1547,7 @@ TRAMP_REAL_BEGIN(kvmppc_skip_interrupt)
 	addi	r13, r13, 4
 	mtspr	SPRN_SRR0, r13
 	GET_SCRATCH0(r13)
-	rfid
+	RFI_TO_KERNEL
 	b	.
 
 TRAMP_REAL_BEGIN(kvmppc_skip_Hinterrupt)
@@ -1418,7 +1559,7 @@ TRAMP_REAL_BEGIN(kvmppc_skip_Hinterrupt)
 	addi	r13, r13, 4
 	mtspr	SPRN_HSRR0, r13
 	GET_SCRATCH0(r13)
-	hrfid
+	HRFI_TO_KERNEL
 	b	.
 #endif
 

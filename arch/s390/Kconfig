@@ -519,6 +519,23 @@ config ARCH_RANDOM
 
 	  If unsure, say Y.
 
+config KERNEL_NOBP
+       def_bool n
+       prompt "Enable modified branch prediction for the kernel by default"
+       help
+         If this option is selected the kernel will switch to a modified
+	 branch prediction mode if the firmware interface is available.
+	 The modified branch prediction mode improves the behaviour in
+	 regard to speculative execution.
+
+	 With the option enabled the kernel parameter "nobp=0" or "nospec"
+	 can be used to run the kernel in the normal branch prediction mode.
+
+	 With the option disabled the modified branch prediction mode is
+	 enabled with the "nobp=1" kernel parameter.
+
+	 If unsure, say N.
+
 endmenu
 
 menu "Memory setup"
@@ -925,3 +942,11 @@ config S390_GUEST_OLD_TRANSPORT
 	  need this.
 
 endmenu
+
+config KMSG_IDS
+	def_bool y
+	prompt "Kernel message numbers"
+	help
+	  Select this option if you want to include a message number to the
+	  prefix for kernel messages issued by the s390 architecture and
+	  driver code. See "Documentation/s390/kmsg.txt" for more details.

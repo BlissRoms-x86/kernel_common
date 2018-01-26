@@ -776,9 +776,9 @@ static void ablkcipher_done(struct caam_drv_req *drv_req, u32 status)
 	struct crypto_ablkcipher *ablkcipher = crypto_ablkcipher_reqtfm(req);
 	struct caam_ctx *caam_ctx = crypto_ablkcipher_ctx(ablkcipher);
 	struct device *qidev = caam_ctx->qidev;
-#ifdef DEBUG
 	int ivsize = crypto_ablkcipher_ivsize(ablkcipher);
 
+#ifdef DEBUG
 	dev_err(qidev, "%s %d: status 0x%x\n", __func__, __LINE__, status);
 #endif
 
@@ -791,13 +791,20 @@ static void ablkcipher_done(struct caam_drv_req *drv_req, u32 status)
 	print_hex_dump(KERN_ERR, "dstiv  @" __stringify(__LINE__)": ",
 		       DUMP_PREFIX_ADDRESS, 16, 4, req->info,
 		       edesc->src_nents > 1 ? 100 : ivsize, 1);
-	dbg_dump_sg(KERN_ERR, "dst    @" __stringify(__LINE__)": ",
-		    DUMP_PREFIX_ADDRESS, 16, 4, req->dst,
-		    edesc->dst_nents > 1 ? 100 : req->nbytes, 1);
+	caam_dump_sg(KERN_ERR, "dst    @" __stringify(__LINE__)": ",
+		     DUMP_PREFIX_ADDRESS, 16, 4, req->dst,
+		     edesc->dst_nents > 1 ? 100 : req->nbytes, 1);
 #endif
 
 	ablkcipher_unmap(qidev, edesc, req);
 	qi_cache_free(edesc);
+
+	/*
+	 * The crypto API expects us to set the IV (req->info) to the last
+	 * ciphertext block. This is used e.g. by the CTS mode.
+	 */
+	scatterwalk_map_and_copy(req->info, req->dst, req->nbytes - ivsize,
+				 ivsize, 0);
 
 	ablkcipher_request_complete(req, status);
 }
@@ -1968,7 +1975,7 @@ static struct caam_aead_alg driver_aeads[] = {
 				.cra_name = "echainiv(authenc(hmac(sha256),"
 					    "cbc(des)))",
 				.cra_driver_name = "echainiv-authenc-"
-						   "hmac-sha256-cbc-desi-"
+						   "hmac-sha256-cbc-des-"
 						   "caam-qi",
 				.cra_blocksize = DES_BLOCK_SIZE,
 			},

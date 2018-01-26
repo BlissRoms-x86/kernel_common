@@ -78,7 +78,7 @@ _GLOBAL_TOC(kvmppc_hv_entry_trampoline)
 	mtmsrd	r0,1		/* clear RI in MSR */
 	mtsrr0	r5
 	mtsrr1	r6
-	RFI
+	RFI_TO_KERNEL
 
 kvmppc_call_hv_entry:
 	ld	r4, HSTATE_KVM_VCPU(r13)
@@ -185,7 +185,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 	mtmsrd	r6, 1			/* Clear RI in MSR */
 	mtsrr0	r8
 	mtsrr1	r7
-	RFI
+	RFI_TO_KERNEL
 
 	/* Virtual-mode return */
 .Lvirt_return:
@@ -765,6 +765,9 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
+	/*
+	 * NOTE THAT THIS TRASHES ALL NON-VOLATILE REGISTERS INCLUDING CR
+	 */
 	bl	kvmppc_restore_tm
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
@@ -1115,7 +1118,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	ld	r0, VCPU_GPR(R0)(r4)
 	ld	r4, VCPU_GPR(R4)(r4)
 
-	hrfid
+	HRFI_TO_GUEST
 	b	.
 
 secondary_too_late:
@@ -1293,6 +1296,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	bne	3f
 BEGIN_FTR_SECTION
 	PPC_MSGSYNC
+	lwsync
 END_FTR_SECTION_IFSET(CPU_FTR_ARCH_300)
 	lbz	r0, HSTATE_HOST_IPI(r13)
 	cmpwi	r0, 0
@@ -1623,6 +1627,9 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_300)
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
+	/*
+	 * NOTE THAT THIS TRASHES ALL NON-VOLATILE REGISTERS INCLUDING CR
+	 */
 	bl	kvmppc_save_tm
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
@@ -1742,7 +1749,10 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_300)
 	/*
 	 * Are we running hash or radix ?
 	 */
-	beq	cr2,3f
+	ld	r5, VCPU_KVM(r9)
+	lbz	r0, KVM_RADIX(r5)
+	cmpwi	cr2, r0, 0
+	beq	cr2, 3f
 
 	/* Radix: Handle the case where the guest used an illegal PID */
 	LOAD_REG_ADDR(r4, mmu_base_pid)
@@ -2459,6 +2469,9 @@ _GLOBAL(kvmppc_h_cede)		/* r3 = vcpu pointer, r11 = msr, r13 = paca */
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
+	/*
+	 * NOTE THAT THIS TRASHES ALL NON-VOLATILE REGISTERS INCLUDING CR
+	 */
 	ld	r9, HSTATE_KVM_VCPU(r13)
 	bl	kvmppc_save_tm
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
@@ -2569,6 +2582,9 @@ kvm_end_cede:
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
+	/*
+	 * NOTE THAT THIS TRASHES ALL NON-VOLATILE REGISTERS INCLUDING CR
+	 */
 	bl	kvmppc_restore_tm
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
@@ -2752,6 +2768,10 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 	PPC_MSGCLR(6)
 	/* see if it's a host IPI */
 	li	r3, 1
+BEGIN_FTR_SECTION
+	PPC_MSGSYNC
+	lwsync
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_300)
 	lbz	r0, HSTATE_HOST_IPI(r13)
 	cmpwi	r0, 0
 	bnelr

@@ -327,6 +327,7 @@ static void alc_fill_eapd_coef(struct hda_codec *codec)
 	case 0x10ec0215:
 	case 0x10ec0225:
 	case 0x10ec0233:
+	case 0x10ec0236:
 	case 0x10ec0255:
 	case 0x10ec0256:
 	case 0x10ec0282:
@@ -911,6 +912,7 @@ static struct alc_codec_rename_pci_table rename_pci_tbl[] = {
 	{ 0x10ec0275, 0x1028, 0, "ALC3260" },
 	{ 0x10ec0899, 0x1028, 0, "ALC3861" },
 	{ 0x10ec0298, 0x1028, 0, "ALC3266" },
+	{ 0x10ec0236, 0x1028, 0, "ALC3204" },
 	{ 0x10ec0256, 0x1028, 0, "ALC3246" },
 	{ 0x10ec0225, 0x1028, 0, "ALC3253" },
 	{ 0x10ec0295, 0x1028, 0, "ALC3254" },
@@ -3930,6 +3932,7 @@ static void alc_headset_mode_unplugged(struct hda_codec *codec)
 		alc_process_coef_fw(codec, coef0255_1);
 		alc_process_coef_fw(codec, coef0255);
 		break;
+	case 0x10ec0236:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, coef0256);
 		alc_process_coef_fw(codec, coef0255);
@@ -4028,6 +4031,7 @@ static void alc_headset_mode_mic_in(struct hda_codec *codec, hda_nid_t hp_pin,
 	};
 
 	switch (codec->core.vendor_id) {
+	case 0x10ec0236:
 	case 0x10ec0255:
 	case 0x10ec0256:
 		alc_write_coef_idx(codec, 0x45, 0xc489);
@@ -4160,6 +4164,7 @@ static void alc_headset_mode_default(struct hda_codec *codec)
 		alc_process_coef_fw(codec, alc225_pre_hsmode);
 		alc_process_coef_fw(codec, coef0225);
 		break;
+	case 0x10ec0236:
 	case 0x10ec0255:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, coef0255);
@@ -4256,6 +4261,7 @@ static void alc_headset_mode_ctia(struct hda_codec *codec)
 	case 0x10ec0255:
 		alc_process_coef_fw(codec, coef0255);
 		break;
+	case 0x10ec0236:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, coef0256);
 		break;
@@ -4366,6 +4372,7 @@ static void alc_headset_mode_omtp(struct hda_codec *codec)
 	case 0x10ec0255:
 		alc_process_coef_fw(codec, coef0255);
 		break;
+	case 0x10ec0236:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, coef0256);
 		break;
@@ -4451,6 +4458,7 @@ static void alc_determine_headset_type(struct hda_codec *codec)
 	};
 
 	switch (codec->core.vendor_id) {
+	case 0x10ec0236:
 	case 0x10ec0255:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, coef0255);
@@ -4705,6 +4713,7 @@ static void alc255_set_default_jack_type(struct hda_codec *codec)
 	case 0x10ec0255:
 		alc_process_coef_fw(codec, alc255fw);
 		break;
+	case 0x10ec0236:
 	case 0x10ec0256:
 		alc_process_coef_fw(codec, alc256fw);
 		break;
@@ -5263,6 +5272,7 @@ enum {
 	ALC233_FIXUP_EAPD_COEF_AND_MIC_NO_PRESENCE,
 	ALC233_FIXUP_LENOVO_MULTI_CODECS,
 	ALC294_FIXUP_LENOVO_MIC_LOCATION,
+	ALC225_FIXUP_DELL_WYSE_MIC_NO_PRESENCE,
 };
 
 static const struct hda_fixup alc269_fixups[] = {
@@ -6058,6 +6068,17 @@ static const struct hda_fixup alc269_fixups[] = {
 			{ }
 		},
 	},
+	[ALC225_FIXUP_DELL_WYSE_MIC_NO_PRESENCE] = {
+		.type = HDA_FIXUP_PINS,
+		.v.pins = (const struct hda_pintbl[]) {
+			{ 0x16, 0x0101102f }, /* Rear Headset HP */
+			{ 0x19, 0x02a1913c }, /* use as Front headset mic, without its own jack detect */
+			{ 0x1a, 0x01a19030 }, /* Rear Headset MIC */
+			{ }
+		},
+		.chained = true,
+		.chain_id = ALC269_FIXUP_HEADSET_MODE_NO_HP_MIC
+	},
 };
 
 static const struct snd_pci_quirk alc269_fixup_tbl[] = {
@@ -6107,6 +6128,7 @@ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
 	SND_PCI_QUIRK(0x1028, 0x075b, "Dell XPS 13 9360", ALC256_FIXUP_DELL_XPS_13_HEADPHONE_NOISE),
 	SND_PCI_QUIRK(0x1028, 0x075d, "Dell AIO", ALC298_FIXUP_SPK_VOLUME),
 	SND_PCI_QUIRK(0x1028, 0x0798, "Dell Inspiron 17 7000 Gaming", ALC256_FIXUP_DELL_INSPIRON_7559_SUBWOOFER),
+	SND_PCI_QUIRK(0x1028, 0x080c, "Dell WYSE", ALC225_FIXUP_DELL_WYSE_MIC_NO_PRESENCE),
 	SND_PCI_QUIRK(0x1028, 0x164a, "Dell", ALC293_FIXUP_DELL1_MIC_NO_PRESENCE),
 	SND_PCI_QUIRK(0x1028, 0x164b, "Dell", ALC293_FIXUP_DELL1_MIC_NO_PRESENCE),
 	SND_PCI_QUIRK(0x103c, 0x1586, "HP", ALC269_FIXUP_HP_MUTE_LED_MIC2),
@@ -6402,6 +6424,14 @@ static const struct snd_hda_pin_quirk alc269_pin_fixup_tbl[] = {
 		ALC225_STANDARD_PINS,
 		{0x12, 0xb7a60130},
 		{0x1b, 0x90170110}),
+	SND_HDA_PIN_QUIRK(0x10ec0236, 0x1028, "Dell", ALC255_FIXUP_DELL1_MIC_NO_PRESENCE,
+		{0x12, 0x90a60140},
+		{0x14, 0x90170110},
+		{0x21, 0x02211020}),
+	SND_HDA_PIN_QUIRK(0x10ec0236, 0x1028, "Dell", ALC255_FIXUP_DELL1_MIC_NO_PRESENCE,
+		{0x12, 0x90a60140},
+		{0x14, 0x90170150},
+		{0x21, 0x02211020}),
 	SND_HDA_PIN_QUIRK(0x10ec0255, 0x1028, "Dell", ALC255_FIXUP_DELL2_MIC_NO_PRESENCE,
 		{0x14, 0x90170110},
 		{0x21, 0x02211020}),
@@ -6510,6 +6540,11 @@ static const struct snd_hda_pin_quirk alc269_pin_fixup_tbl[] = {
 		{0x14, 0x90170110},
 		{0x1b, 0x90a70130},
 		{0x21, 0x03211020}),
+	SND_HDA_PIN_QUIRK(0x10ec0274, 0x1028, "Dell", ALC269_FIXUP_DELL1_MIC_NO_PRESENCE,
+		{0x12, 0xb7a60130},
+		{0x13, 0xb8a61140},
+		{0x16, 0x90170110},
+		{0x21, 0x04211020}),
 	SND_HDA_PIN_QUIRK(0x10ec0280, 0x103c, "HP", ALC280_FIXUP_HP_GPIO4,
 		{0x12, 0x90a60130},
 		{0x14, 0x90170110},
@@ -6789,6 +6824,7 @@ static int patch_alc269(struct hda_codec *codec)
 	case 0x10ec0255:
 		spec->codec_variant = ALC269_TYPE_ALC255;
 		break;
+	case 0x10ec0236:
 	case 0x10ec0256:
 		spec->codec_variant = ALC269_TYPE_ALC256;
 		spec->shutup = alc256_shutup;
@@ -7840,6 +7876,7 @@ static const struct hda_device_id snd_hda_id_realtek[] = {
 	HDA_CODEC_ENTRY(0x10ec0233, "ALC233", patch_alc269),
 	HDA_CODEC_ENTRY(0x10ec0234, "ALC234", patch_alc269),
 	HDA_CODEC_ENTRY(0x10ec0235, "ALC233", patch_alc269),
+	HDA_CODEC_ENTRY(0x10ec0236, "ALC236", patch_alc269),
 	HDA_CODEC_ENTRY(0x10ec0255, "ALC255", patch_alc269),
 	HDA_CODEC_ENTRY(0x10ec0256, "ALC256", patch_alc269),
 	HDA_CODEC_ENTRY(0x10ec0260, "ALC260", patch_alc260),

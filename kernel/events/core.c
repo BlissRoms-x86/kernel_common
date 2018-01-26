@@ -397,8 +397,13 @@ static cpumask_var_t perf_online_mask;
  *   0 - disallow raw tracepoint access for unpriv
  *   1 - disallow cpu events for unpriv
  *   2 - disallow kernel profiling for unpriv
+ *   3 - disallow all unpriv perf event use
  */
-int sysctl_perf_event_paranoid __read_mostly = 2;
+#ifdef CONFIG_SECURITY_PERF_EVENTS_RESTRICT
+int sysctl_perf_event_paranoid __read_mostly = 3;
+#else
+int sysctl_perf_event_paranoid __read_mostly = 1;
+#endif
 
 /* Minimum for 512 kiB + 1 user control page */
 int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
@@ -901,9 +906,11 @@ list_update_cgroup_event(struct perf_event *event,
 	cpuctx_entry = &cpuctx->cgrp_cpuctx_entry;
 	/* cpuctx->cgrp is NULL unless a cgroup event is active in this CPU .*/
 	if (add) {
+		struct perf_cgroup *cgrp = perf_cgroup_from_task(current, ctx);
+
 		list_add(cpuctx_entry, this_cpu_ptr(&cgrp_cpuctx_list));
-		if (perf_cgroup_from_task(current, ctx) == event->cgrp)
-			cpuctx->cgrp = event->cgrp;
+		if (cgroup_is_descendant(cgrp->css.cgroup, event->cgrp->css.cgroup))
+			cpuctx->cgrp = cgrp;
 	} else {
 		list_del(cpuctx_entry);
 		cpuctx->cgrp = NULL;
@@ -3656,10 +3663,7 @@ unlock:
 
 static inline u64 perf_event_count(struct perf_event *event)
 {
-	if (event->pmu->count)
-		return event->pmu->count(event);
-
-	return __perf_event_count(event);
+	return local64_read(&event->count) + atomic64_read(&event->child_count);
 }
 
 /*
@@ -3686,15 +3690,6 @@ int perf_event_read_local(struct perf_event *event, u64 *value)
 	 * all child counters from atomic context.
 	 */
 	if (event->attr.inherit) {
-		ret = -EOPNOTSUPP;
-		goto out;
-	}
-
-	/*
-	 * It must not have a pmu::count method, those are not
-	 * NMI safe.
-	 */
-	if (event->pmu->count) {
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
@@ -4226,7 +4221,7 @@ static void perf_remove_from_owner(struct perf_event *event)
 	 * indeed free this event, otherwise we need to serialize on
 	 * owner->perf_event_mutex.
 	 */
-	owner = lockless_dereference(event->owner);
+	owner = READ_ONCE(event->owner);
 	if (owner) {
 		/*
 		 * Since delayed_put_task_struct() also drops the last
@@ -4323,7 +4318,7 @@ again:
 		 * Cannot change, child events are not migrated, see the
 		 * comment with perf_event_ctx_lock_nested().
 		 */
-		ctx = lockless_dereference(child->ctx);
+		ctx = READ_ONCE(child->ctx);
 		/*
 		 * Since child_mutex nests inside ctx::mutex, we must jump
 		 * through hoops. We start by grabbing a reference on the ctx.
@@ -8121,6 +8116,7 @@ static int perf_event_set_bpf_prog(struct perf_event *event, u32 prog_fd)
 		}
 	}
 	event->tp_event->prog = prog;
+	event->tp_event->bpf_prog_owner = event;
 
 	return 0;
 }
@@ -8135,7 +8131,7 @@ static void perf_event_free_bpf_prog(struct perf_event *event)
 		return;
 
 	prog = event->tp_event->prog;
-	if (prog) {
+	if (prog && event->tp_event->bpf_prog_owner == event) {
 		event->tp_event->prog = NULL;
 		bpf_prog_put(prog);
 	}
@@ -9867,6 +9863,9 @@ SYSCALL_DEFINE5(perf_event_open,
 	/* for future expandability... */
 	if (flags & ~PERF_FLAG_ALL)
 		return -EINVAL;
+
+	if (perf_paranoid_any() && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
 
 	err = perf_copy_attr(attr_uptr, &attr);
 	if (err)

@@ -3281,10 +3281,13 @@ nv50_mstm = {
 void
 nv50_mstm_service(struct nv50_mstm *mstm)
 {
-	struct drm_dp_aux *aux = mstm->mgr.aux;
+	struct drm_dp_aux *aux = mstm ? mstm->mgr.aux : NULL;
 	bool handled = true;
 	int ret;
 	u8 esi[8] = {};
+
+	if (!aux)
+		return;
 
 	while (handled) {
 		ret = drm_dp_dpcd_read(aux, DP_SINK_COUNT_ESI, esi, 8);
@@ -4134,7 +4137,7 @@ nv50_disp_atomic_commit(struct drm_device *dev,
 	if (!nonblock) {
 		ret = drm_atomic_helper_wait_for_fences(dev, state, true);
 		if (ret)
-			goto done;
+			goto err_cleanup;
 	}
 
 	for_each_plane_in_state(state, plane, plane_state, i) {
@@ -4162,7 +4165,7 @@ nv50_disp_atomic_commit(struct drm_device *dev,
 		if (crtc->state->enable) {
 			if (!drm->have_disp_power_ref) {
 				drm->have_disp_power_ref = true;
-				return ret;
+				return 0;
 			}
 			active = true;
 			break;
@@ -4174,6 +4177,9 @@ nv50_disp_atomic_commit(struct drm_device *dev,
 		drm->have_disp_power_ref = false;
 	}
 
+err_cleanup:
+	if (ret)
+		drm_atomic_helper_cleanup_planes(dev, state);
 done:
 	pm_runtime_put_autosuspend(dev->dev);
 	return ret;

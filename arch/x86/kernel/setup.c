@@ -69,6 +69,12 @@
 #include <linux/crash_dump.h>
 #include <linux/tboot.h>
 #include <linux/jiffies.h>
+#include <linux/security.h>
+
+#include <linux/fips.h>
+#include <linux/cred.h>
+#include <linux/sysrq.h>
+#include <linux/init_task.h>
 
 #include <linux/usb/xhci-dbgp.h>
 #include <video/edid.h>
@@ -115,6 +121,7 @@
 #include <asm/microcode.h>
 #include <asm/mmu_context.h>
 #include <asm/kaslr.h>
+#include <asm/unwind.h>
 
 /*
  * max_low_pfn_mapped: highest direct mapped pfn under 4GB
@@ -1168,8 +1175,11 @@ void __init setup_arch(char **cmdline_p)
 	 * with the current CR4 value.  This may not be necessary, but
 	 * auditing all the early-boot CR4 manipulation would be needed to
 	 * rule it out.
+	 *
+	 * Mask off features that don't work outside long mode (just
+	 * PCIDE for now).
 	 */
-	mmu_cr4_features = __read_cr4();
+	mmu_cr4_features = __read_cr4() & ~X86_CR4_PCIDE;
 
 	memblock_set_current_limit(get_max_mapped());
 
@@ -1190,7 +1200,13 @@ void __init setup_arch(char **cmdline_p)
 			pr_info("Secure boot disabled\n");
 			break;
 		case efi_secureboot_mode_enabled:
-			pr_info("Secure boot enabled\n");
+			set_bit(EFI_SECURE_BOOT, &efi.flags);
+			if (IS_ENABLED(CONFIG_EFI_SECURE_BOOT_LOCK_DOWN)) {
+				lock_kernel_down();
+				pr_info("Secure boot enabled and kernel locked down\n");
+			} else {
+				pr_info("Secure boot enabled\n");
+			}
 			break;
 		default:
 			pr_info("Secure boot could not be determined\n");
@@ -1310,6 +1326,8 @@ void __init setup_arch(char **cmdline_p)
 	if (efi_enabled(EFI_BOOT))
 		efi_apply_memmap_quirks();
 #endif
+
+	unwind_init();
 }
 
 #ifdef CONFIG_X86_32
@@ -1328,6 +1346,32 @@ void __init i386_reserve_resources(void)
 }
 
 #endif /* CONFIG_X86_32 */
+
+#ifdef CONFIG_EFI_ALLOW_SECURE_BOOT_EXIT
+
+static void sysrq_handle_secure_boot(int key)
+{
+	if (!efi_enabled(EFI_SECURE_BOOT))
+		return;
+
+	pr_info("Secure boot disabled\n");
+	lift_kernel_lockdown();
+}
+static struct sysrq_key_op secure_boot_sysrq_op = {
+	.handler	=	sysrq_handle_secure_boot,
+	.help_msg	=	"unSB(x)",
+	.action_msg	=	"Disabling Secure Boot restrictions",
+	.enable_mask	=	SYSRQ_DISABLE_USERSPACE,
+};
+static int __init secure_boot_sysrq(void)
+{
+	if (efi_enabled(EFI_SECURE_BOOT))
+		register_sysrq_key('x', &secure_boot_sysrq_op);
+	return 0;
+}
+late_initcall(secure_boot_sysrq);
+#endif /*CONFIG_EFI_ALLOW_SECURE_BOOT_EXIT*/
+
 
 static struct notifier_block kernel_offset_notifier = {
 	.notifier_call = dump_kernel_offset

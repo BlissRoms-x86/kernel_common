@@ -122,9 +122,6 @@ static bool __init check_loader_disabled_bsp(void)
 	bool *res = &dis_ucode_ldr;
 #endif
 
-	if (!have_cpuid_p())
-		return *res;
-
 	/*
 	 * CPUID(1).ECX[31]: reserved for hypervisor use. This is still not
 	 * completely accurate as xen pv guests don't see that CPUID bit set but
@@ -166,24 +163,36 @@ bool get_builtin_firmware(struct cpio_data *cd, const char *name)
 void __init load_ucode_bsp(void)
 {
 	unsigned int cpuid_1_eax;
+	bool intel = true;
 
-	if (check_loader_disabled_bsp())
+	if (!have_cpuid_p())
 		return;
 
 	cpuid_1_eax = native_cpuid_eax(1);
 
 	switch (x86_cpuid_vendor()) {
 	case X86_VENDOR_INTEL:
-		if (x86_family(cpuid_1_eax) >= 6)
-			load_ucode_intel_bsp();
+		if (x86_family(cpuid_1_eax) < 6)
+			return;
 		break;
+
 	case X86_VENDOR_AMD:
-		if (x86_family(cpuid_1_eax) >= 0x10)
-			load_ucode_amd_bsp(cpuid_1_eax);
+		if (x86_family(cpuid_1_eax) < 0x10)
+			return;
+		intel = false;
 		break;
+
 	default:
-		break;
+		return;
 	}
+
+	if (check_loader_disabled_bsp())
+		return;
+
+	if (intel)
+		load_ucode_intel_bsp();
+	else
+		load_ucode_amd_bsp(cpuid_1_eax);
 }
 
 static bool check_loader_disabled_ap(void)
@@ -526,6 +535,26 @@ static ssize_t reload_store(struct device *dev,
 	}
 	if (!ret)
 		perf_check_microcode();
+
+	if (boot_cpu_has(X86_FEATURE_SPEC_CTRL)) {
+		printk_once(KERN_INFO "FEATURE SPEC_CTRL Present\n");
+		mutex_lock(&spec_ctrl_mutex);
+		set_ibrs_supported();
+		set_ibpb_supported();
+		if (ibrs_inuse)
+			sysctl_ibrs_enabled = 1;
+		if (ibpb_inuse)
+			sysctl_ibpb_enabled = 1;
+		mutex_unlock(&spec_ctrl_mutex);
+	} else if (boot_cpu_has(X86_FEATURE_IBPB)) {
+		printk_once(KERN_INFO "FEATURE IBPB Present\n");
+		mutex_lock(&spec_ctrl_mutex);
+		set_ibpb_supported();
+		if (ibpb_inuse)
+			sysctl_ibpb_enabled = 1;
+		mutex_unlock(&spec_ctrl_mutex);
+	}
+
 	mutex_unlock(&microcode_mutex);
 	put_online_cpus();
 

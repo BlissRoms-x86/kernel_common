@@ -139,14 +139,6 @@ struct hw_perf_event {
 			/* for tp_event->class */
 			struct list_head	tp_list;
 		};
-		struct { /* intel_cqm */
-			int			cqm_state;
-			u32			cqm_rmid;
-			int			is_group_event;
-			struct list_head	cqm_events_entry;
-			struct list_head	cqm_groups_entry;
-			struct list_head	cqm_group_entry;
-		};
 		struct { /* itrace */
 			int			itrace_started;
 		};
@@ -415,11 +407,6 @@ struct pmu {
 	 */
 	size_t				task_ctx_size;
 
-
-	/*
-	 * Return the count value for a counter.
-	 */
-	u64 (*count)			(struct perf_event *event); /*optional*/
 
 	/*
 	 * Set up pmu-private data structures for an AUX area
@@ -1111,11 +1098,6 @@ static inline void perf_event_task_sched_out(struct task_struct *prev,
 		__perf_event_task_sched_out(prev, next);
 }
 
-static inline u64 __perf_event_count(struct perf_event *event)
-{
-	return local64_read(&event->count) + atomic64_read(&event->child_count);
-}
-
 extern void perf_event_mmap(struct vm_area_struct *vma);
 extern struct perf_guest_info_callbacks *perf_guest_cbs;
 extern int perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *callbacks);
@@ -1181,6 +1163,11 @@ extern int perf_cpu_time_max_percent_handler(struct ctl_table *table, int write,
 
 int perf_event_max_stack_handler(struct ctl_table *table, int write,
 				 void __user *buffer, size_t *lenp, loff_t *ppos);
+
+static inline bool perf_paranoid_any(void)
+{
+	return sysctl_perf_event_paranoid > 2;
+}
 
 static inline bool perf_paranoid_tracepoint_raw(void)
 {

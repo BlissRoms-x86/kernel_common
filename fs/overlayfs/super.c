@@ -174,6 +174,9 @@ static struct inode *ovl_alloc_inode(struct super_block *sb)
 {
 	struct ovl_inode *oi = kmem_cache_alloc(ovl_inode_cachep, GFP_KERNEL);
 
+	if (!oi)
+		return NULL;
+
 	oi->cache = NULL;
 	oi->redirect = NULL;
 	oi->version = 0;
@@ -210,9 +213,10 @@ static void ovl_put_super(struct super_block *sb)
 
 	dput(ufs->indexdir);
 	dput(ufs->workdir);
-	ovl_inuse_unlock(ufs->workbasedir);
+	if (ufs->workdir_locked)
+		ovl_inuse_unlock(ufs->workbasedir);
 	dput(ufs->workbasedir);
-	if (ufs->upper_mnt)
+	if (ufs->upper_mnt && ufs->upperdir_locked)
 		ovl_inuse_unlock(ufs->upper_mnt->mnt_root);
 	mntput(ufs->upper_mnt);
 	for (i = 0; i < ufs->numlower; i++)
@@ -880,9 +884,13 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 			goto out_put_upperpath;
 
 		err = -EBUSY;
-		if (!ovl_inuse_trylock(upperpath.dentry)) {
-			pr_err("overlayfs: upperdir is in-use by another mount\n");
+		if (ovl_inuse_trylock(upperpath.dentry)) {
+			ufs->upperdir_locked = true;
+		} else if (ufs->config.index) {
+			pr_err("overlayfs: upperdir is in-use by another mount, mount with '-o index=off' to override exclusive upperdir protection.\n");
 			goto out_put_upperpath;
+		} else {
+			pr_warn("overlayfs: upperdir is in-use by another mount, accessing files from both mounts will result in undefined behavior.\n");
 		}
 
 		err = ovl_mount_dir(ufs->config.workdir, &workpath);
@@ -900,9 +908,13 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		}
 
 		err = -EBUSY;
-		if (!ovl_inuse_trylock(workpath.dentry)) {
-			pr_err("overlayfs: workdir is in-use by another mount\n");
+		if (ovl_inuse_trylock(workpath.dentry)) {
+			ufs->workdir_locked = true;
+		} else if (ufs->config.index) {
+			pr_err("overlayfs: workdir is in-use by another mount, mount with '-o index=off' to override exclusive workdir protection.\n");
 			goto out_put_workpath;
+		} else {
+			pr_warn("overlayfs: workdir is in-use by another mount, accessing files from both mounts will result in undefined behavior.\n");
 		}
 
 		ufs->workbasedir = workpath.dentry;
@@ -959,6 +971,9 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		ufs->upper_mnt->mnt_flags &= ~(MNT_NOATIME | MNT_NODIRATIME | MNT_RELATIME);
 
 		sb->s_time_gran = ufs->upper_mnt->mnt_sb->s_time_gran;
+
+		if (ufs->upper_mnt->mnt_flags & MNT_NOSUID)
+			sb->s_iflags |= SB_I_NOSUID;
 
 		ufs->workdir = ovl_workdir_create(sb, ufs, workpath.dentry,
 						  OVL_WORKDIR_NAME, false);
@@ -1030,6 +1045,9 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		 * will fail instead of modifying lower fs.
 		 */
 		mnt->mnt_flags |= MNT_READONLY | MNT_NOATIME;
+
+		if (mnt->mnt_flags & MNT_NOSUID)
+			sb->s_iflags |= SB_I_NOSUID;
 
 		ufs->lower_mnt[ufs->numlower] = mnt;
 		ufs->numlower++;
@@ -1155,11 +1173,13 @@ out_put_lowerpath:
 out_free_lowertmp:
 	kfree(lowertmp);
 out_unlock_workdentry:
-	ovl_inuse_unlock(workpath.dentry);
+	if (ufs->workdir_locked)
+		ovl_inuse_unlock(workpath.dentry);
 out_put_workpath:
 	path_put(&workpath);
 out_unlock_upperdentry:
-	ovl_inuse_unlock(upperpath.dentry);
+	if (ufs->upperdir_locked)
+		ovl_inuse_unlock(upperpath.dentry);
 out_put_upperpath:
 	path_put(&upperpath);
 out_free_config:
@@ -1182,6 +1202,7 @@ static struct file_system_type ovl_fs_type = {
 	.name		= "overlay",
 	.mount		= ovl_mount,
 	.kill_sb	= kill_anon_super,
+	.fs_flags	= FS_USERNS_MOUNT,
 };
 MODULE_ALIAS_FS("overlay");
 

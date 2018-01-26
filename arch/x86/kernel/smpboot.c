@@ -77,6 +77,7 @@
 #include <asm/i8259.h>
 #include <asm/realmode.h>
 #include <asm/misc.h>
+#include <asm/microcode.h>
 
 /* Number of siblings per CPU package */
 int smp_num_siblings = 1;
@@ -128,24 +129,15 @@ static inline void smpboot_setup_warm_reset_vector(unsigned long start_eip)
 	spin_lock_irqsave(&rtc_lock, flags);
 	CMOS_WRITE(0xa, 0xf);
 	spin_unlock_irqrestore(&rtc_lock, flags);
-	local_flush_tlb();
-	pr_debug("1.\n");
 	*((volatile unsigned short *)phys_to_virt(TRAMPOLINE_PHYS_HIGH)) =
 							start_eip >> 4;
-	pr_debug("2.\n");
 	*((volatile unsigned short *)phys_to_virt(TRAMPOLINE_PHYS_LOW)) =
 							start_eip & 0xf;
-	pr_debug("3.\n");
 }
 
 static inline void smpboot_restore_warm_reset_vector(void)
 {
 	unsigned long flags;
-
-	/*
-	 * Install writable page 0 entry to set BIOS data area.
-	 */
-	local_flush_tlb();
 
 	/*
 	 * Paranoid:  Set warm reset code and vector here back
@@ -194,6 +186,12 @@ static void smp_callin(void)
 	smp_store_cpu_info(cpuid);
 
 	/*
+	 * The topology information must be up to date before
+	 * calibrate_delay() and notify_cpu_starting().
+	 */
+	set_cpu_sibling_map(raw_smp_processor_id());
+
+	/*
 	 * Get our bogomips.
 	 * Update loops_per_jiffy in cpu_data. Previous call to
 	 * smp_store_cpu_info() stored a value that is close but not as
@@ -203,11 +201,6 @@ static void smp_callin(void)
 	cpu_data(cpuid).loops_per_jiffy = loops_per_jiffy;
 	pr_debug("Stack at about %p\n", &cpuid);
 
-	/*
-	 * This must be done before setting cpu_online_mask
-	 * or calling notify_cpu_starting.
-	 */
-	set_cpu_sibling_map(raw_smp_processor_id());
 	wmb();
 
 	notify_cpu_starting(cpuid);
@@ -226,10 +219,12 @@ static int enable_start_cpu0;
 static void notrace start_secondary(void *unused)
 {
 	/*
-	 * Don't put *anything* before cpu_init(), SMP booting is too
-	 * fragile that we want to limit the things done here to the
-	 * most necessary things.
+	 * Don't put *anything* except direct CPU state initialization
+	 * before cpu_init(), SMP booting is too fragile that we want to
+	 * limit the things done here to the most necessary things.
 	 */
+	if (IS_ENABLED(CONFIG_X86_64) && boot_cpu_has(X86_FEATURE_PCID))
+		__write_cr4(__read_cr4() | X86_CR4_PCIDE);
 	cpu_init();
 	x86_cpuinit.early_percpu_clock_init();
 	preempt_disable();
@@ -958,8 +953,7 @@ void common_cpu_up(unsigned int cpu, struct task_struct *idle)
 #ifdef CONFIG_X86_32
 	/* Stack for startup_32 can be just as for start_secondary onwards */
 	irq_ctx_init(cpu);
-	per_cpu(cpu_current_top_of_stack, cpu) =
-		(unsigned long)task_stack_page(idle) + THREAD_SIZE;
+	per_cpu(cpu_current_top_of_stack, cpu) = task_top_of_stack(idle);
 #else
 	initial_gs = per_cpu_offset(cpu);
 #endif
@@ -987,12 +981,8 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle,
 	initial_code = (unsigned long)start_secondary;
 	initial_stack  = idle->thread.sp;
 
-	/*
-	 * Enable the espfix hack for this CPU
-	*/
-#ifdef CONFIG_X86_ESPFIX64
+	/* Enable the espfix hack for this CPU */
 	init_espfix_ap(cpu);
-#endif
 
 	/* So we see what's up */
 	announce_cpu(cpu, apicid);
@@ -1703,9 +1693,15 @@ void native_play_dead(void)
 	play_dead_common();
 	tboot_shutdown(TB_SHUTDOWN_WFS);
 
+	if (ibrs_inuse)
+		native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
+
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())
 		hlt_play_dead();
+
+	if (ibrs_inuse)
+		native_wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
 }
 
 #else /* ... !CONFIG_HOTPLUG_CPU */

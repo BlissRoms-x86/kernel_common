@@ -13,6 +13,7 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
+#include <asm/spec_ctrl.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
 
@@ -47,7 +48,11 @@
  */
 ENTRY(entry_SYSENTER_compat)
 	/* Interrupts are off on entry. */
-	SWAPGS_UNSAFE_STACK
+	SWAPGS
+
+	/* We are about to clobber %rsp anyway, clobbering here is OK */
+	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
+
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
 	/*
@@ -90,6 +95,11 @@ ENTRY(entry_SYSENTER_compat)
 	pushq   $0			/* pt_regs->r14 = 0 */
 	pushq   $0			/* pt_regs->r15 = 0 */
 	cld
+
+	ENABLE_IBRS
+	STUFF_RSB
+
+	CLEAR_R8_TO_R15
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -183,14 +193,17 @@ ENDPROC(entry_SYSENTER_compat)
  */
 ENTRY(entry_SYSCALL_compat)
 	/* Interrupts are off on entry. */
-	SWAPGS_UNSAFE_STACK
+	swapgs
 
-	/* Stash user ESP and switch to the kernel stack. */
+	/* Stash user ESP.*/
 	movl	%esp, %r8d
-	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
-	/* Zero-extending 32-bit regs, do not remove */
-	movl	%eax, %eax
+	/* Use %rsp as scratch reg. User ESP is stashed in r8 */
+	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
+	ENABLE_IBRS
+
+	/* Switch to the kernel stack */
+	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
 	/* Construct struct pt_regs on stack */
 	pushq	$__USER32_DS		/* pt_regs->ss */
@@ -198,6 +211,8 @@ ENTRY(entry_SYSCALL_compat)
 	pushq	%r11			/* pt_regs->flags */
 	pushq	$__USER32_CS		/* pt_regs->cs */
 	pushq	%rcx			/* pt_regs->ip */
+GLOBAL(entry_SYSCALL_compat_after_hwframe)
+	movl	%eax, %eax		/* discard orig_ax high bits */
 	pushq	%rax			/* pt_regs->orig_ax */
 	pushq	%rdi			/* pt_regs->di */
 	pushq	%rsi			/* pt_regs->si */
@@ -210,10 +225,14 @@ ENTRY(entry_SYSCALL_compat)
 	pushq   $0			/* pt_regs->r11 = 0 */
 	pushq   %rbx                    /* pt_regs->rbx */
 	pushq   %rbp                    /* pt_regs->rbp (will be overwritten) */
-	pushq   $0			/* pt_regs->r12 = 0 */
-	pushq   $0			/* pt_regs->r13 = 0 */
-	pushq   $0			/* pt_regs->r14 = 0 */
-	pushq   $0			/* pt_regs->r15 = 0 */
+	pushq   %r12                    /* pt_regs->r12 */
+	pushq   %r13                    /* pt_regs->r13 */
+	pushq   %r14                    /* pt_regs->r14 */
+	pushq   %r15                    /* pt_regs->r15 */
+
+	CLEAR_R8_TO_R15
+
+	STUFF_RSB
 
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
@@ -230,6 +249,10 @@ ENTRY(entry_SYSCALL_compat)
 	/* Opportunistic SYSRET */
 sysret32_from_system_call:
 	TRACE_IRQS_ON			/* User mode traces as IRQs on. */
+	movq    R15(%rsp), %r15         /* pt_regs->r15 */
+	movq    R14(%rsp), %r14         /* pt_regs->r14 */
+	movq    R13(%rsp), %r13         /* pt_regs->r13 */
+	movq    R12(%rsp), %r12         /* pt_regs->r12 */
 	movq	RBX(%rsp), %rbx		/* pt_regs->rbx */
 	movq	RBP(%rsp), %rbp		/* pt_regs->rbp */
 	movq	EFLAGS(%rsp), %r11	/* pt_regs->flags (in r11) */
@@ -241,6 +264,7 @@ sysret32_from_system_call:
 	popq	%rsi			/* pt_regs->si */
 	popq	%rdi			/* pt_regs->di */
 
+	DISABLE_IBRS
         /*
          * USERGS_SYSRET32 does:
          *  GSBASE = user's GS base
@@ -256,10 +280,22 @@ sysret32_from_system_call:
 	 * when the system call started, which is already known to user
 	 * code.  We zero R8-R10 to avoid info leaks.
          */
+	movq	RSP-ORIG_RAX(%rsp), %rsp
+
+	/*
+	 * The original userspace %rsp (RSP-ORIG_RAX(%rsp)) is stored
+	 * on the process stack which is not mapped to userspace and
+	 * not readable after we SWITCH_TO_USER_CR3.  Delay the CR3
+	 * switch until after after the last reference to the process
+	 * stack.
+	 *
+	 * %r8/%r9 are zeroed before the sysret, thus safe to clobber.
+	 */
+	SWITCH_TO_USER_CR3_NOSTACK scratch_reg=%r8 scratch_reg2=%r9
+
 	xorq	%r8, %r8
 	xorq	%r9, %r9
 	xorq	%r10, %r10
-	movq	RSP-ORIG_RAX(%rsp), %rsp
 	swapgs
 	sysretl
 END(entry_SYSCALL_compat)
@@ -294,7 +330,6 @@ ENTRY(entry_INT80_compat)
 	/*
 	 * Interrupts are off on entry.
 	 */
-	PARAVIRT_ADJUST_EXCEPTION_FRAME
 	ASM_CLAC			/* Do this early to minimize exposure */
 	SWAPGS
 
@@ -307,8 +342,11 @@ ENTRY(entry_INT80_compat)
 	 */
 	movl	%eax, %eax
 
-	/* Construct struct pt_regs on stack (iret frame is already on stack) */
 	pushq	%rax			/* pt_regs->orig_ax */
+
+	/* switch to thread stack expects orig_ax to be pushed */
+	call	switch_to_thread_stack
+
 	pushq	%rdi			/* pt_regs->di */
 	pushq	%rsi			/* pt_regs->si */
 	pushq	%rdx			/* pt_regs->dx */
@@ -326,6 +364,11 @@ ENTRY(entry_INT80_compat)
 	pushq   %r15                    /* pt_regs->r15 */
 	cld
 
+	ENABLE_IBRS
+	STUFF_RSB
+
+	CLEAR_R8_TO_R15
+
 	/*
 	 * User mode is traced as though IRQs are on, and the interrupt
 	 * gate turned them off.
@@ -338,8 +381,7 @@ ENTRY(entry_INT80_compat)
 
 	/* Go back to user mode. */
 	TRACE_IRQS_ON
-	SWAPGS
-	jmp	restore_regs_and_iret
+	jmp	swapgs_restore_regs_and_return_to_usermode
 END(entry_INT80_compat)
 
 	ALIGN

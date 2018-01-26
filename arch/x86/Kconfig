@@ -73,7 +73,6 @@ config X86
 	select ARCH_USE_QUEUED_RWLOCKS
 	select ARCH_USE_QUEUED_SPINLOCKS
 	select ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH
-	select ARCH_WANT_FRAME_POINTERS
 	select ARCH_WANTS_DYNAMIC_TASK_STRUCT
 	select ARCH_WANTS_THP_SWAP		if X86_64
 	select BUILDTIME_EXTABLE_SORT
@@ -107,7 +106,7 @@ config X86
 	select HAVE_ARCH_AUDITSYSCALL
 	select HAVE_ARCH_HUGE_VMAP		if X86_64 || X86_PAE
 	select HAVE_ARCH_JUMP_LABEL
-	select HAVE_ARCH_KASAN			if X86_64 && SPARSEMEM_VMEMMAP
+	select HAVE_ARCH_KASAN			if X86_64
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_KMEMCHECK
 	select HAVE_ARCH_MMAP_RND_BITS		if MMU
@@ -158,6 +157,7 @@ config X86
 	select HAVE_MEMBLOCK
 	select HAVE_MEMBLOCK_NODE_MAP
 	select HAVE_MIXED_BREAKPOINTS_REGS
+	select HAVE_MOD_ARCH_SPECIFIC
 	select HAVE_NMI
 	select HAVE_OPROFILE
 	select HAVE_OPTPROBES
@@ -168,7 +168,7 @@ config X86
 	select HAVE_PERF_REGS
 	select HAVE_PERF_USER_STACK_DUMP
 	select HAVE_REGS_AND_STACK_ACCESS_API
-	select HAVE_RELIABLE_STACKTRACE		if X86_64 && FRAME_POINTER && STACK_VALIDATION
+	select HAVE_RELIABLE_STACKTRACE		if X86_64 && UNWINDER_FRAME_POINTER && STACK_VALIDATION
 	select HAVE_STACK_VALIDATION		if X86_64
 	select HAVE_SYSCALL_TRACEPOINTS
 	select HAVE_UNSTABLE_SCHED_CLOCK
@@ -300,7 +300,6 @@ config ARCH_SUPPORTS_DEBUG_PAGEALLOC
 config KASAN_SHADOW_OFFSET
 	hex
 	depends on KASAN
-	default 0xdff8000000000000 if X86_5LEVEL
 	default 0xdffffc0000000000
 
 config HAVE_INTEL_TXT
@@ -425,16 +424,16 @@ config GOLDFISH
        def_bool y
        depends on X86_GOLDFISH
 
-config INTEL_RDT_A
-	bool "Intel Resource Director Technology Allocation support"
+config INTEL_RDT
+	bool "Intel Resource Director Technology support"
 	default n
 	depends on X86 && CPU_SUP_INTEL
 	select KERNFS
 	help
-	  Select to enable resource allocation which is a sub-feature of
-	  Intel Resource Director Technology(RDT). More information about
-	  RDT can be found in the Intel x86 Architecture Software
-	  Developer Manual.
+	  Select to enable resource allocation and monitoring which are
+	  sub-features of Intel Resource Director Technology(RDT). More
+	  information about RDT can be found in the Intel x86
+	  Architecture Software Developer Manual.
 
 	  Say N if unsure.
 
@@ -924,7 +923,8 @@ config MAXSMP
 config NR_CPUS
 	int "Maximum number of CPUs" if SMP && !MAXSMP
 	range 2 8 if SMP && X86_32 && !X86_BIGSMP
-	range 2 512 if SMP && !MAXSMP && !CPUMASK_OFFSTACK
+	range 2 64 if SMP && X86_32 && X86_BIGSMP
+	range 2 512 if SMP && !MAXSMP && !CPUMASK_OFFSTACK && X86_64
 	range 2 8192 if SMP && !MAXSMP && CPUMASK_OFFSTACK && X86_64
 	default "1" if !SMP
 	default "8192" if MAXSMP
@@ -1835,6 +1835,28 @@ config EFI_MIXED
 	   the EFI handover protocol must be used.
 
 	   If unsure, say N.
+
+config EFI_SECURE_BOOT_LOCK_DOWN
+	def_bool n
+	depends on EFI
+	prompt "Lock down the kernel when UEFI Secure Boot is enabled"
+	---help---
+	  UEFI Secure Boot provides a mechanism for ensuring that the firmware
+	  will only load signed bootloaders and kernels.  Certain use cases may
+	  also require that all kernel modules also be signed and that
+	  userspace is prevented from directly changing the running kernel
+	  image.  Say Y here to automatically lock down the kernel when a
+	  system boots with UEFI Secure Boot enabled.
+
+config EFI_ALLOW_SECURE_BOOT_EXIT
+	def_bool n
+	depends on EFI_SECURE_BOOT_LOCK_DOWN && MAGIC_SYSRQ
+	select ALLOW_LOCKDOWN_LIFT
+	prompt "Allow secure boot mode to be exited with SysRq+x on a keyboard"
+	---help---
+	  Allow secure boot mode to be exited and the kernel lockdown lifted by
+	  typing SysRq+x on a keyboard attached to the system (not permitted
+	  through procfs).
 
 config SECCOMP
 	def_bool y
@@ -2808,6 +2830,8 @@ config HAVE_GENERIC_GUP
 source "net/Kconfig"
 
 source "drivers/Kconfig"
+
+source "ubuntu/Kconfig"
 
 source "drivers/firmware/Kconfig"
 

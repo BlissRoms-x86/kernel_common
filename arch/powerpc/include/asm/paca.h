@@ -31,6 +31,7 @@
 #endif
 #include <asm/accounting.h>
 #include <asm/hmi.h>
+#include <asm/cpuidle.h>
 
 register struct paca_struct *local_paca asm("r13");
 
@@ -47,6 +48,9 @@ extern unsigned int debug_smp_processor_id(void); /* from linux/smp.h */
 
 #define get_lppaca()	(get_paca()->lppaca_ptr)
 #define get_slb_shadow()	(get_paca()->slb_shadow_ptr)
+
+/* Maximum number of threads per core. */
+#define	MAX_SMT		8
 
 struct task_struct;
 
@@ -183,6 +187,12 @@ struct paca_struct {
 	struct paca_struct **thread_sibling_pacas;
 	/* The PSSCR value that the kernel requested before going to stop */
 	u64 requested_psscr;
+
+	/*
+	 * Save area for additional SPRs that need to be
+	 * saved/restored during cpuidle stop.
+	 */
+	struct stop_sprs stop_sprs;
 #endif
 
 #ifdef CONFIG_PPC_STD_MMU_64
@@ -191,6 +201,8 @@ struct paca_struct {
 	u64 exmc[EX_SIZE];	/* used for machine checks */
 #endif
 #ifdef CONFIG_PPC_BOOK3S_64
+	void *rfi_flush_fallback_area;
+
 	/* Exclusive stacks for system reset and machine check exception. */
 	void *nmi_emergency_sp;
 	void *mc_emergency_sp;
@@ -203,6 +215,7 @@ struct paca_struct {
 	 */
 	u16 in_mce;
 	u8 hmi_event_available;		/* HMI event is available */
+	u8 hmi_p9_special_emu;		/* HMI P9 special emulation */
 #endif
 
 	/* Stuff for accurate time accounting */
@@ -223,6 +236,15 @@ struct paca_struct {
 	 */
 	struct sibling_subcore_state *sibling_subcore_state;
 #endif
+#endif
+#ifdef CONFIG_PPC_BOOK3S_64
+	/*
+	 * rfi fallback flush must be in its own cacheline to prevent
+	 * other paca data leaking into the L1d
+	 */
+	u64 exrfi[EX_SIZE] __aligned(0x80);
+	u64 l1d_flush_congruence;
+	u64 l1d_flush_sets;
 #endif
 };
 
