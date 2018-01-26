@@ -1641,6 +1641,7 @@ static void intel_dsi_encoder_destroy(struct drm_encoder *encoder)
 	if (intel_dsi->gpio_panel)
 		gpiod_put(intel_dsi->gpio_panel);
 
+	kfree(intel_dsi->deassert_seq);
 	intel_encoder_destroy(encoder);
 }
 
