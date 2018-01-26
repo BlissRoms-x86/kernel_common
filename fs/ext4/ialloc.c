@@ -71,26 +71,16 @@ static int ext4_init_inode_bitmap(struct super_block *sb,
 				       ext4_group_t block_group,
 				       struct ext4_group_desc *gdp)
 {
-	struct ext4_group_info *grp;
-	struct ext4_sb_info *sbi = EXT4_SB(sb);
 	J_ASSERT_BH(bh, buffer_locked(bh));
 
 	/* If checksum is bad mark all blocks and inodes use to prevent
 	 * allocation, essentially implementing a per-group read-only flag. */
 	if (!ext4_group_desc_csum_verify(sb, block_group, gdp)) {
-		grp = ext4_get_group_info(sb, block_group);
-		if (!EXT4_MB_GRP_BBITMAP_CORRUPT(grp))
-			percpu_counter_sub(&sbi->s_freeclusters_counter,
-					   grp->bb_free);
-		set_bit(EXT4_GROUP_INFO_BBITMAP_CORRUPT_BIT, &grp->bb_state);
-		if (!EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
-			int count;
-			count = ext4_free_inodes_count(sb, gdp);
-			percpu_counter_sub(&sbi->s_freeinodes_counter,
-					   count);
-		}
-		set_bit(EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT, &grp->bb_state);
-		return -EFSBADCRC;
+		ext4_corrupted_block_group(sb, block_group,
+				EXT4_GROUP_INFO_BBITMAP_CORRUPT |
+				EXT4_GROUP_INFO_IBITMAP_CORRUPT,
+				"Checksum bad for group %u", block_group);
+		return 0;
 	}
 
 	memset(bh->b_data, 0, (EXT4_INODES_PER_GROUP(sb) + 7) / 8);
@@ -132,17 +122,11 @@ static int ext4_validate_inode_bitmap(struct super_block *sb,
 	if (!ext4_inode_bitmap_csum_verify(sb, block_group, desc, bh,
 					   EXT4_INODES_PER_GROUP(sb) / 8)) {
 		ext4_unlock_group(sb, block_group);
-		ext4_error(sb, "Corrupt inode bitmap - block_group = %u, "
-			   "inode_bitmap = %llu", block_group, blk);
-		grp = ext4_get_group_info(sb, block_group);
-		if (!EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
-			int count;
-			count = ext4_free_inodes_count(sb, desc);
-			percpu_counter_sub(&sbi->s_freeinodes_counter,
-					   count);
-		}
-		set_bit(EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT, &grp->bb_state);
-		return -EFSBADCRC;
+		ext4_corrupted_block_group(sb, block_group,
+				EXT4_GROUP_INFO_IBITMAP_CORRUPT,
+				"Corrupt inode bitmap - block_group = %u, inode_bitmap = %llu",
+				block_group, blk);
+		return 0;
 	}
 	set_buffer_verified(bh);
 	ext4_unlock_group(sb, block_group);
@@ -294,7 +278,6 @@ void ext4_free_inode(handle_t *handle, struct inode *inode)
 	 * as writing the quota to disk may need the lock as well.
 	 */
 	dquot_initialize(inode);
-	ext4_xattr_delete_inode(handle, inode);
 	dquot_free_inode(inode);
 	dquot_drop(inode);
 
@@ -370,14 +353,9 @@ out:
 		if (!fatal)
 			fatal = err;
 	} else {
-		ext4_error(sb, "bit already cleared for inode %lu", ino);
-		if (gdp && !EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
-			int count;
-			count = ext4_free_inodes_count(sb, gdp);
-			percpu_counter_sub(&sbi->s_freeinodes_counter,
-					   count);
-		}
-		set_bit(EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT, &grp->bb_state);
+		ext4_corrupted_block_group(sb, block_group,
+				EXT4_GROUP_INFO_IBITMAP_CORRUPT,
+				"bit already cleared for inode %lu", ino);
 	}
 
 error_return:
@@ -743,8 +721,9 @@ out:
  */
 struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 			       umode_t mode, const struct qstr *qstr,
-			       __u32 goal, uid_t *owner, int handle_type,
-			       unsigned int line_no, int nblocks)
+			       __u32 goal, uid_t *owner, __u32 i_flags,
+			       int handle_type, unsigned int line_no,
+			       int nblocks)
 {
 	struct super_block *sb;
 	struct buffer_head *inode_bitmap_bh = NULL;
@@ -766,30 +745,69 @@ struct inode *__ext4_new_inode(handle_t *handle, struct inode *dir,
 	if (!dir || !dir->i_nlink)
 		return ERR_PTR(-EPERM);
 
-	if (unlikely(ext4_forced_shutdown(EXT4_SB(dir->i_sb))))
+	sb = dir->i_sb;
+	sbi = EXT4_SB(sb);
+
+	if (unlikely(ext4_forced_shutdown(sbi)))
 		return ERR_PTR(-EIO);
 
-	if ((ext4_encrypted_inode(dir) ||
-	     DUMMY_ENCRYPTION_ENABLED(EXT4_SB(dir->i_sb))) &&
-	    (S_ISREG(mode) || S_ISDIR(mode) || S_ISLNK(mode))) {
+	if ((ext4_encrypted_inode(dir) || DUMMY_ENCRYPTION_ENABLED(sbi)) &&
+	    (S_ISREG(mode) || S_ISDIR(mode) || S_ISLNK(mode)) &&
+	    !(i_flags & EXT4_EA_INODE_FL)) {
 		err = fscrypt_get_encryption_info(dir);
 		if (err)
 			return ERR_PTR(err);
 		if (!fscrypt_has_encryption_key(dir))
 			return ERR_PTR(-ENOKEY);
-		if (!handle)
-			nblocks += EXT4_DATA_TRANS_BLOCKS(dir->i_sb);
 		encrypt = 1;
 	}
 
-	sb = dir->i_sb;
+	if (!handle && sbi->s_journal && !(i_flags & EXT4_EA_INODE_FL)) {
+#ifdef CONFIG_EXT4_FS_POSIX_ACL
+		struct posix_acl *p = get_acl(dir, ACL_TYPE_DEFAULT);
+
+		if (p) {
+			int acl_size = p->a_count * sizeof(ext4_acl_entry);
+
+			nblocks += (S_ISDIR(mode) ? 2 : 1) *
+				__ext4_xattr_set_credits(sb, NULL /* inode */,
+					NULL /* block_bh */, acl_size,
+					true /* is_create */);
+			posix_acl_release(p);
+		}
+#endif
+
+#ifdef CONFIG_SECURITY
+		{
+			int num_security_xattrs = 1;
+
+#ifdef CONFIG_INTEGRITY
+			num_security_xattrs++;
+#endif
+			/*
+			 * We assume that security xattrs are never
+			 * more than 1k.  In practice they are under
+			 * 128 bytes.
+			 */
+			nblocks += num_security_xattrs *
+				__ext4_xattr_set_credits(sb, NULL /* inode */,
+					NULL /* block_bh */, 1024,
+					true /* is_create */);
+		}
+#endif
+		if (encrypt)
+			nblocks += __ext4_xattr_set_credits(sb,
+					NULL /* inode */, NULL /* block_bh */,
+					FSCRYPT_SET_CONTEXT_MAX_SIZE,
+					true /* is_create */);
+	}
+
 	ngroups = ext4_get_groups_count(sb);
 	trace_ext4_request_inode(dir, mode);
 	inode = new_inode(sb);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 	ei = EXT4_I(inode);
-	sbi = EXT4_SB(sb);
 
 	/*
 	 * Initialize owners and quota early so that we don't have to account
@@ -1053,6 +1071,7 @@ got:
 	/* Don't inherit extent flag from directory, amongst others. */
 	ei->i_flags =
 		ext4_mask_flags(mode, EXT4_I(dir)->i_flags & EXT4_FL_INHERITED);
+	ei->i_flags |= i_flags;
 	ei->i_file_acl = 0;
 	ei->i_dtime = 0;
 	ei->i_block_group = group;
@@ -1109,13 +1128,15 @@ got:
 			goto fail_free_drop;
 	}
 
-	err = ext4_init_acl(handle, inode, dir);
-	if (err)
-		goto fail_free_drop;
+	if (!(ei->i_flags & EXT4_EA_INODE_FL)) {
+		err = ext4_init_acl(handle, inode, dir);
+		if (err)
+			goto fail_free_drop;
 
-	err = ext4_init_security(handle, inode, dir, qstr);
-	if (err)
-		goto fail_free_drop;
+		err = ext4_init_security(handle, inode, dir, qstr);
+		if (err)
+			goto fail_free_drop;
+	}
 
 	if (ext4_has_feature_extents(sb)) {
 		/* set extent flag only for directory, file and normal symlink*/
