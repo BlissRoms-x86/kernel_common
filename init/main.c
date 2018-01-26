@@ -75,6 +75,7 @@
 #include <linux/slab.h>
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
+#include <linux/pti.h>
 #include <linux/blkdev.h>
 #include <linux/elevator.h>
 #include <linux/sched_clock.h>
@@ -504,6 +505,10 @@ static void __init mm_init(void)
 	pgtable_init();
 	vmalloc_init();
 	ioremap_huge_init();
+	/* Should be run before the first non-init thread is created */
+	init_espfix_bsp();
+	/* Should be run after espfix64 is set up. */
+	pti_init();
 }
 
 asmlinkage __visible void __init start_kernel(void)
@@ -665,10 +670,6 @@ asmlinkage __visible void __init start_kernel(void)
 	if (efi_enabled(EFI_RUNTIME_SERVICES))
 		efi_enter_virtual_mode();
 #endif
-#ifdef CONFIG_X86_ESPFIX64
-	/* Should be run before the first non-init thread is created */
-	init_espfix_bsp();
-#endif
 	thread_stack_cache_init();
 	cred_init();
 	fork_init();
@@ -786,16 +787,16 @@ __setup("initcall_blacklist=", initcall_blacklist);
 
 static int __init_or_module do_one_initcall_debug(initcall_t fn)
 {
-	ktime_t calltime, delta, rettime;
+	unsigned long long calltime, delta, rettime;
 	unsigned long long duration;
 	int ret;
 
 	printk(KERN_DEBUG "calling  %pF @ %i\n", fn, task_pid_nr(current));
-	calltime = ktime_get();
+	calltime = local_clock();
 	ret = fn();
-	rettime = ktime_get();
-	delta = ktime_sub(rettime, calltime);
-	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
+	rettime = local_clock();
+	delta = rettime - calltime;
+	duration = delta >> 10;
 	printk(KERN_DEBUG "initcall %pF returned %d after %lld usecs\n",
 		 fn, ret, duration);
 

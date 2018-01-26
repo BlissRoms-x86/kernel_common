@@ -40,6 +40,7 @@
 #include <linux/dax.h>
 #include <linux/cleancache.h>
 #include <linux/uaccess.h>
+#include <linux/user_namespace.h>
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
@@ -113,13 +114,17 @@ static struct inode *ext4_get_journal_inode(struct super_block *sb,
  * transaction start -> page lock(s) -> i_data_sem (rw)
  */
 
+static bool userns_mounts = false;
+module_param(userns_mounts, bool, 0644);
+MODULE_PARM_DESC(userns_mounts, "Allow mounts from unprivileged user namespaces");
+
 #if !defined(CONFIG_EXT2_FS) && !defined(CONFIG_EXT2_FS_MODULE) && defined(CONFIG_EXT4_USE_FOR_EXT2)
 static struct file_system_type ext2_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "ext2",
 	.mount		= ext4_mount,
 	.kill_sb	= kill_block_super,
-	.fs_flags	= FS_REQUIRES_DEV,
+	.fs_flags	= FS_REQUIRES_DEV | FS_USERNS_MOUNT,
 };
 MODULE_ALIAS_FS("ext2");
 MODULE_ALIAS("ext2");
@@ -134,7 +139,7 @@ static struct file_system_type ext3_fs_type = {
 	.name		= "ext3",
 	.mount		= ext4_mount,
 	.kill_sb	= kill_block_super,
-	.fs_flags	= FS_REQUIRES_DEV,
+	.fs_flags	= FS_REQUIRES_DEV | FS_USERNS_MOUNT,
 };
 MODULE_ALIAS_FS("ext3");
 MODULE_ALIAS("ext3");
@@ -1739,6 +1744,13 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 		return -1;
 	}
 
+	if (token == Opt_err_panic && !capable(CAP_SYS_ADMIN)) {
+		ext4_msg(sb, KERN_ERR,
+			 "Mount option \"%s\" not allowed for unprivileged mounts",
+			 opt);
+		return -1;
+	}
+
 	if (args->from && !(m->flags & MOPT_STRING) && match_int(args, &arg))
 		return -1;
 	if (args->from && (m->flags & MOPT_GTE0) && (arg < 0))
@@ -1789,14 +1801,14 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 	} else if (token == Opt_stripe) {
 		sbi->s_stripe = arg;
 	} else if (token == Opt_resuid) {
-		uid = make_kuid(current_user_ns(), arg);
+		uid = make_kuid(sb->s_user_ns, arg);
 		if (!uid_valid(uid)) {
 			ext4_msg(sb, KERN_ERR, "Invalid uid value %d", arg);
 			return -1;
 		}
 		sbi->s_resuid = uid;
 	} else if (token == Opt_resgid) {
-		gid = make_kgid(current_user_ns(), arg);
+		gid = make_kgid(sb->s_user_ns, arg);
 		if (!gid_valid(gid)) {
 			ext4_msg(sb, KERN_ERR, "Invalid gid value %d", arg);
 			return -1;
@@ -1832,6 +1844,19 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 			ext4_msg(sb, KERN_ERR, "error: could not find "
 				"journal device path: error %d", error);
 			kfree(journal_path);
+			return -1;
+		}
+
+		/*
+		 * Refuse access for unprivileged mounts if the user does
+		 * not have rw access to the journal device via the supplied
+		 * path.
+		 */
+		if (!capable(CAP_SYS_ADMIN) &&
+		    inode_permission(d_inode(path.dentry), MAY_READ|MAY_WRITE)) {
+			ext4_msg(sb, KERN_ERR,
+				 "error: Insufficient access to journal path %s",
+				 journal_path);
 			return -1;
 		}
 
@@ -2070,14 +2095,14 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 		SEQ_OPTS_PRINT("%s", token2str(m->token));
 	}
 
-	if (nodefs || !uid_eq(sbi->s_resuid, make_kuid(&init_user_ns, EXT4_DEF_RESUID)) ||
+	if (nodefs || !uid_eq(sbi->s_resuid, make_kuid(sb->s_user_ns, EXT4_DEF_RESUID)) ||
 	    le16_to_cpu(es->s_def_resuid) != EXT4_DEF_RESUID)
 		SEQ_OPTS_PRINT("resuid=%u",
-				from_kuid_munged(&init_user_ns, sbi->s_resuid));
-	if (nodefs || !gid_eq(sbi->s_resgid, make_kgid(&init_user_ns, EXT4_DEF_RESGID)) ||
+				from_kuid_munged(sb->s_user_ns, sbi->s_resuid));
+	if (nodefs || !gid_eq(sbi->s_resgid, make_kgid(sb->s_user_ns, EXT4_DEF_RESGID)) ||
 	    le16_to_cpu(es->s_def_resgid) != EXT4_DEF_RESGID)
 		SEQ_OPTS_PRINT("resgid=%u",
-				from_kgid_munged(&init_user_ns, sbi->s_resgid));
+				from_kgid_munged(sb->s_user_ns, sbi->s_resgid));
 	def_errors = nodefs ? -1 : le16_to_cpu(es->s_errors);
 	if (test_opt(sb, ERRORS_RO) && def_errors != EXT4_ERRORS_RO)
 		SEQ_OPTS_PUTS("errors=remount-ro");
@@ -2435,6 +2460,7 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 	unsigned int s_flags = sb->s_flags;
 	int ret, nr_orphans = 0, nr_truncates = 0;
 #ifdef CONFIG_QUOTA
+	int quota_update = 0;
 	int i;
 #endif
 	if (!es->s_last_orphan) {
@@ -2473,14 +2499,32 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 #ifdef CONFIG_QUOTA
 	/* Needed for iput() to work correctly and not trash data */
 	sb->s_flags |= MS_ACTIVE;
-	/* Turn on quotas so that they are updated correctly */
+
+	/*
+	 * Turn on quotas which were not enabled for read-only mounts if
+	 * filesystem has quota feature, so that they are updated correctly.
+	 */
+	if (ext4_has_feature_quota(sb) && (s_flags & MS_RDONLY)) {
+		int ret = ext4_enable_quotas(sb);
+
+		if (!ret)
+			quota_update = 1;
+		else
+			ext4_msg(sb, KERN_ERR,
+				"Cannot turn on quotas: error %d", ret);
+	}
+
+	/* Turn on journaled quotas used for old sytle */
 	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
 		if (EXT4_SB(sb)->s_qf_names[i]) {
 			int ret = ext4_quota_on_mount(sb, i);
-			if (ret < 0)
+
+			if (!ret)
+				quota_update = 1;
+			else
 				ext4_msg(sb, KERN_ERR,
 					"Cannot turn on journaled "
-					"quota: error %d", ret);
+					"quota: type %d: error %d", i, ret);
 		}
 	}
 #endif
@@ -2541,10 +2585,12 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 		ext4_msg(sb, KERN_INFO, "%d truncate%s cleaned up",
 		       PLURAL(nr_truncates));
 #ifdef CONFIG_QUOTA
-	/* Turn quotas off */
-	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
-		if (sb_dqopt(sb)->files[i])
-			dquot_quota_off(sb, i);
+	/* Turn off quotas if they were enabled for orphan cleanup */
+	if (quota_update) {
+		for (i = 0; i < EXT4_MAXQUOTAS; i++) {
+			if (sb_dqopt(sb)->files[i])
+				dquot_quota_off(sb, i);
+		}
 	}
 #endif
 	sb->s_flags = s_flags; /* Restore MS_RDONLY status */
@@ -3433,6 +3479,11 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	if ((data && !orig_data) || !sbi)
 		goto out_free_base;
 
+	if (!userns_mounts && !capable(CAP_SYS_ADMIN)) {
+		ret = -EPERM;
+		goto out_free_base;
+	}
+
 	sbi->s_blockgroup_lock =
 		kzalloc(sizeof(struct blockgroup_lock), GFP_KERNEL);
 	if (!sbi->s_blockgroup_lock)
@@ -3550,19 +3601,26 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	else if ((def_mount_opts & EXT4_DEFM_JMODE) == EXT4_DEFM_JMODE_WBACK)
 		set_opt(sb, WRITEBACK_DATA);
 
-	if (le16_to_cpu(sbi->s_es->s_errors) == EXT4_ERRORS_PANIC)
+	if (le16_to_cpu(sbi->s_es->s_errors) == EXT4_ERRORS_PANIC) {
+		if (!capable(CAP_SYS_ADMIN))
+			goto failed_mount;
 		set_opt(sb, ERRORS_PANIC);
-	else if (le16_to_cpu(sbi->s_es->s_errors) == EXT4_ERRORS_CONTINUE)
+	} else if (le16_to_cpu(sbi->s_es->s_errors) == EXT4_ERRORS_CONTINUE) {
 		set_opt(sb, ERRORS_CONT);
-	else
+	} else {
 		set_opt(sb, ERRORS_RO);
+	}
 	/* block_validity enabled by default; disable with noblock_validity */
 	set_opt(sb, BLOCK_VALIDITY);
 	if (def_mount_opts & EXT4_DEFM_DISCARD)
 		set_opt(sb, DISCARD);
 
-	sbi->s_resuid = make_kuid(&init_user_ns, le16_to_cpu(es->s_def_resuid));
-	sbi->s_resgid = make_kgid(&init_user_ns, le16_to_cpu(es->s_def_resgid));
+	sbi->s_resuid = make_kuid(sb->s_user_ns, le16_to_cpu(es->s_def_resuid));
+	if (!uid_valid(sbi->s_resuid))
+		sbi->s_resuid = make_kuid(sb->s_user_ns, EXT4_DEF_RESUID);
+	sbi->s_resgid = make_kgid(sb->s_user_ns, le16_to_cpu(es->s_def_resgid));
+	if (!gid_valid(sbi->s_resgid))
+		sbi->s_resgid = make_kgid(sb->s_user_ns, EXT4_DEF_RESGID);
 	sbi->s_commit_interval = JBD2_DEFAULT_MAX_COMMIT_AGE * HZ;
 	sbi->s_min_batch_time = EXT4_DEF_MIN_BATCH_TIME;
 	sbi->s_max_batch_time = EXT4_DEF_MAX_BATCH_TIME;
@@ -4404,6 +4462,7 @@ failed_mount:
 	ext4_blkdev_remove(sbi);
 	brelse(bh);
 out_fail:
+	/* sb->s_user_ns will be put when sb is destroyed */
 	sb->s_fs_info = NULL;
 	kfree(sbi->s_blockgroup_lock);
 out_free_base:
@@ -5543,6 +5602,9 @@ static int ext4_enable_quotas(struct super_block *sb)
 				DQUOT_USAGE_ENABLED |
 				(quota_mopt[type] ? DQUOT_LIMITS_ENABLED : 0));
 			if (err) {
+				for (type--; type >= 0; type--)
+					dquot_quota_off(sb, type);
+
 				ext4_warning(sb,
 					"Failed to enable quota tracking "
 					"(type=%d, err=%d). Please run "
@@ -5775,7 +5837,7 @@ static struct file_system_type ext4_fs_type = {
 	.name		= "ext4",
 	.mount		= ext4_mount,
 	.kill_sb	= kill_block_super,
-	.fs_flags	= FS_REQUIRES_DEV,
+	.fs_flags	= FS_REQUIRES_DEV | FS_USERNS_MOUNT,
 };
 MODULE_ALIAS_FS("ext4");
 

@@ -656,6 +656,10 @@
 			0: default value, disable debugging
 			1: enable debugging at boot time
 
+	cpufreq_driver= [X86] Allow only the named cpu frequency scaling driver
+			to register. Example: cpufreq_driver=powernow-k8
+			Format: { none | STRING }
+
 	cpuidle.off=1	[CPU_IDLE]
 			disable the cpuidle sub-system
 
@@ -2562,6 +2566,16 @@
 			noexec=on: enable non-executable mappings (default)
 			noexec=off: disable non-executable mappings
 
+	noibrs          [X86]
+			Don't use indirect branch restricted speculation (IBRS)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
+	noibpb          [X86]
+			Don't use indirect branch prediction barrier (IBPB)
+			feature when running in secure environment,
+			to avoid performance overhead.
+
 	nosmap		[X86]
 			Disable SMAP (Supervisor Mode Access Prevention)
 			even if it is supported by processor.
@@ -2695,6 +2709,8 @@
 
 	nopat		[X86] Disable PAT (page attribute table extension of
 			pagetables) support.
+
+	nopcid		[X86-64] Disable the PCID cpu feature.
 
 	norandmaps	Don't use address space randomization.  Equivalent to
 			echo 0 > /proc/sys/kernel/randomize_va_space
@@ -3230,6 +3246,21 @@
 	pt.		[PARIDE]
 			See Documentation/blockdev/paride.txt.
 
+	pti=		[X86_64] Control Page Table Isolation of user and
+			kernel address spaces.  Disabling this feature
+			removes hardening, but improves performance of
+			system calls and interrupts.
+
+			on   - unconditionally enable
+			off  - unconditionally disable
+			auto - kernel detects whether your CPU model is
+			       vulnerable to issues that PTI mitigates
+
+			Not specifying this option is equivalent to pti=auto.
+
+	nopti		[X86_64]
+			Equivalent to pti=off
+
 	pty.legacy_count=
 			[KNL] Number of legacy pty's. Overwrites compiled-in
 			default number.
@@ -3597,6 +3628,12 @@
 			Format: <full_path>
 			Run specified binary instead of /init from the ramdisk,
 			used for early userspace startup. See initrd.
+
+	rdt=		[HW,X86,RDT]
+			Turn on/off individual RDT features. List is:
+			cmt, mbmtotal, mbmlocal, l3cat, l3cdp, l2cat, mba.
+			E.g. to turn on cmt and turn off mba use:
+				rdt=cmt,!mba
 
 	reboot=		[KNL]
 			Format (x86 or x86_64):

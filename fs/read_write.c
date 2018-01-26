@@ -112,7 +112,7 @@ generic_file_llseek_size(struct file *file, loff_t offset, int whence,
 		 * In the generic case the entire file is data, so as long as
 		 * offset isn't at the end of the file then the offset is data.
 		 */
-		if (offset >= eof)
+		if ((unsigned long long)offset >= eof)
 			return -ENXIO;
 		break;
 	case SEEK_HOLE:
@@ -120,7 +120,7 @@ generic_file_llseek_size(struct file *file, loff_t offset, int whence,
 		 * There is a virtual hole at the end of the file, so as long as
 		 * offset isn't i_size or larger, return i_size.
 		 */
-		if (offset >= eof)
+		if ((unsigned long long)offset >= eof)
 			return -ENXIO;
 		offset = eof;
 		break;
@@ -472,6 +472,30 @@ ssize_t __vfs_write(struct file *file, const char __user *p, size_t count,
 		return -EINVAL;
 }
 EXPORT_SYMBOL(__vfs_write);
+
+vfs_readf_t vfs_readf(struct file *file)
+{
+	const struct file_operations *fop = file->f_op;
+
+	if (fop->read)
+		return fop->read;
+	if (fop->read_iter)
+		return new_sync_read;
+	return ERR_PTR(-ENOSYS);
+}
+EXPORT_SYMBOL_GPL(vfs_readf);
+
+vfs_writef_t vfs_writef(struct file *file)
+{
+	const struct file_operations *fop = file->f_op;
+
+	if (fop->write)
+		return fop->write;
+	if (fop->write_iter)
+		return new_sync_write;
+	return ERR_PTR(-ENOSYS);
+}
+EXPORT_SYMBOL_GPL(vfs_writef);
 
 ssize_t __kernel_write(struct file *file, const char *buf, size_t count, loff_t *pos)
 {

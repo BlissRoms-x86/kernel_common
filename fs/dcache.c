@@ -231,7 +231,7 @@ static inline int dentry_cmp(const struct dentry *dentry, const unsigned char *c
 {
 	/*
 	 * Be careful about RCU walk racing with rename:
-	 * use 'lockless_dereference' to fetch the name pointer.
+	 * use 'READ_ONCE' to fetch the name pointer.
 	 *
 	 * NOTE! Even if a rename will mean that the length
 	 * was not loaded atomically, we don't care. The
@@ -245,7 +245,7 @@ static inline int dentry_cmp(const struct dentry *dentry, const unsigned char *c
 	 * early because the data cannot match (there can
 	 * be no NUL in the ct/tcount data)
 	 */
-	const unsigned char *cs = lockless_dereference(dentry->d_name.name);
+	const unsigned char *cs = READ_ONCE(dentry->d_name.name);
 
 	return dentry_string_cmp(cs, ct, tcount);
 }
@@ -1197,7 +1197,7 @@ enum d_walk_ret {
  *
  * The @enter() and @finish() callbacks are called with d_lock held.
  */
-static void d_walk(struct dentry *parent, void *data,
+void d_walk(struct dentry *parent, void *data,
 		   enum d_walk_ret (*enter)(void *, struct dentry *),
 		   void (*finish)(void *))
 {
@@ -1305,6 +1305,7 @@ rename_retry:
 	seq = 1;
 	goto again;
 }
+EXPORT_SYMBOL_GPL(d_walk);
 
 struct check_mount {
 	struct vfsmount *mnt;
@@ -2894,6 +2895,7 @@ void d_exchange(struct dentry *dentry1, struct dentry *dentry2)
 
 	write_sequnlock(&rename_lock);
 }
+EXPORT_SYMBOL_GPL(d_exchange);
 
 /**
  * d_ancestor - search for an ancestor

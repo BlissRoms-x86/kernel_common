@@ -30,7 +30,7 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 
 	if ((from + num <= from) || (from + num > IO_BITMAP_BITS))
 		return -EINVAL;
-	if (turn_on && !capable(CAP_SYS_RAWIO))
+	if (turn_on && (!capable(CAP_SYS_RAWIO) || kernel_is_locked_down()))
 		return -EPERM;
 
 	/*
@@ -66,7 +66,7 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 	 * because the ->io_bitmap_max value must match the bitmap
 	 * contents:
 	 */
-	tss = &per_cpu(cpu_tss, get_cpu());
+	tss = &per_cpu(cpu_tss_rw, get_cpu());
 
 	if (turn_on)
 		bitmap_clear(t->io_bitmap_ptr, from, num);
@@ -120,7 +120,7 @@ SYSCALL_DEFINE1(iopl, unsigned int, level)
 		return -EINVAL;
 	/* Trying to gain more privileges? */
 	if (level > old) {
-		if (!capable(CAP_SYS_RAWIO))
+		if (!capable(CAP_SYS_RAWIO) || kernel_is_locked_down())
 			return -EPERM;
 	}
 	regs->flags = (regs->flags & ~X86_EFLAGS_IOPL) |

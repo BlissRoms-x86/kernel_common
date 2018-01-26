@@ -26,6 +26,8 @@
 # include <asm/smp.h>
 #endif
 
+#define IBRS_DISABLE_THRESHOLD	1000
+
 /* simple loop based delay: */
 static void delay_loop(unsigned long loops)
 {
@@ -105,11 +107,14 @@ static void delay_mwaitx(unsigned long __loops)
 	for (;;) {
 		delay = min_t(u64, MWAITX_MAX_LOOPS, loops);
 
+		if (ibrs_inuse && (delay > IBRS_DISABLE_THRESHOLD))
+			native_wrmsrl(MSR_IA32_SPEC_CTRL, 0);
+
 		/*
-		 * Use cpu_tss as a cacheline-aligned, seldomly
+		 * Use cpu_tss_rw as a cacheline-aligned, seldomly
 		 * accessed per-cpu variable as the monitor target.
 		 */
-		__monitorx(raw_cpu_ptr(&cpu_tss), 0, 0);
+		__monitorx(raw_cpu_ptr(&cpu_tss_rw), 0, 0);
 
 		/*
 		 * AMD, like Intel, supports the EAX hint and EAX=0xf
@@ -117,6 +122,9 @@ static void delay_mwaitx(unsigned long __loops)
 		 * here in delay() to minimize wakeup latency.
 		 */
 		__mwaitx(MWAITX_DISABLE_CSTATES, delay, MWAITX_ECX_TIMER_ENABLE);
+
+		if (ibrs_inuse && (delay > IBRS_DISABLE_THRESHOLD))
+			native_wrmsrl(MSR_IA32_SPEC_CTRL, FEATURE_ENABLE_IBRS);
 
 		end = rdtsc_ordered();
 

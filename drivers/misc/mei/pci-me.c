@@ -41,6 +41,9 @@
 #include "hw-me-regs.h"
 #include "hw-me.h"
 
+static bool disable_msi;
+module_param(disable_msi, bool, 0);
+
 /* mei_pci_tbl - PCI Device ID Table */
 static const struct pci_device_id mei_me_pci_tbl[] = {
 	{MEI_PCI_DEVICE(MEI_DEV_ID_82946GZ, mei_me_legacy_cfg)},
@@ -185,7 +188,8 @@ static int mei_me_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	hw = to_me_hw(dev);
 	hw->mem_addr = pcim_iomap_table(pdev)[0];
 
-	pci_enable_msi(pdev);
+	if (!disable_msi)
+		pci_enable_msi(pdev);
 
 	 /* request and enable interrupt */
 	irqflags = pci_dev_msi_enabled(pdev) ? IRQF_ONESHOT : IRQF_SHARED;
@@ -222,12 +226,15 @@ static int mei_me_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pdev->dev_flags |= PCI_DEV_FLAGS_NEEDS_RESUME;
 
 	/*
-	* For not wake-able HW runtime pm framework
-	* can't be used on pci device level.
-	* Use domain runtime pm callbacks instead.
-	*/
-	if (!pci_dev_run_wake(pdev))
-		mei_me_set_pm_domain(dev);
+	 * ME maps runtime suspend/resume to D0i states,
+	 * hence we need to go around native PCI runtime service which
+	 * eventually brings the device into D3cold/hot state,
+	 * but the mei device cannot wake up from D3 unlike from D0i3.
+	 * To get around the PCI device native runtime pm,
+	 * ME uses runtime pm domain handlers which take precedence
+	 * over the driver's pm handlers.
+	 */
+	mei_me_set_pm_domain(dev);
 
 	if (mei_pg_is_enabled(dev))
 		pm_runtime_put_noidle(&pdev->dev);
@@ -267,8 +274,7 @@ static void mei_me_shutdown(struct pci_dev *pdev)
 	dev_dbg(&pdev->dev, "shutdown\n");
 	mei_stop(dev);
 
-	if (!pci_dev_run_wake(pdev))
-		mei_me_unset_pm_domain(dev);
+	mei_me_unset_pm_domain(dev);
 
 	mei_disable_interrupts(dev);
 	free_irq(pdev->irq, dev);
@@ -296,8 +302,7 @@ static void mei_me_remove(struct pci_dev *pdev)
 	dev_dbg(&pdev->dev, "stop\n");
 	mei_stop(dev);
 
-	if (!pci_dev_run_wake(pdev))
-		mei_me_unset_pm_domain(dev);
+	mei_me_unset_pm_domain(dev);
 
 	mei_disable_interrupts(dev);
 

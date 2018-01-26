@@ -33,6 +33,7 @@
 #include <linux/rcupdate.h>
 
 #include <asm/unaligned.h>
+#include <asm/barrier.h>
 
 /* Registers */
 #define BPF_R0	regs[BPF_REG_0]
@@ -920,6 +921,7 @@ select_insn:
 		DST = IMM;
 		CONT;
 	LD_IMM_DW:
+		gmb();
 		DST = (u64) (u32) insn[0].imm | ((u64) (u32) insn[1].imm) << 32;
 		insn++;
 		CONT;
@@ -1010,7 +1012,7 @@ select_insn:
 		struct bpf_map *map = (struct bpf_map *) (unsigned long) BPF_R2;
 		struct bpf_array *array = container_of(map, struct bpf_array, map);
 		struct bpf_prog *prog;
-		u64 index = BPF_R3;
+		u32 index = BPF_R3;
 
 		if (unlikely(index >= array->map.max_entries))
 			goto out;
@@ -1133,6 +1135,7 @@ out:
 		*(SIZE *)(unsigned long) (DST + insn->off) = IMM;	\
 		CONT;							\
 	LDX_MEM_##SIZEOP:						\
+		gmb();							\
 		DST = *(SIZE *)(unsigned long) (SRC + insn->off);	\
 		CONT;
 
