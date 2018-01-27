@@ -55,6 +55,8 @@ enum {
 #define BYT_RT5640_MCLK_25MHZ	BIT(23)
 
 struct byt_rt5640_private {
+	struct snd_soc_jack jack;
+	struct snd_soc_codec *codec;
 	struct clk *mclk;
 };
 static bool is_bytcr;
@@ -440,6 +442,17 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 	{}
 };
 
+static struct snd_soc_jack_pin rt5640_pins[] = {
+	{
+		.pin	= "Headphone",
+		.mask	= SND_JACK_HEADPHONE,
+	},
+	{
+		.pin	= "Headset Mic",
+		.mask	= SND_JACK_MICROPHONE,
+	},
+};
+
 static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
@@ -450,6 +463,10 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	int ret;
 
 	card->dapm.idle_bias_off = true;
+
+	/* Start with RC clk for jack-detect (we disable MCLK below) */
+	snd_soc_update_bits(codec, RT5640_GLB_CLK,
+		RT5640_SCLK_SRC_MASK, RT5640_SCLK_SRC_RCCLK);
 
 	rt5640_sel_asrc_clk_src(codec,
 				RT5640_DA_STEREO_FILTER |
@@ -535,6 +552,18 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_ignore_suspend(&card->dapm, "Headphone");
 	snd_soc_dapm_ignore_suspend(&card->dapm, "Speaker");
 
+	if (1) {
+		ret = snd_soc_card_jack_new(card, "Headset", SND_JACK_HEADPHONE
+					    | SND_JACK_MICROPHONE
+					    | SND_JACK_BTN_0,
+					    &priv->jack, rt5640_pins,
+					    ARRAY_SIZE(rt5640_pins));
+		if (ret) {
+			dev_err(card->dev, "Jack creation failed %d\n", ret);
+			return ret;
+		}
+	}
+
 	if (byt_rt5640_quirk & BYT_RT5640_MCLK_EN) {
 		/*
 		 * The firmware might enable the clock at
@@ -558,6 +587,8 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 		if (ret)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
+
+	priv->codec = codec;
 
 	return ret;
 }
@@ -896,6 +927,10 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 			ret_val);
 		return ret_val;
 	}
+
+	if (1)
+		rt5640_set_jack(priv->codec, &priv->jack);
+
 	platform_set_drvdata(pdev, &byt_rt5640_card);
 	return ret_val;
 }

@@ -13,6 +13,7 @@
 #define _RT5640_H
 
 #include <linux/clk.h>
+#include <linux/workqueue.h>
 #include <sound/rt5640.h>
 
 /* Info */
@@ -146,6 +147,7 @@
 
 
 /* Index of Codec Private Register definition */
+#define RT5640_BIAS_CUR4			0x15
 #define RT5640_CHPUMP_INT_REG1			0x24
 #define RT5640_MAMP_INT_REG2			0x37
 #define RT5640_3D_SPK				0x63
@@ -1978,6 +1980,15 @@
 #define RT5640_MCLK_DET				(0x1 << 11)
 
 /* Codec Private Register definition */
+
+/* MIC Over current threshold scale factor (0x15) */
+#define RT5640_MIC_OVCD_SF_MASK			(0x3 << 8)
+#define RT5640_MIC_OVCD_SF_SFT			8
+#define RT5640_MIC_OVCD_SF_0P5			(0x0 << 8)
+#define RT5640_MIC_OVCD_SF_0P75			(0x1 << 8)
+#define RT5640_MIC_OVCD_SF_1P0			(0x2 << 8)
+#define RT5640_MIC_OVCD_SF_1P5			(0x3 << 8)
+
 /* 3D Speaker Control (0x63) */
 #define RT5640_3D_SPK_MASK			(0x1 << 15)
 #define RT5640_3D_SPK_SFT			15
@@ -2104,9 +2115,12 @@ enum {
 struct rt5640_priv {
 	struct snd_soc_codec *codec;
 	struct rt5640_platform_data pdata;
+	struct work_struct jack_work;
+	struct snd_soc_jack *jack;
 	struct regmap *regmap;
 	struct clk *mclk;
 
+	int irq;
 	int sysclk;
 	int sysclk_src;
 	int lrck[RT5640_AIFS];
@@ -2125,5 +2139,6 @@ int rt5640_dmic_enable(struct snd_soc_codec *codec,
 		       bool dmic1_data_pin, bool dmic2_data_pin);
 int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 		unsigned int filter_mask, unsigned int clk_src);
+int rt5640_set_jack(struct snd_soc_codec *codec, struct snd_soc_jack *jack);
 
 #endif
