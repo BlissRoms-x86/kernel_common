@@ -146,6 +146,7 @@
 
 
 /* Index of Codec Private Register definition */
+#define RT5640_BIAS_CUR4			0x15
 #define RT5640_CHPUMP_INT_REG1			0x24
 #define RT5640_MAMP_INT_REG2			0x37
 #define RT5640_3D_SPK				0x63
@@ -1978,6 +1979,15 @@
 #define RT5640_MCLK_DET				(0x1 << 11)
 
 /* Codec Private Register definition */
+
+/* MIC Over current threshold scale factor (0x15) */
+#define RT5640_MIC_OVCD_SF_MASK			(0x3 << 8)
+#define RT5640_MIC_OVCD_SF_SFT			8
+#define RT5640_MIC_OVCD_SF_0P5			(0x0 << 8)
+#define RT5640_MIC_OVCD_SF_0P75			(0x1 << 8)
+#define RT5640_MIC_OVCD_SF_1P0			(0x2 << 8)
+#define RT5640_MIC_OVCD_SF_1P5			(0x3 << 8)
+
 /* 3D Speaker Control (0x63) */
 #define RT5640_3D_SPK_MASK			(0x1 << 15)
 #define RT5640_3D_SPK_SFT			15

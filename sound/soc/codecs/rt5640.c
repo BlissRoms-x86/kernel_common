@@ -340,6 +340,32 @@ static bool rt5640_readable_register(struct device *dev, unsigned int reg)
 	}
 }
 
+/**
+ * rt5640_priv_reg_write - Write private register.
+ * @codec: SoC audio codec device.
+ * @reg: Private register index.
+ * @value: Private register Data.
+ *
+ * Modify private register for advanced setting. It can be written through
+ * private index (0x6a) and data (0x6c) register.
+ *
+ * Returns 0 for success or negative error code.
+ */
+static void rt5640_priv_reg_write(struct snd_soc_codec *codec,
+			       unsigned int reg, unsigned int value)
+{
+	int ret;
+
+	ret = snd_soc_write(codec, RT5640_PRIV_INDEX, reg);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set private addr: %d\n", ret);
+		return;
+	}
+	ret = snd_soc_write(codec, RT5640_PRIV_DATA, value);
+	if (ret < 0)
+		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
+}
+
 static const DECLARE_TLV_DB_SCALE(out_vol_tlv, -4650, 150, 0);
 static const DECLARE_TLV_DB_SCALE(dac_vol_tlv, -65625, 375, 0);
 static const DECLARE_TLV_DB_SCALE(in_vol_tlv, -3450, 150, 0);
@@ -2114,6 +2140,94 @@ int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(rt5640_sel_asrc_clk_src);
 
+int rt5640_check_jd_status(struct snd_soc_codec *codec)
+{
+	return snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010;
+}
+EXPORT_SYMBOL(rt5640_check_jd_status);
+
+int rt5640_check_bp_status(struct snd_soc_codec *codec)
+{
+	return  snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8;
+}
+EXPORT_SYMBOL(rt5640_check_bp_status);
+
+#include <linux/pm_runtime.h>
+
+static irqreturn_t rt5640_irq(int irq, void *data)
+{
+	struct rt5640_priv *rt5640 = data;
+	struct snd_soc_codec *codec = rt5640->codec;
+	struct snd_soc_dapm_context *dapm;
+	int val = 0;
+
+	if (!codec)
+		return IRQ_HANDLED;
+
+	dapm = snd_soc_codec_get_dapm(codec);
+	snd_soc_dapm_mutex_lock(dapm);
+	pm_runtime_get_sync(codec->dev);
+
+	val = snd_soc_read(codec, RT5640_INT_IRQ_ST);
+	
+	pr_err("jd status %d\n", !!(val & 0x0010));
+
+	if (!(val & 0x0010)) {
+		// FIXME this can go away when using force_pin for ldo / bias
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF)
+			rt5640_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
+
+		// FIXME do this after the 2 below lines which will auto-enable
+		// the bias-level, or only once at init ?
+		rt5640_priv_reg_write(codec, RT5640_BIAS_CUR4,
+				      0xa800 | RT5640_MIC_OVCD_SF_1P0);
+
+		/* for jack type detect */
+		//FIXME instead use:
+//		snd_soc_dapm_force_enable_pin(dapm, "LDO2");
+//		snd_soc_dapm_force_enable_pin(dapm, "MICBIAS1");
+//		snd_soc_dapm_sync(dapm);
+		snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
+			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
+		snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
+			RT5640_PWR_MB1, RT5640_PWR_MB1);
+
+		snd_soc_update_bits(codec, RT5640_MICBIAS,
+				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
+				    | RT5640_PWR_CLK25M_MASK,
+				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
+				    | RT5640_PWR_CLK25M_PU);
+		snd_soc_update_bits(codec, RT5640_DUMMY1, 0x1, 0x1);
+		/* After turning on over current detection, wait for a while before
+		   checking the status. */
+		msleep(20);
+		/* Make sure jack is still connected at this point before checking for HS*/
+		if (rt5640_check_bp_status(codec)) {
+			/*Over current detected;i.e there is a  short between mic and
+			  ground ring. i.e the accessory does not have mic. i.e accessory
+			  is Headphone*/
+			pr_err("detected headphone\n");
+		} else {
+			pr_err("detected headset\n");
+		}
+		snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+				    RT5640_MB1_OC_CLR, 0);
+	} else {
+		// FIXME this can go away when using force_pin for ldo / bias
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF)
+			rt5640_set_bias_level(codec, SND_SOC_BIAS_OFF);
+		//FIXME also do:
+//		snd_soc_dapm_force_disable_pin(dapm, "LDO2");
+//		snd_soc_dapm_force_disable_pin(dapm, "MICBIAS1");
+//		snd_soc_dapm_sync(dapm);
+	}
+
+	pm_runtime_put(codec->dev);
+	snd_soc_dapm_mutex_unlock(dapm);
+
+	return IRQ_HANDLED;
+}
+
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
 	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
@@ -2424,6 +2538,46 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 	if (rt5640->pdata.in3_diff)
 		regmap_update_bits(rt5640->regmap, RT5640_IN1_IN2,
 					RT5640_IN_DF2, RT5640_IN_DF2);
+
+	if (1 && i2c->irq) {
+		ret = request_threaded_irq(i2c->irq, NULL, rt5640_irq,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+				IRQF_ONESHOT, "rt5640", rt5640);
+		if (ret) {
+			dev_err(&i2c->dev, "Failed to reguest IRQ: %d\n", ret);
+			return ret;
+		}
+	} else {
+		/* FIXME Disable jack detect */
+	}
+
+	if (1) {
+		/* JACK_DET_N signal as JD-source */
+		regmap_update_bits(rt5640->regmap, RT5640_JD_CTRL,
+				   RT5640_JD_MASK, RT5640_JD_JD2_IN4N);
+
+		/* selecting pin as an interrupt */
+		regmap_update_bits(rt5640->regmap, RT5640_GPIO_CTRL1,
+				   RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_IRQ);
+
+		/* set GPIO1 output */
+		regmap_update_bits(rt5640->regmap, RT5640_GPIO_CTRL3,
+				   RT5640_GP1_PF_MASK, RT5640_GP1_PF_OUT);
+
+		/* enabling jd2 in general control 1 */
+		regmap_write(rt5640->regmap, RT5640_DUMMY1, 0x3f41);
+
+		/* enabling jd2 in general control 2 */
+		regmap_write(rt5640->regmap, RT5640_DUMMY2, 0x4001);
+
+		/* Prevent sta_jd_internal to trigger IRQ in CODEC-mode */
+		if (0)
+			regmap_write(rt5640->regmap, RT5640_IRQ_CTRL1, 0x0000);
+		else
+			/* Select jack active IRQ, disable all others */
+			regmap_write(rt5640->regmap, RT5640_IRQ_CTRL1,
+				     RT5640_IRQ_JD_NOR | RT5640_IRQ_OT_NOR);
+	}
 
 	rt5640->hp_mute = 1;
 

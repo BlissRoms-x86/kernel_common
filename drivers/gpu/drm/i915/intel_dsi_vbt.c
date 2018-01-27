@@ -555,7 +555,7 @@ static void intel_dsi_fixup_dsi_sequences(struct intel_dsi *intel_dsi)
 
 	/* The deassert-sequence ends at the first DSI packet */
 	init_otp_index = dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP] -
-			 (const u8 *)dev_priv->vbt.dsi.data;
+			 dev_priv->vbt.dsi.data;
 	init_otp = dev_priv->vbt.dsi.data + init_otp_index;
 	len = dev_priv->vbt.dsi.size - init_otp_index;
 	len = intel_vbi_get_deassert_len(init_otp, len);
