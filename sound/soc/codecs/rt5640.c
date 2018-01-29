@@ -24,6 +24,7 @@
 #include <linux/spi/spi.h>
 #include <linux/acpi.h>
 #include <sound/core.h>
+#include <sound/jack.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -2140,93 +2141,156 @@ int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(rt5640_sel_asrc_clk_src);
 
-int rt5640_check_jd_status(struct snd_soc_codec *codec)
+static void rt5640_enable_micbias1_ovcd(struct snd_soc_codec *codec)
 {
-	return snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010;
-}
-EXPORT_SYMBOL(rt5640_check_jd_status);
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 
-int rt5640_check_bp_status(struct snd_soc_codec *codec)
+	snd_soc_dapm_force_enable_pin(dapm, "LDO2");
+	snd_soc_dapm_force_enable_pin(dapm, "MICBIAS1");
+	snd_soc_dapm_sync(dapm);
+	snd_soc_update_bits(codec, RT5640_MICBIAS, RT5640_MIC1_OVCD_MASK,
+			    RT5640_MIC1_OVCD_EN);
+}
+
+static void rt5640_disable_micbias1_ovcd(struct snd_soc_codec *codec)
 {
-	return  snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8;
-}
-EXPORT_SYMBOL(rt5640_check_bp_status);
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 
-#include <linux/pm_runtime.h>
+	snd_soc_update_bits(codec, RT5640_MICBIAS, RT5640_MIC1_OVCD_MASK,
+			    RT5640_MIC1_OVCD_DIS);
+	snd_soc_dapm_disable_pin(dapm, "MICBIAS1");
+	snd_soc_dapm_disable_pin(dapm, "LDO2");
+	snd_soc_dapm_sync(dapm);
+}
+
+static void rt5640_enable_micbias1_ovcd_irq(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2, RT5640_IRQ_MB1_OC_MASK,
+			    RT5640_IRQ_MB1_OC_NOR);
+}
+
+static void rt5640_disable_micbias1_ovcd_irq(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2, RT5640_IRQ_MB1_OC_MASK,
+			    RT5640_IRQ_MB1_OC_BP);
+}
+
+static void rt5640_jack_work(struct work_struct *work)
+{
+	struct rt5640_priv *rt5640 =
+		container_of(work, struct rt5640_priv, jack_work);
+	struct snd_soc_codec *codec = rt5640->codec;
+	int val = 0;
+
+	val = snd_soc_read(codec, RT5640_INT_IRQ_ST);
+	pr_err("irq status %#04x\n", val);
+
+	if (val & 0x0010) {
+		/* Jack removed, or spurious IRQ? */
+		if (rt5640->jack->status & SND_JACK_HEADPHONE) {
+			if (rt5640->jack->status & SND_JACK_MICROPHONE) {
+				rt5640_disable_micbias1_ovcd_irq(codec);
+				rt5640_disable_micbias1_ovcd(codec);
+			}
+			snd_soc_jack_report(rt5640->jack, 0,
+					    SND_JACK_HEADSET | SND_JACK_BTN_0);
+			pr_err("jack unplugged\n");
+		}
+	} else if (!(rt5640->jack->status & SND_JACK_HEADPHONE)) {
+		/* Jack inserted */
+		rt5640_enable_micbias1_ovcd(codec);
+
+		/*
+		 * We get the insertion event before the jack is fully inserted
+		 * at which point the second ring on a TRRS connector may short
+		 * the 2nd ring and sleeve contacts, give the user time to fully
+		 * insert the jack before doing headphone / headset detection.
+		 */
+		msleep(500);
+
+		/* Check the jack is still connected before checking for HS */
+		if (snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010)
+			return;
+
+		/* FIXME try ovcd detection 3 times, use 2 counters to count
+		 * results, use result if either counter reaches 3 otherwise
+		 * redo + Maximum retries counter?
+		 */
+
+		if (snd_soc_read(codec, RT5640_IRQ_CTRL2) & RT5640_MB1_OC_CLR) {
+			/*
+			 * Over current detected, there is a short between the
+			 * 2nd ring contact and the ground, so a TRS connector
+			 * without a mic contact and thus plain headphones.
+			 */
+			rt5640_disable_micbias1_ovcd(codec);
+			snd_soc_jack_report(rt5640->jack, SND_JACK_HEADPHONE,
+					    SND_JACK_HEADPHONE);
+			pr_err("detected headphone\n");
+		} else {
+			/* Headset, enable ovcd IRQ for button press detect. */
+//			rt5640_enable_micbias1_ovcd_irq(codec);
+			snd_soc_jack_report(rt5640->jack, SND_JACK_HEADSET,
+					    SND_JACK_HEADSET);
+			pr_err("detected headset\n");
+		}
+	} else {
+		val = snd_soc_read(codec, RT5640_IRQ_CTRL2);
+
+		/* Button press IRQ */
+		pr_err("button press, irq ctrl2 %#04x\n", val);
+		/* FIXME the ovcd IRQ keeps firing while the button is
+		 * pressed. Count IRQs and on 3 ovcd detected IRQs count this
+		 * as a press. Disable the IRQ on press and use a timer to poll
+		 * for release. Note when the timer sees a release it needs to
+		 * retry and check for 3 releases on a row since sometimes
+		 * we get a spurious release.
+		 */
+	}
+}
 
 static irqreturn_t rt5640_irq(int irq, void *data)
 {
 	struct rt5640_priv *rt5640 = data;
-	struct snd_soc_codec *codec = rt5640->codec;
-	struct snd_soc_dapm_context *dapm;
-	int val = 0;
 
-	if (!codec)
-		return IRQ_HANDLED;
-
-	dapm = snd_soc_codec_get_dapm(codec);
-	snd_soc_dapm_mutex_lock(dapm);
-	pm_runtime_get_sync(codec->dev);
-
-	val = snd_soc_read(codec, RT5640_INT_IRQ_ST);
-	
-	pr_err("jd status %d\n", !!(val & 0x0010));
-
-	if (!(val & 0x0010)) {
-		// FIXME this can go away when using force_pin for ldo / bias
-		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF)
-			rt5640_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
-
-		// FIXME do this after the 2 below lines which will auto-enable
-		// the bias-level, or only once at init ?
-		rt5640_priv_reg_write(codec, RT5640_BIAS_CUR4,
-				      0xa800 | RT5640_MIC_OVCD_SF_1P0);
-
-		/* for jack type detect */
-		//FIXME instead use:
-//		snd_soc_dapm_force_enable_pin(dapm, "LDO2");
-//		snd_soc_dapm_force_enable_pin(dapm, "MICBIAS1");
-//		snd_soc_dapm_sync(dapm);
-		snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
-			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
-		snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
-			RT5640_PWR_MB1, RT5640_PWR_MB1);
-
-		snd_soc_update_bits(codec, RT5640_MICBIAS,
-				    RT5640_MIC1_OVCD_MASK | RT5640_MIC1_OVTH_MASK
-				    | RT5640_PWR_CLK25M_MASK,
-				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
-				    | RT5640_PWR_CLK25M_PU);
-		snd_soc_update_bits(codec, RT5640_DUMMY1, 0x1, 0x1);
-		/* After turning on over current detection, wait for a while before
-		   checking the status. */
-		msleep(20);
-		/* Make sure jack is still connected at this point before checking for HS*/
-		if (rt5640_check_bp_status(codec)) {
-			/*Over current detected;i.e there is a  short between mic and
-			  ground ring. i.e the accessory does not have mic. i.e accessory
-			  is Headphone*/
-			pr_err("detected headphone\n");
-		} else {
-			pr_err("detected headset\n");
-		}
-		snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
-				    RT5640_MB1_OC_CLR, 0);
-	} else {
-		// FIXME this can go away when using force_pin for ldo / bias
-		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF)
-			rt5640_set_bias_level(codec, SND_SOC_BIAS_OFF);
-		//FIXME also do:
-//		snd_soc_dapm_force_disable_pin(dapm, "LDO2");
-//		snd_soc_dapm_force_disable_pin(dapm, "MICBIAS1");
-//		snd_soc_dapm_sync(dapm);
-	}
-
-	pm_runtime_put(codec->dev);
-	snd_soc_dapm_mutex_unlock(dapm);
+	queue_work(system_wq, &rt5640->jack_work);
 
 	return IRQ_HANDLED;
 }
+
+static void rt5640_cancel_work(void *data)
+{
+	cancel_work_sync(data);
+}
+
+int rt5640_set_jack(struct snd_soc_codec *codec, struct snd_soc_jack *jack)
+{
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	int ret;
+
+	rt5640->jack = jack;
+
+	/* Make sure work is stopped on probe-error / remove */
+	ret = devm_add_action_or_reset(codec->dev, rt5640_cancel_work,
+				       &rt5640->jack_work);
+	if (ret)
+		return ret;
+
+	ret = devm_request_irq(codec->dev, rt5640->irq, rt5640_irq,
+			      IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+			      | IRQF_ONESHOT, "rt5640", rt5640);
+	if (ret) {
+		dev_err(codec->dev, "Failed to reguest IRQ: %d\n", ret);
+		return ret;
+	}
+
+	/* FIXME this does not work reliabe, where as post boot plugging
+	   in does work reliably */
+	/* sync initial jack state */
+	queue_work(system_wq, &rt5640->jack_work);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rt5640_set_jack);
 
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
@@ -2276,6 +2340,43 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	if (rt5640->pdata.dmic_en)
 		rt5640_dmic_enable(codec, rt5640->pdata.dmic1_data_pin,
 					  rt5640->pdata.dmic2_data_pin);
+
+	if (1 && rt5640->irq) {
+		/* JACK_DET_N signal as JD-source */
+		regmap_update_bits(rt5640->regmap, RT5640_JD_CTRL,
+				   RT5640_JD_MASK, RT5640_JD_JD2_IN4N);
+
+		/* Selecting GPIO01 as an interrupt */
+		regmap_update_bits(rt5640->regmap, RT5640_GPIO_CTRL1,
+				   RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_IRQ);
+
+		/* Set GPIO1 output */
+		regmap_update_bits(rt5640->regmap, RT5640_GPIO_CTRL3,
+				   RT5640_GP1_PF_MASK, RT5640_GP1_PF_OUT);
+
+		/* Enabling jd2 in general control 1 */
+		regmap_write(rt5640->regmap, RT5640_DUMMY1, 0x3f41);
+
+		/* Enabling jd2 in general control 2 */
+		regmap_write(rt5640->regmap, RT5640_DUMMY2, 0x4001);
+
+		/*
+		 * Configure micbias over current detect. Note we use 600uA as
+		 * threshold, higher values do not reliably detect a short
+		 * between the gnd and mic contacts because of jack-connector
+		 * contact-resistance.
+		 */
+		regmap_write(rt5640->regmap, RT5640_PR_BASE + RT5640_BIAS_CUR4,
+			     0xa800 | RT5640_MIC_OVCD_SF_1P0);
+
+		regmap_update_bits(rt5640->regmap, RT5640_MICBIAS,
+				   RT5640_MIC1_OVTH_MASK,
+				   RT5640_MIC1_OVTH_600UA);
+
+		/* Select jack active and ovcd IRQs, disable all others */
+		regmap_write(rt5640->regmap, RT5640_IRQ_CTRL1,
+			     RT5640_IRQ_JD_NOR | RT5640_IRQ_OT_NOR);
+	}
 
 	return 0;
 }
@@ -2580,6 +2681,8 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 	}
 
 	rt5640->hp_mute = 1;
+	rt5640->irq = i2c->irq;
+	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);
 
 	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt5640,
 				      rt5640_dai, ARRAY_SIZE(rt5640_dai));

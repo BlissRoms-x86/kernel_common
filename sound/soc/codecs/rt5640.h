@@ -13,6 +13,7 @@
 #define _RT5640_H
 
 #include <linux/clk.h>
+#include <linux/workqueue.h>
 #include <sound/rt5640.h>
 
 /* Info */
@@ -2114,9 +2115,12 @@ enum {
 struct rt5640_priv {
 	struct snd_soc_codec *codec;
 	struct rt5640_platform_data pdata;
+	struct work_struct jack_work;
+	struct snd_soc_jack *jack;
 	struct regmap *regmap;
 	struct clk *mclk;
 
+	int irq;
 	int sysclk;
 	int sysclk_src;
 	int lrck[RT5640_AIFS];
@@ -2135,5 +2139,6 @@ int rt5640_dmic_enable(struct snd_soc_codec *codec,
 		       bool dmic1_data_pin, bool dmic2_data_pin);
 int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 		unsigned int filter_mask, unsigned int clk_src);
+int rt5640_set_jack(struct snd_soc_codec *codec, struct snd_soc_jack *jack);
 
 #endif
