@@ -1407,6 +1407,8 @@ void i915_driver_unload(struct drm_device *dev)
 
 	intel_modeset_cleanup(dev);
 
+	intel_bios_cleanup(dev_priv);
+
 	/*
 	 * free the memory space allocated for the child device
 	 * config parsed from VBT
