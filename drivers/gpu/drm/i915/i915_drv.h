@@ -185,6 +185,7 @@ enum plane {
 #define sprite_name(p, s) ((p) * INTEL_INFO(dev)->num_sprites[(p)] + (s) + 'A')
 
 enum port {
+	PORT_NONE = -1,
 	PORT_A = 0,
 	PORT_B,
 	PORT_C,
@@ -584,6 +585,7 @@ struct intel_uncore_funcs {
 struct intel_uncore {
 	spinlock_t lock; /** lock is also taken in irq contexts. */
 
+	struct notifier_block pmic_bus_access_nb;
 	struct intel_uncore_funcs funcs;
 
 	unsigned fifo_count;
@@ -2077,7 +2079,14 @@ struct drm_i915_private {
 	/* perform PHY state sanity checks? */
 	bool chv_phy_assert[2];
 
-	struct intel_encoder *dig_port_map[I915_MAX_PORTS];
+	/* Used to save the pipe-to-encoder mapping for audio */
+	struct intel_encoder *av_enc_map[I915_MAX_PIPES];
+
+	/* necessary resource sharing with HDMI LPE audio driver. */
+	struct {
+		struct platform_device *platdev;
+		int	irq;
+	} lpe_audio;
 
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
@@ -2935,14 +2944,12 @@ int intel_irq_install(struct drm_i915_private *dev_priv);
 void intel_irq_uninstall(struct drm_i915_private *dev_priv);
 
 extern void intel_uncore_sanitize(struct drm_i915_private *dev_priv);
-extern void intel_uncore_early_sanitize(struct drm_i915_private *dev_priv,
-					bool restore_forcewake);
 extern void intel_uncore_init(struct drm_i915_private *dev_priv);
 extern bool intel_uncore_unclaimed_mmio(struct drm_i915_private *dev_priv);
 extern bool intel_uncore_arm_unclaimed_mmio_detection(struct drm_i915_private *dev_priv);
 extern void intel_uncore_fini(struct drm_i915_private *dev_priv);
-extern void intel_uncore_forcewake_reset(struct drm_i915_private *dev_priv,
-					 bool restore);
+extern void intel_uncore_suspend(struct drm_i915_private *dev_priv);
+extern void intel_uncore_resume_early(struct drm_i915_private *dev_priv);
 const char *intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id);
 void intel_uncore_forcewake_get(struct drm_i915_private *dev_priv,
 				enum forcewake_domains domains);
@@ -3566,6 +3573,14 @@ extern int i915_restore_state(struct drm_device *dev);
 /* i915_sysfs.c */
 void i915_setup_sysfs(struct drm_i915_private *dev_priv);
 void i915_teardown_sysfs(struct drm_i915_private *dev_priv);
+
+/* intel_lpe_audio.c */
+int  intel_lpe_audio_init(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_teardown(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_irq_handler(struct drm_i915_private *dev_priv);
+void intel_lpe_audio_notify(struct drm_i915_private *dev_priv,
+			    enum pipe pipe, enum port port,
+			    const void *eld, int ls_clock, bool dp_output);
 
 /* intel_i2c.c */
 extern int intel_setup_gmbus(struct drm_device *dev);

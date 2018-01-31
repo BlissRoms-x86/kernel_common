@@ -186,6 +186,19 @@ config I2C_PIIX4
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-piix4.
 
+config I2C_CHT_WC
+	tristate "Intel Cherry Trail Whiskey Cove PMIC smbus controller"
+	depends on INTEL_SOC_PMIC_CHTWC
+	help
+	  If you say yes to this option, support will be included for the
+	  SMBus controller found in the Intel Cherry Trail Whiskey Cove PMIC
+	  found on some Intel Cherry Trail systems.
+
+	  Note this controller is hooked up to a TI bq24292i charger-IC,
+	  combined with a FUSB302 Type-C port-controller as such it is advised
+	  to also select CONFIG_CHARGER_BQ24190=m and CONFIG_TYPEC_FUSB302=m
+	  (the fusb302 driver currently is in drivers/staging).
+
 config I2C_NFORCE2
 	tristate "Nvidia nForce2, nForce3 and nForce4"
 	depends on PCI
