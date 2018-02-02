@@ -1609,10 +1609,17 @@
 #define RT5640_MB2_OC_P_SFT			6
 #define RT5640_MB2_OC_P_NOR			(0x0 << 6)
 #define RT5640_MB2_OC_P_INV			(0x1 << 6)
-#define RT5640_MB1_OC_CLR			(0x1 << 3)
-#define RT5640_MB1_OC_CLR_SFT			3
-#define RT5640_MB2_OC_CLR			(0x1 << 2)
-#define RT5640_MB2_OC_CLR_SFT			2
+#define RT5640_MB1_OC_STATUS			(0x1 << 3)
+#define RT5640_MB1_OC_STATUS_SFT		3
+#define RT5640_MB2_OC_STATUS			(0x1 << 2)
+#define RT5640_MB2_OC_STATUS_SFT		2
+
+/* GPIO and Internal Status (0xbe) */
+#define RT5640_GPIO1_STATUS			(0x1 << 8)
+#define RT5640_GPIO2_STATUS			(0x1 << 7)
+#define RT5640_JD_STATUS			(0x1 << 4)
+#define RT5640_OVT_STATUS			(0x1 << 3)
+#define RT5640_CLS_D_OVCD_STATUS		(0x1 << 0)
 
 /* GPIO Control 1 (0xc0) */
 #define RT5640_GP1_PIN_MASK			(0x1 << 15)
@@ -2133,6 +2140,7 @@ struct rt5640_priv {
 
 	bool hp_mute;
 	bool asrc_en;
+	bool ovcd_irq_enabled;
 };
 
 int rt5640_dmic_enable(struct snd_soc_codec *codec,
