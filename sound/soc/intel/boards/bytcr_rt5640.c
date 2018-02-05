@@ -25,6 +25,7 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/dmi.h>
+#include <linux/input.h>
 #include <linux/slab.h>
 #include <asm/cpu_device_id.h>
 #include <asm/platform_sst_audio.h>
@@ -45,9 +46,11 @@ enum {
 };
 
 #define BYT_RT5640_MAP(quirk)	((quirk) &  GENMASK(7, 0))
+/* JACK_PIN values have a 1:1 mapping with RT5640_JD_MASK values */
+#define BYT_RT5640_JACK_PIN(quirk)	((quirk) & GENMASK(15, 13))
 #define BYT_RT5640_DMIC_EN	BIT(16)
 #define BYT_RT5640_MONO_SPEAKER BIT(17)
-#define BYT_RT5640_DIFF_MIC     BIT(18) /* defaut is single-ended */
+#define BYT_RT5640_DIFF_MIC     BIT(18) /* default is single-ended */
 #define BYT_RT5640_SSP2_AIF2    BIT(19) /* default is using AIF1  */
 #define BYT_RT5640_SSP0_AIF1    BIT(20)
 #define BYT_RT5640_SSP0_AIF2    BIT(21)
@@ -55,6 +58,8 @@ enum {
 #define BYT_RT5640_MCLK_25MHZ	BIT(23)
 
 struct byt_rt5640_private {
+	struct snd_soc_jack jack;
+	struct rt5640_jack_data jack_data;
 	struct clk *mclk;
 };
 static bool is_bytcr;
@@ -66,7 +71,7 @@ MODULE_PARM_DESC(quirk, "Board-specific quirk override");
 
 static void log_quirks(struct device *dev)
 {
-	int map;
+	int map, jack_pin;
 	bool has_dmic = false;
 	bool has_mclk = false;
 	bool has_ssp0 = false;
@@ -94,6 +99,9 @@ static void log_quirks(struct device *dev)
 		dev_err(dev, "quirk map 0x%x is not supported, microphone input will not work\n", map);
 		break;
 	}
+	jack_pin = BYT_RT5640_JACK_PIN(byt_rt5640_quirk);
+	if (jack_pin)
+		dev_info(dev, "quirk jack pin %#x\n", jack_pin);
 	if (byt_rt5640_quirk & BYT_RT5640_DMIC_EN) {
 		if (has_dmic)
 			dev_info(dev, "quirk DMIC enabled\n");
@@ -362,7 +370,8 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TA"),
 		},
 		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
-					BYT_RT5640_MCLK_EN),
+					BYT_RT5640_MCLK_EN |
+					RT5640_JD_JD2_IN4N),
 	},
 	{
 		.callback = byt_rt5640_quirk_cb,
@@ -374,7 +383,8 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 					BYT_RT5640_MONO_SPEAKER |
 					BYT_RT5640_DIFF_MIC |
 					BYT_RT5640_SSP0_AIF2 |
-					BYT_RT5640_MCLK_EN),
+					BYT_RT5640_MCLK_EN |
+					RT5640_JD_JD2_IN4N),
 	},
 	{
 		.callback = byt_rt5640_quirk_cb,
@@ -384,7 +394,8 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 		},
 		.driver_data = (void *)(BYT_RT5640_DMIC2_MAP |
 					BYT_RT5640_DMIC_EN |
-					BYT_RT5640_MCLK_EN),
+					BYT_RT5640_MCLK_EN |
+					RT5640_JD_JD2_IN4N),
 	},
 	{
 		.callback = byt_rt5640_quirk_cb,
@@ -438,6 +449,17 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 	{}
 };
 
+static struct snd_soc_jack_pin rt5640_pins[] = {
+	{
+		.pin	= "Headphone",
+		.mask	= SND_JACK_HEADPHONE,
+	},
+	{
+		.pin	= "Headset Mic",
+		.mask	= SND_JACK_MICROPHONE,
+	},
+};
+
 static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
@@ -448,6 +470,11 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	int ret;
 
 	card->dapm.idle_bias_off = true;
+
+	/* Start with RC clk for jack-detect (we disable MCLK below) */
+	if (byt_rt5640_quirk & BYT_RT5640_MCLK_EN)
+		snd_soc_component_update_bits(component, RT5640_GLB_CLK,
+			RT5640_SCLK_SRC_MASK, RT5640_SCLK_SRC_RCCLK);
 
 	rt5640_sel_asrc_clk_src(component,
 				RT5640_DA_STEREO_FILTER |
@@ -552,6 +579,25 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 
 		if (ret)
 			dev_err(card->dev, "unable to set MCLK rate\n");
+	}
+
+	if (BYT_RT5640_JACK_PIN(byt_rt5640_quirk)) {
+		ret = snd_soc_card_jack_new(card, "Headset", SND_JACK_HEADPHONE
+					    | SND_JACK_MICROPHONE
+					    | SND_JACK_BTN_0,
+					    &priv->jack, rt5640_pins,
+					    ARRAY_SIZE(rt5640_pins));
+		if (ret) {
+			dev_err(card->dev, "Jack creation failed %d\n", ret);
+			return ret;
+		}
+		snd_jack_set_key(priv->jack.jack, SND_JACK_BTN_0,
+				 KEY_PLAYPAUSE);
+
+		priv->jack_data.pin = BYT_RT5640_JACK_PIN(byt_rt5640_quirk);
+
+		snd_soc_component_set_jack(component, &priv->jack,
+					   &priv->jack_data);
 	}
 
 	return ret;
@@ -890,6 +936,12 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 			ret_val);
 		return ret_val;
 	}
+
+	if (BYT_RT5640_JACK_PIN(byt_rt5640_quirk)) {
+		/* Sync jack (input-dev) status now that it is registered */
+		snd_soc_jack_report(&priv->jack, 0, 0);
+	}
+
 	platform_set_drvdata(pdev, &byt_rt5640_card);
 	return ret_val;
 }
