@@ -434,8 +434,8 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 		},
 		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
 					BYT_RT5640_MCLK_EN |
-					BYT_RT5640_SSP0_AIF1),
-
+					BYT_RT5640_SSP0_AIF1 |
+					RT5640_JD_JD1_IN4P),
 	},
 	{}
 };
