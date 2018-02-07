@@ -130,7 +130,7 @@ xattr_permission(struct inode *inode, const char *name, int mask)
 			return -EPERM;
 	}
 
-	return inode_permission(inode, mask);
+	return inode_permission2(ERR_PTR(-EOPNOTSUPP), inode, mask);
 }
 
 int
@@ -249,7 +249,7 @@ xattr_getsecurity(struct inode *inode, const char *name, void *value,
 	}
 	memcpy(value, buffer, len);
 out:
-	security_release_secctx(buffer, len);
+	kfree(buffer);
 out_noalloc:
 	return len;
 }
