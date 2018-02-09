@@ -101,6 +101,7 @@ struct snd_soc_acpi_mach  snd_soc_acpi_intel_baytrail_machines[] = {
 		.sof_fw_filename = "intel/reef-byt.ri",
 		.sof_tplg_filename = "intel/reef-byt-rt5640.tplg",
 		.asoc_plat_name = "sst-mfld-platform",
+		.streams_lost_on_suspend = true,
 	},
 	{
 		.id = "10EC5642",

@@ -67,6 +67,7 @@ snd_soc_acpi_find_machine(struct snd_soc_acpi_mach *machines);
  * @asoc_plat_name: ASoC platform name, used for binding machine drivers
  * if non NULL
  * @new_mach_data: machine driver private data fixup
+ * @streams_lost_on_suspend: SST looses track if streams over a suspend/resume
  */
 /* Descriptor for SST ASoC machine driver */
 struct snd_soc_acpi_mach {
@@ -81,6 +82,7 @@ struct snd_soc_acpi_mach {
 	const char *sof_tplg_filename;
 	const char *asoc_plat_name;
 	struct platform_device * (*new_mach_data)(void *pdata);
+	bool streams_lost_on_suspend;
 };
 
 #define SND_SOC_ACPI_MAX_CODECS 3
