@@ -2404,7 +2404,7 @@ static int rt5640_set_jack(struct snd_soc_codec *codec,
 	 * LDO2 / MICBIAS1 supplies, so we enable it here once.
 	 */
 	snd_soc_write(codec, RT5640_PR_BASE + RT5640_BIAS_CUR4,
-		      0xa800 | RT5640_MIC_OVCD_SF_1P0);
+		      0xa800 | RT5640_MIC_OVCD_SF_0P75);
 
 	snd_soc_update_bits(codec, RT5640_MICBIAS,
 			    RT5640_MIC1_OVTH_MASK | RT5640_MIC1_OVCD_MASK,
@@ -2516,6 +2516,19 @@ static int rt5640_suspend(struct snd_soc_codec *codec)
 {
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 
+	if (rt5640->jack) {
+		pr_err("suspend, disabling irq\n");
+		disable_irq(rt5640->irq);
+		rt5640_cancel_work(rt5640);
+
+		if (rt5640->jack->status & SND_JACK_MICROPHONE) {
+			pr_err("suspend, disabling button monitoring\n");
+			snd_soc_jack_report(rt5640->jack, 0, SND_JACK_BTN_0);
+			rt5640_disable_micbias1_ovcd_irq(rt5640);
+			rt5640_disable_micbias1_ovcd(codec);
+		}
+	}
+
 	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 	rt5640_reset(codec);
 	regcache_cache_only(rt5640->regmap, true);
@@ -2537,6 +2550,17 @@ static int rt5640_resume(struct snd_soc_codec *codec)
 
 	regcache_cache_only(rt5640->regmap, false);
 	regcache_sync(rt5640->regmap);
+
+	if (rt5640->jack) {
+		if (rt5640->jack->status & SND_JACK_MICROPHONE) {
+			pr_err("resume, restarting button monitoring\n");
+			rt5640_enable_micbias1_ovcd(codec);
+			rt5640_enable_micbias1_ovcd_irq(rt5640);
+		}
+		pr_err("resume, re-enabling irq\n");
+		enable_irq(rt5640->irq);
+		queue_work(system_long_wq, &rt5640->jack_work);
+	}
 
 	return 0;
 }
