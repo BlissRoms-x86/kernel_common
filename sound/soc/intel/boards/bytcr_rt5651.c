@@ -35,14 +35,16 @@
 #include "../atom/sst-atom-controls.h"
 
 enum {
-	BYT_RT5651_DMIC_MAP,
-	BYT_RT5651_IN1_MAP,
-	BYT_RT5651_IN2_MAP,
-	BYT_RT5651_IN1_IN2_MAP,
-	BYT_RT5651_IN3_MAP,
+	/* Bits 0-3 are reserved for JD_SRC values */
+	BYT_RT5651_DMIC_MAP		= (0 << 4),
+	BYT_RT5651_IN1_MAP		= (1 << 4),
+	BYT_RT5651_IN2_MAP		= (2 << 4),
+	BYT_RT5651_IN1_IN2_MAP		= (3 << 4),
+	BYT_RT5651_IN3_MAP		= (4 << 4),
 };
 
-#define BYT_RT5651_MAP(quirk)	((quirk) & GENMASK(7, 0))
+#define BYT_RT5651_JDSRC(quirk)	((quirk) & GENMASK(3, 0)) /* RT5651_JD* value */
+#define BYT_RT5651_MAP(quirk)	((quirk) & GENMASK(7, 4))
 #define BYT_RT5651_DMIC_EN	BIT(16)
 #define BYT_RT5651_MCLK_EN	BIT(17)
 #define BYT_RT5651_MCLK_25MHZ	BIT(18)
@@ -53,11 +55,13 @@ struct byt_rt5651_private {
 };
 
 static unsigned long byt_rt5651_quirk = BYT_RT5651_DMIC_MAP |
-					BYT_RT5651_DMIC_EN |
 					BYT_RT5651_MCLK_EN;
 
 static void log_quirks(struct device *dev)
 {
+	if (BYT_RT5651_JDSRC(byt_rt5651_quirk))
+		dev_info(dev, "quirk jack-detect src %ld\n",
+			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_DMIC_MAP)
 		dev_info(dev, "quirk DMIC_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_MAP)
@@ -288,7 +292,8 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "KIANO SlimNote 14.2"),
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
-					BYT_RT5651_IN1_IN2_MAP),
+					BYT_RT5651_IN1_IN2_MAP |
+					RT5651_JD1_1),
 	},
 	{}
 };
@@ -299,6 +304,7 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_codec *codec = runtime->codec;
 	struct byt_rt5651_private *priv = snd_soc_card_get_drvdata(card);
 	const struct snd_soc_dapm_route *custom_map;
+	struct rt5651_platform_data pdata = {};
 	int num_routes;
 	int ret;
 
@@ -360,17 +366,26 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
 
-	ret = snd_soc_card_jack_new(runtime->card, "Headset",
-				    SND_JACK_HEADSET, &priv->jack,
-				    bytcr_jack_pins, ARRAY_SIZE(bytcr_jack_pins));
-	if (ret) {
-		dev_err(runtime->dev, "Headset jack creation failed %d\n", ret);
-		return ret;
+	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
+	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
+		pdata.dmic_en = true;
+	rt5651_set_pdata(codec, &pdata);
+
+	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
+		ret = snd_soc_card_jack_new(runtime->card, "Headset",
+				SND_JACK_HEADSET, &priv->jack,
+				bytcr_jack_pins, ARRAY_SIZE(bytcr_jack_pins));
+		if (ret) {
+			dev_err(runtime->dev, "Jack creation failed %d\n", ret);
+			return ret;
+		}
+
+		ret = snd_soc_codec_set_jack(codec, &priv->jack, NULL);
+		if (ret)
+			return ret;
 	}
 
-	rt5651_set_jack_detect(codec, &priv->jack);
-
-	return ret;
+	return 0;
 }
 
 static const struct snd_soc_pcm_stream byt_rt5651_dai_params = {
