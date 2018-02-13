@@ -1513,8 +1513,6 @@ static int rt5651_set_dai_pll(struct snd_soc_dai *dai, int pll_id, int source,
 static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 			enum snd_soc_bias_level level)
 {
-	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
-
 	switch (level) {
 	case SND_SOC_BIAS_STANDBY:
 		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF) {
@@ -1527,9 +1525,6 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
 				RT5651_PWR_FV1 | RT5651_PWR_FV2,
 				RT5651_PWR_FV1 | RT5651_PWR_FV2);
-			snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
-				RT5651_PWR_LDO_DVO_MASK,
-				RT5651_PWR_LDO_DVO_1_2V);
 			snd_soc_update_bits(codec, RT5651_D_MISC, 0x1, 0x1);
 			if (snd_soc_read(codec, RT5651_PLL_MODE_1) & 0x9200)
 				snd_soc_update_bits(codec, RT5651_D_MISC,
@@ -1543,13 +1538,11 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 		snd_soc_write(codec, RT5651_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5651_PWR_VOL, 0x0000);
 		snd_soc_write(codec, RT5651_PWR_MIXER, 0x0000);
-		if (rt5651->pdata.jd_src) {
-			snd_soc_write(codec, RT5651_PWR_ANLG2, 0x0204);
-			snd_soc_write(codec, RT5651_PWR_ANLG1, 0x0002);
-		} else {
-			snd_soc_write(codec, RT5651_PWR_ANLG1, 0x0000);
-			snd_soc_write(codec, RT5651_PWR_ANLG2, 0x0000);
-		}
+		snd_soc_write(codec, RT5651_PWR_ANLG1, RT5651_PWR_LDO_DVO_1_2V);
+		/* Leave PLL1 and jack-detect power as is, all others off */
+		snd_soc_update_bits(codec, RT5651_PWR_ANLG2,
+				    ~(RT5651_PWR_PLL | RT5651_PWR_JD_M),
+				    0x0000);
 		break;
 
 	default:
