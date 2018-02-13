@@ -41,6 +41,7 @@ enum {
 	BYT_RT5651_IN2_MAP		= (2 << 4),
 	BYT_RT5651_IN1_IN2_MAP		= (3 << 4),
 	BYT_RT5651_IN1_HS_IN3_MAP	= (4 << 4),
+	BYT_RT5651_IN2_HS_IN3_MAP	= (5 << 4),
 };
 
 #define BYT_RT5651_JDSRC(quirk)	((quirk) & GENMASK(3, 0)) /* RT5651_JD* value */
@@ -70,6 +71,8 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk IN2_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_HS_IN3_MAP)
 		dev_info(dev, "quirk IN1_HS_IN3_MAP enabled");
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN2_HS_IN3_MAP)
+		dev_info(dev, "quirk IN2_HS_IN3_MAP enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		dev_info(dev, "quirk DMIC enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
@@ -233,6 +236,12 @@ static const struct snd_soc_dapm_route byt_rt5651_intmic_in1_hs_in3_map[] = {
 	{"IN3P", NULL, "Headset Mic"},
 };
 
+static const struct snd_soc_dapm_route byt_rt5651_intmic_in2_hs_in3_map[] = {
+	{"Internal Mic", NULL, "micbias1"},
+	{"IN2P", NULL, "Internal Mic"},
+	{"IN3P", NULL, "Headset Mic"},
+};
+
 static const struct snd_kcontrol_new byt_rt5651_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone"),
 	SOC_DAPM_PIN_SWITCH("Headset Mic"),
@@ -298,6 +307,17 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 					BYT_RT5651_IN1_IN2_MAP |
 					RT5651_JD1_1),
 	},
+	{
+		/* Chuwi Vi8 Plus (CWI519) */
+		.callback = byt_rt5651_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Hampoo"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "D2D3_Vi8A1"),
+		},
+		.driver_data = (void *)(BYT_RT5651_IN2_HS_IN3_MAP |
+					BYT_RT5651_MCLK_EN |
+					RT5651_JD1_1),
+	},
 	{}
 };
 
@@ -329,6 +349,10 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	case BYT_RT5651_IN1_HS_IN3_MAP:
 		custom_map = byt_rt5651_intmic_in1_hs_in3_map;
 		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in1_hs_in3_map);
+		break;
+	case BYT_RT5651_IN2_HS_IN3_MAP:
+		custom_map = byt_rt5651_intmic_in2_hs_in3_map;
+		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in2_hs_in3_map);
 		break;
 	default:
 		custom_map = byt_rt5651_intmic_dmic_map;
