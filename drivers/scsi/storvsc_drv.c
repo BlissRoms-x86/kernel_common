@@ -1795,6 +1795,12 @@ static int storvsc_probe(struct hv_device *device,
 	 * from the host.
 	 */
 	host->sg_tablesize = (stor_device->max_transfer_bytes >> PAGE_SHIFT);
+#if defined(CONFIG_X86_32)
+	dev_warn(&device->device, "adjusting sg_tablesize 0x%x -> 0x%x",
+			host->sg_tablesize, MAX_MULTIPAGE_BUFFER_COUNT);
+	host->sg_tablesize = MAX_MULTIPAGE_BUFFER_COUNT;
+#endif
+
 	/*
 	 * Set the number of HW queues we are supporting.
 	 */
@@ -1834,8 +1840,10 @@ static int storvsc_probe(struct hv_device *device,
 		fc_host_node_name(host) = stor_device->node_name;
 		fc_host_port_name(host) = stor_device->port_name;
 		stor_device->rport = fc_remote_port_add(host, 0, &ids);
-		if (!stor_device->rport)
+		if (!stor_device->rport) {
+			ret = -ENOMEM;
 			goto err_out4;
+		}
 	}
 #endif
 	return 0;
