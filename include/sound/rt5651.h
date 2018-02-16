@@ -45,12 +45,16 @@ struct rt5651_platform_data {
 	bool in2_diff;
 	/* Configure GPIO2 as DMIC1 SCL */
 	bool dmic_en;
+	/* Jack detect is inverted */
+	bool jd_inverted;
 	/* Jack detect source or JD_NULL to disable jack-detect */
 	enum rt5651_jd_src jd_src;
 	/* Jack micbias overcurrent detect current threshold */
 	enum rt5651_ovth_curr ovth_curr;
 	/* Jack micbias overcurrent detect current scale-factor */
 	enum rt5651_ovcd_sf ovth_sf;
+	/* Platform clock dapm supply name */
+	const char *clk;
 };
 
 #endif

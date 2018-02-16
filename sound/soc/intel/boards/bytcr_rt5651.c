@@ -394,6 +394,8 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
 
+	pdata.clk = "Platform Clock";
+	pdata.jd_inverted = true;
 	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
 	pdata.ovth_curr = BYT_RT5651_OVTH(byt_rt5651_quirk);
 	pdata.ovth_sf = BYT_RT5651_OVCD_SF(byt_rt5651_quirk);

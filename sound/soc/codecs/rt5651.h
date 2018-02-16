@@ -1598,8 +1598,8 @@
 #define RT5651_MB1_OC_P_NOR			(0x0 << 7)
 #define RT5651_MB1_OC_P_INV			(0x1 << 7)
 #define RT5651_MB2_OC_P_MASK			(0x1 << 6)
-#define RT5651_MB1_OC_CLR			(0x1 << 3)
-#define RT5651_MB1_OC_CLR_SFT			3
+#define RT5651_MB1_OC_STATUS			(0x1 << 3)
+#define RT5651_MB1_OC_STATUS_SFT		3
 #define RT5651_STA_GPIO8			(0x1)
 #define RT5651_STA_GPIO8_BIT			0
 
@@ -2073,7 +2073,7 @@ struct rt5651_priv {
 	struct rt5651_platform_data pdata;
 	struct regmap *regmap;
 	struct snd_soc_jack *hp_jack;
-	struct delayed_work jack_detect_work;
+	struct work_struct jack_detect_work;
 
 	int irq;
 	int sysclk;
