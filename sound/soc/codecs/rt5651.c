@@ -1552,13 +1552,158 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 	return 0;
 }
 
+/*
+ * Note we do not toggle the RT5651_MIC1_OVCD_EN bit in these 2 functions,
+ * to ensure reliable OVCD operation it *must* be enabled before enabling
+ * the supplies, which may already be enabled.
+ */
+static void rt5651_enable_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+//	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
+
+	snd_soc_dapm_mutex_lock(dapm);
+	snd_soc_dapm_force_enable_pin_unlocked(dapm, "LDO");
+	snd_soc_dapm_force_enable_pin_unlocked(dapm, "micbias1");
+#if 0
+	/* OVCD is *very* *unreliable* when used with the RC-clk */
+	if (rt5651->jack_data->clk)
+		snd_soc_dapm_force_enable_pin_unlocked(dapm,
+						       rt5651->jack_data->clk);
+#endif
+	snd_soc_dapm_sync_unlocked(dapm);
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static void rt5651_disable_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+//	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
+
+	snd_soc_dapm_mutex_lock(dapm);
+#if 0
+	if (rt5651->jack_data->clk)
+		snd_soc_dapm_disable_pin_unlocked(dapm, rt5651->jack_data->clk);
+#endif
+	snd_soc_dapm_disable_pin_unlocked(dapm, "micbias1");
+	snd_soc_dapm_disable_pin_unlocked(dapm, "LDO");
+	snd_soc_dapm_sync_unlocked(dapm);
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static void rt5651_clear_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, RT5651_IRQ_CTRL2, RT5651_MB1_OC_STATUS, 0);
+}
+
+static bool rt5651_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	int val;
+
+	val = snd_soc_read(codec, RT5651_IRQ_CTRL2);
+	pr_err("irq ctrl2 %#04x\n", val);
+
+	return (val & RT5651_MB1_OC_STATUS);
+}
+
+static bool rt5651_jack_inserted(struct snd_soc_codec *codec)
+{
+	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
+	int val;
+
+	val = snd_soc_read(codec, RT5651_INT_IRQ_ST);
+	pr_err("irq status %#04x\n", val);
+
+	switch (rt5651->pdata.jd_src) {
+	case RT5651_JD1_1:
+		val &= 0x1000;
+		break;
+	case RT5651_JD1_2:
+		val &= 0x2000;
+		break;
+	case RT5651_JD2:
+		val &= 0x4000;
+		break;
+	default:
+		break;
+	}
+
+	if (1 /* jack_info->jd_inverted */)
+		return val == 0;
+	else
+		return val != 0;
+}
+
+/* Jack detect and button-press timings */
+#define JACK_SETTLE_TIME	100 /* milli seconds */
+#define JACK_DETECT_COUNT	5
+#define JACK_DETECT_MAXCOUNT	20  /* Aprox. 2 seconds worth of tries */
+
+static int rt5651_detect_headset(struct snd_soc_codec *codec)
+{
+	int i, headset_count = 0, headphone_count = 0;
+
+	/*
+	 * We get the insertion event before the jack is fully inserted at which
+	 * point the second ring on a TRRS connector may short the 2nd ring and
+	 * sleeve contacts, also the overcurrent detection is not entirely
+	 * reliable. So we try several times with a wait in between until we
+	 * detect the same type JACK_DETECT_COUNT times in a row.
+	 */
+	for (i = 0; i < JACK_DETECT_MAXCOUNT; i++) {
+		/* Clear any previous over-current status flag */
+		rt5651_clear_micbias1_ovcd(codec);
+
+		msleep(JACK_SETTLE_TIME);
+
+		/* Check the jack is still connected before checking ovcd */
+		if (!rt5651_jack_inserted(codec))
+			return 0;
+
+		if (rt5651_micbias1_ovcd(codec)) {
+			/*
+			 * Over current detected, there is a short between the
+			 * 2nd ring contact and the ground, so a TRS connector
+			 * without a mic contact and thus plain headphones.
+			 */
+			pr_err("%s: mic-gnd shorted\n", __func__);
+			headset_count = 0;
+			headphone_count++;
+			if (headphone_count == JACK_DETECT_COUNT)
+				return SND_JACK_HEADPHONE;
+		} else {
+			pr_err("%s: mic-gnd open\n", __func__);
+			headphone_count = 0;
+			headset_count++;
+			if (headset_count == JACK_DETECT_COUNT)
+				return SND_JACK_HEADSET;
+		}
+	}
+
+	dev_err(codec->dev, "Error detecting headset vs headphones, bad contact?, assuming headphones\n");
+	return SND_JACK_HEADPHONE;
+}
+
+static void rt5651_jack_detect_work(struct work_struct *work)
+{
+	struct rt5651_priv *rt5651 =
+		container_of(work, struct rt5651_priv, jack_detect_work);
+	int report = 0;
+
+	if (rt5651_jack_inserted(rt5651->codec)) {
+		rt5651_enable_micbias1_ovcd(rt5651->codec);
+		report = rt5651_detect_headset(rt5651->codec);
+		rt5651_disable_micbias1_ovcd(rt5651->codec);
+	}
+
+	snd_soc_jack_report(rt5651->hp_jack, report, SND_JACK_HEADSET);
+}
+
 static irqreturn_t rt5651_irq(int irq, void *data)
 {
 	struct rt5651_priv *rt5651 = data;
 
-	queue_delayed_work(system_power_efficient_wq,
-			   &rt5651->jack_detect_work, msecs_to_jiffies(250));
-
+	queue_work(system_power_efficient_wq, &rt5651->jack_detect_work);
 	return IRQ_HANDLED;
 }
 
@@ -1575,6 +1720,7 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 	regmap_update_bits(rt5651->regmap, RT5651_GPIO_CTRL1,
 			   RT5651_GP1_PIN_MASK, RT5651_GP1_PIN_IRQ);
 
+	/* Select jack detect source */
 	switch (rt5651->pdata.jd_src) {
 	case RT5651_JD1_1:
 		regmap_update_bits(rt5651->regmap, RT5651_JD_CTRL2,
@@ -1607,11 +1753,36 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 		break;
 	}
 
+	/* Enable jack detect power */
 	regmap_update_bits(rt5651->regmap, RT5651_PWR_ANLG2, RT5651_PWR_JD_M,
 			   RT5651_PWR_JD_M);
 
+	/*
+	 * Enable OVCD at 1500uA here once, it *must* be enabled *before*
+	 * enabling the LDO2 / MICBIAS1 supplies and enabling it once here is
+	 * the only way to guarantee this.
+	 */
 	regmap_update_bits(rt5651->regmap, RT5651_MICBIAS,
-			   0x38, 0x38);
+				    RT5651_MIC1_OVCD_MASK |
+				    RT5651_MIC1_OVTH_MASK |
+				    RT5651_PWR_CLK12M_MASK |
+				    RT5651_PWR_MB_MASK,
+				    RT5651_MIC1_OVCD_EN |
+				    RT5651_MIC1_OVTH_1500UA |
+				    RT5651_PWR_MB_PU |
+				    RT5651_PWR_CLK12M_PU);
+
+	/*
+	 * The over-current-detect is only reliable in detecting the absence
+	 * of over-current, when the mic-contact in the jack is short-circuited,
+	 * the hardware periodically retries if it can apply the bias-current
+	 * leading to the ovcd status flip-flopping 1-0-1 with it being 0 about
+	 * 10% of the time, but as we poll the ovcd status bit we might hit that
+	 * 10%, so we enable sticky mode and when checking OVCD we clear the
+	 * status, msleep() a bit and then check to get a reliable reading.
+	 */
+	snd_soc_update_bits(codec, RT5651_IRQ_CTRL2, RT5651_MB1_OC_STKY_MASK,
+			    RT5651_MB1_OC_STKY_EN);
 
 	ret = devm_request_threaded_irq(codec->dev, rt5651->irq, NULL,
 					rt5651_irq,
@@ -1624,7 +1795,8 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 	}
 
 	rt5651->hp_jack = hp_jack;
-	rt5651_irq(0, rt5651);
+	/* Get initial jack status */
+	queue_work(system_power_efficient_wq, &rt5651->jack_detect_work);
 
 	return 0;
 }
@@ -1781,80 +1953,6 @@ static int rt5651_parse_dt(struct rt5651_priv *rt5651, struct device_node *np)
 	return 0;
 }
 
-static int rt5651_jack_detect(struct snd_soc_codec *codec, int jack_insert)
-{
-	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
-	int jack_type;
-
-	if (jack_insert) {
-		snd_soc_dapm_mutex_lock(dapm);
-		snd_soc_dapm_force_enable_pin_unlocked(dapm, "LDO");
-		snd_soc_dapm_force_enable_pin_unlocked(dapm, "micbias1");
-		snd_soc_dapm_sync_unlocked(dapm);
-		snd_soc_dapm_mutex_unlock(dapm);
-
-		snd_soc_update_bits(codec, RT5651_MICBIAS,
-				    RT5651_MIC1_OVCD_MASK |
-				    RT5651_MIC1_OVTH_MASK |
-				    RT5651_PWR_CLK12M_MASK |
-				    RT5651_PWR_MB_MASK,
-				    RT5651_MIC1_OVCD_EN |
-				    RT5651_MIC1_OVTH_600UA |
-				    RT5651_PWR_MB_PU |
-				    RT5651_PWR_CLK12M_PU);
-		msleep(100);
-		if (snd_soc_read(codec, RT5651_IRQ_CTRL2) & RT5651_MB1_OC_CLR)
-			jack_type = SND_JACK_HEADPHONE;
-		else
-			jack_type = SND_JACK_HEADSET;
-		snd_soc_update_bits(codec, RT5651_IRQ_CTRL2,
-				    RT5651_MB1_OC_CLR, 0);
-
-		snd_soc_dapm_mutex_lock(dapm);
-		snd_soc_dapm_disable_pin_unlocked(dapm, "micbias1");
-		snd_soc_dapm_disable_pin_unlocked(dapm, "LDO");
-		snd_soc_dapm_sync_unlocked(dapm);
-		snd_soc_dapm_mutex_unlock(dapm);
-	} else { /* jack out */
-		jack_type = 0;
-
-		snd_soc_update_bits(codec, RT5651_MICBIAS,
-				    RT5651_MIC1_OVCD_MASK,
-				    RT5651_MIC1_OVCD_DIS);
-	}
-
-	return jack_type;
-}
-
-static void rt5651_jack_detect_work(struct work_struct *work)
-{
-	struct rt5651_priv *rt5651 =
-		container_of(work, struct rt5651_priv, jack_detect_work.work);
-
-	int report, val = 0;
-
-	if (!rt5651->codec)
-		return;
-
-	switch (rt5651->pdata.jd_src) {
-	case RT5651_JD1_1:
-		val = snd_soc_read(rt5651->codec, RT5651_INT_IRQ_ST) & 0x1000;
-		break;
-	case RT5651_JD1_2:
-		val = snd_soc_read(rt5651->codec, RT5651_INT_IRQ_ST) & 0x2000;
-		break;
-	case RT5651_JD2:
-		val = snd_soc_read(rt5651->codec, RT5651_INT_IRQ_ST) & 0x4000;
-		break;
-	default:
-		break;
-	}
-
-	report = rt5651_jack_detect(rt5651->codec, !val);
-
-	snd_soc_jack_report(rt5651->hp_jack, report, SND_JACK_HEADSET);
-}
-
 static void rt5651_apply_pdata(struct rt5651_priv *rt5651)
 {
 	if (rt5651->pdata.in2_diff)
@@ -1922,7 +2020,7 @@ static int rt5651_i2c_probe(struct i2c_client *i2c,
 
 	rt5651->irq = i2c->irq;
 	rt5651->hp_mute = 1;
-	INIT_DELAYED_WORK(&rt5651->jack_detect_work, rt5651_jack_detect_work);
+	INIT_WORK(&rt5651->jack_detect_work, rt5651_jack_detect_work);
 
 	ret = snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt5651,
 				rt5651_dai, ARRAY_SIZE(rt5651_dai));
@@ -1934,7 +2032,7 @@ static int rt5651_i2c_remove(struct i2c_client *i2c)
 {
 	struct rt5651_priv *rt5651 = i2c_get_clientdata(i2c);
 
-	cancel_delayed_work_sync(&rt5651->jack_detect_work);
+	cancel_work_sync(&rt5651->jack_detect_work);
 	snd_soc_unregister_codec(&i2c->dev);
 
 	return 0;
