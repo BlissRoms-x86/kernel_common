@@ -97,11 +97,6 @@ struct tcpc_config {
 	const struct typec_altmode_desc *alt_modes;
 };
 
-enum tcpc_usb_switch {
-	TCPC_USB_SWITCH_CONNECT,
-	TCPC_USB_SWITCH_DISCONNECT,
-};
-
 /* Mux state attributes */
 #define TCPC_MUX_USB_ENABLED		BIT(0)	/* USB enabled */
 #define TCPC_MUX_DP_ENABLED		BIT(1)	/* DP enabled */
@@ -114,14 +109,6 @@ enum tcpc_mux_mode {
 	TYPEC_MUX_DP	= TCPC_MUX_DP_ENABLED,		/* DP only */
 	TYPEC_MUX_DOCK	= TCPC_MUX_USB_ENABLED |	/* Both USB and DP */
 			  TCPC_MUX_DP_ENABLED,
-};
-
-struct tcpc_mux_dev {
-	int (*set)(struct tcpc_mux_dev *dev, enum tcpc_mux_mode mux_mode,
-		   enum tcpc_usb_switch usb_config,
-		   enum typec_cc_polarity polarity);
-	bool dfp_only;
-	void *priv_data;
 };
 
 /**
@@ -175,7 +162,6 @@ struct tcpc_dev {
 	int (*try_role)(struct tcpc_dev *dev, int role);
 	int (*pd_transmit)(struct tcpc_dev *dev, enum tcpm_transmit_type type,
 			   const struct pd_message *msg);
-	struct tcpc_mux_dev *mux;
 };
 
 struct tcpm_port;
