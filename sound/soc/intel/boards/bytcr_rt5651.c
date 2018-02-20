@@ -49,11 +49,26 @@ enum {
 	BYT_RT5651_JD2		= (RT5651_JD2 << 4),
 };
 
-#define BYT_RT5651_MAP(quirk)	((quirk) & GENMASK(3, 0))
-#define BYT_RT5651_JDSRC(quirk)	(((quirk) & GENMASK(7, 4)) >> 4)
-#define BYT_RT5651_DMIC_EN	BIT(16)
-#define BYT_RT5651_MCLK_EN	BIT(17)
-#define BYT_RT5651_MCLK_25MHZ	BIT(18)
+enum {
+	BYT_RT5651_OVTH_600UA	= (RT5651_OVTH_600UA << 8),
+	BYT_RT5651_OVTH_1500UA	= (RT5651_OVTH_1500UA << 8),
+	BYT_RT5651_OVTH_2000UA	= (RT5651_OVTH_2000UA << 8),
+};
+
+enum {
+	BYT_RT5651_OVCD_SF_0P5	= (RT5651_OVCD_SF_0P5 << 12),
+	BYT_RT5651_OVCD_SF_0P75	= (RT5651_OVCD_SF_0P75 << 12),
+	BYT_RT5651_OVCD_SF_1P0	= (RT5651_OVCD_SF_1P0 << 12),
+	BYT_RT5651_OVCD_SF_1P5	= (RT5651_OVCD_SF_1P5 << 12),
+};
+
+#define BYT_RT5651_MAP(quirk)		((quirk) & GENMASK(3, 0))
+#define BYT_RT5651_JDSRC(quirk)		(((quirk) & GENMASK(7, 4)) >> 4)
+#define BYT_RT5651_OVTH(quirk)		(((quirk) & GENMASK(11, 8)) >> 8)
+#define BYT_RT5651_OVCD_SF(quirk)	(((quirk) & GENMASK(15, 12)) >> 12)
+#define BYT_RT5651_DMIC_EN		BIT(16)
+#define BYT_RT5651_MCLK_EN		BIT(17)
+#define BYT_RT5651_MCLK_25MHZ		BIT(18)
 
 struct byt_rt5651_private {
 	struct clk *mclk;
@@ -73,9 +88,14 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk IN2_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN3_MAP)
 		dev_info(dev, "quirk IN3_MAP enabled");
-	if (BYT_RT5651_JDSRC(byt_rt5651_quirk))
+	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
 		dev_info(dev, "quirk jack-detect src %ld\n",
 			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
+		dev_info(dev, "quirk ovth_curr %ld\n",
+			 BYT_RT5651_OVTH(byt_rt5651_quirk));
+		dev_info(dev, "quirk ovth_sf %ld\n",
+			 BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
+	}
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		dev_info(dev, "quirk DMIC enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
@@ -299,6 +319,8 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
 					BYT_RT5651_JD1_1 |
+					BYT_RT5651_OVTH_2000UA |
+					BYT_RT5651_OVCD_SF_0P75 |
 					BYT_RT5651_IN1_IN2_MAP),
 	},
 	{}
@@ -373,6 +395,8 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	}
 
 	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
+	pdata.ovth_curr = BYT_RT5651_OVTH(byt_rt5651_quirk);
+	pdata.ovth_sf = BYT_RT5651_OVCD_SF(byt_rt5651_quirk);
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		pdata.dmic_en = true;
 	rt5651_set_pdata(codec, &pdata);

@@ -1575,6 +1575,7 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 	regmap_update_bits(rt5651->regmap, RT5651_GPIO_CTRL1,
 			   RT5651_GP1_PIN_MASK, RT5651_GP1_PIN_IRQ);
 
+	/* Select jack detect source */
 	switch (rt5651->pdata.jd_src) {
 	case RT5651_JD1_1:
 		regmap_update_bits(rt5651->regmap, RT5651_JD_CTRL2,
@@ -1607,11 +1608,25 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 		break;
 	}
 
+	/* Enable jack detect power */
 	regmap_update_bits(rt5651->regmap, RT5651_PWR_ANLG2, RT5651_PWR_JD_M,
 			   RT5651_PWR_JD_M);
 
+	/*
+	 * Set OVCD threshold current and scale-factor from pdata.
+	 */
+	regmap_write(rt5651->regmap, RT5651_PR_BASE + RT5651_BIAS_CUR4, 0xa800 |
+		     (rt5651->pdata.ovth_sf << RT5651_MIC_OVCD_SF_SFT));
+
 	regmap_update_bits(rt5651->regmap, RT5651_MICBIAS,
-			   0x38, 0x38);
+			   RT5651_MIC1_OVCD_MASK |
+			   RT5651_MIC1_OVTH_MASK |
+			   RT5651_PWR_CLK12M_MASK |
+			   RT5651_PWR_MB_MASK,
+			   RT5651_MIC1_OVCD_DIS |
+			   (rt5651->pdata.ovth_curr << RT5651_MIC1_OVTH_SFT) |
+			   RT5651_PWR_MB_PU |
+			   RT5651_PWR_CLK12M_PU);
 
 	ret = devm_request_threaded_irq(codec->dev, rt5651->irq, NULL,
 					rt5651_irq,
@@ -1795,14 +1810,8 @@ static int rt5651_jack_detect(struct snd_soc_codec *codec, int jack_insert)
 		snd_soc_dapm_mutex_unlock(dapm);
 
 		snd_soc_update_bits(codec, RT5651_MICBIAS,
-				    RT5651_MIC1_OVCD_MASK |
-				    RT5651_MIC1_OVTH_MASK |
-				    RT5651_PWR_CLK12M_MASK |
-				    RT5651_PWR_MB_MASK,
-				    RT5651_MIC1_OVCD_EN |
-				    RT5651_MIC1_OVTH_600UA |
-				    RT5651_PWR_MB_PU |
-				    RT5651_PWR_CLK12M_PU);
+				    RT5651_MIC1_OVCD_MASK,
+				    RT5651_MIC1_OVCD_EN);
 		msleep(100);
 		if (snd_soc_read(codec, RT5651_IRQ_CTRL2) & RT5651_MB1_OC_CLR)
 			jack_type = SND_JACK_HEADPHONE;
