@@ -149,6 +149,7 @@ struct mt_device {
 
 static void mt_post_parse_default_settings(struct mt_device *td);
 static void mt_post_parse(struct mt_device *td);
+static int cc_seen = 0;
 
 /* classes of device behavior */
 #define MT_CLS_DEFAULT				0x0001
@@ -619,8 +620,12 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			if (field->index >= field->report->maxfield ||
 			    usage->usage_index >= field->report_count)
 				return 1;
-			td->cc_index = field->index;
-			td->cc_value_index = usage->usage_index;
+
+			if(cc_seen != 1) {
+				td->cc_index = field->index;
+				td->cc_value_index = usage->usage_index;
+				cc_seen++;
+			}
 			return 1;
 		case HID_DG_CONTACTMAX:
 			/* we don't set td->last_slot_field as contactcount and
@@ -655,6 +660,16 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	}
 
 	return 0;
+}
+
+static int mt_touch_input_mapped(struct hid_device *hdev, struct hid_input *hi,
+		struct hid_field *field, struct hid_usage *usage,
+		unsigned long **bit, int *max)
+{
+	if (usage->type == EV_KEY || usage->type == EV_ABS)
+		set_bit(usage->type, hi->input->evbit);
+
+	return -1;
 }
 
 static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
@@ -1036,9 +1051,11 @@ static int mt_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	    field->application != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_DG_PEN &&
 	    field->application != HID_DG_TOUCHPAD &&
+		field->application != HID_GD_MOUSE &&
 	    field->application != HID_GD_KEYBOARD &&
 	    field->application != HID_GD_SYSTEM_CONTROL &&
 	    field->application != HID_CP_CONSUMER_CONTROL &&
+		field->logical != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_GD_WIRELESS_RADIO_CTLS &&
 	    !(field->application == HID_VD_ASUS_CUSTOM_MEDIA_KEYS &&
 	      td->mtclass.quirks & MT_QUIRK_ASUS_CUSTOM_UP))
@@ -1101,10 +1118,8 @@ static int mt_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 		return 0;
 
 	if (field->application == HID_DG_TOUCHSCREEN ||
-	    field->application == HID_DG_TOUCHPAD) {
-		/* We own these mappings, tell hid-input to ignore them */
-		return -1;
-	}
+	    field->application == HID_DG_TOUCHPAD)
+		return mt_touch_input_mapped(hdev, hi, field, usage, bit, max);
 
 	/* let hid-core decide for the others */
 	return 0;
@@ -1247,6 +1262,7 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 		suffix = "Pen";
 		/* force BTN_STYLUS to allow tablet matching in udev */
 		__set_bit(BTN_STYLUS, hi->input->keybit);
+        __set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
 	} else {
 		switch (field->application) {
 		case HID_GD_KEYBOARD:
@@ -1262,9 +1278,10 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 			suffix = "Pen";
 			/* force BTN_STYLUS to allow tablet matching in udev */
 			__set_bit(BTN_STYLUS, hi->input->keybit);
+            __set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
 			break;
 		case HID_DG_TOUCHSCREEN:
-			/* we do not set suffix = "Touchscreen" */
+			suffix = "Touchscreen";
 			break;
 		case HID_DG_TOUCHPAD:
 			suffix = "Touchpad";
@@ -1395,6 +1412,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	td->cc_index = -1;
 	td->scantime_index = -1;
 	td->mt_report_id = -1;
+	cc_seen = 0;
 	hid_set_drvdata(hdev, td);
 
 	td->fields = devm_kzalloc(&hdev->dev, sizeof(struct mt_fields),
