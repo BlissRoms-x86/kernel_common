@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/acpi.h>
 #include <linux/clk.h>
 #include <linux/device.h>
@@ -42,10 +43,21 @@ enum {
 	BYT_RT5651_IN3_MAP,
 };
 
-#define BYT_RT5651_MAP(quirk)	((quirk) & GENMASK(7, 0))
-#define BYT_RT5651_DMIC_EN	BIT(16)
-#define BYT_RT5651_MCLK_EN	BIT(17)
-#define BYT_RT5651_MCLK_25MHZ	BIT(18)
+enum {
+	BYT_RT5651_JD_NULL	= (RT5651_JD_NULL << 4),
+	BYT_RT5651_JD1_1	= (RT5651_JD1_1 << 4),
+	BYT_RT5651_JD1_2	= (RT5651_JD1_2 << 4),
+	BYT_RT5651_JD2		= (RT5651_JD2 << 4),
+};
+
+#define BYT_RT5651_MAP(quirk)		((quirk) & GENMASK(3, 0))
+#define BYT_RT5651_JDSRC(quirk)		(((quirk) & GENMASK(7, 4)) >> 4)
+#define BYT_RT5651_DMIC_EN		BIT(16)
+#define BYT_RT5651_MCLK_EN		BIT(17)
+#define BYT_RT5651_MCLK_25MHZ		BIT(18)
+
+/* jack-detect-source + terminating empty entry */
+#define MAX_NO_PROPS 2
 
 struct byt_rt5651_private {
 	struct clk *mclk;
@@ -66,6 +78,9 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk IN2_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN3_MAP)
 		dev_info(dev, "quirk IN3_MAP enabled");
+	if (BYT_RT5651_JDSRC(byt_rt5651_quirk))
+		dev_info(dev, "quirk realtek,jack-detect-source %ld\n",
+			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		dev_info(dev, "quirk DMIC enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
@@ -288,6 +303,7 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "KIANO SlimNote 14.2"),
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
+					BYT_RT5651_JD1_1 |
 					BYT_RT5651_IN1_IN2_MAP),
 	},
 	{}
@@ -298,8 +314,9 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_card *card = runtime->card;
 	struct snd_soc_component *codec = runtime->codec_dai->component;
 	struct byt_rt5651_private *priv = snd_soc_card_get_drvdata(card);
+	struct property_entry props[MAX_NO_PROPS] = {};
 	const struct snd_soc_dapm_route *custom_map;
-	int num_routes;
+	int num_routes, cnt = 0;
 	int ret;
 
 	card->dapm.idle_bias_off = true;
@@ -359,6 +376,13 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 		if (ret)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
+				BYT_RT5651_JDSRC(byt_rt5651_quirk));
+
+	ret = device_add_properties(codec->dev, props);
+	if (ret)
+		return ret;
 
 	ret = snd_soc_card_jack_new(runtime->card, "Headset",
 				    SND_JACK_HEADSET, &priv->jack,

@@ -16,6 +16,12 @@ Optional properties:
 - realtek,dmic-en
   Boolean. true if dmic is used.
 
+- realtek,jack-detect-source
+  u32. Valid values:
+  1: Use JD1_1 pin for jack-dectect
+  2: Use JD1_2 pin for jack-dectect
+  3: Use JD2 pin for jack-dectect
+
 Pins on the device (for linking into audio routes) for RT5651:
 
   * DMIC L1
