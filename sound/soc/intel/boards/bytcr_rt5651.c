@@ -56,8 +56,8 @@ enum {
 #define BYT_RT5651_MCLK_EN		BIT(17)
 #define BYT_RT5651_MCLK_25MHZ		BIT(18)
 
-/* jack-detect-source + terminating empty entry */
-#define MAX_NO_PROPS 2
+/* jack-detect-source + dmic-en + terminating empty entry */
+#define MAX_NO_PROPS 3
 
 struct byt_rt5651_private {
 	struct clk *mclk;
@@ -65,7 +65,6 @@ struct byt_rt5651_private {
 };
 
 static unsigned long byt_rt5651_quirk = BYT_RT5651_DMIC_MAP |
-					BYT_RT5651_DMIC_EN |
 					BYT_RT5651_MCLK_EN;
 
 static void log_quirks(struct device *dev)
@@ -380,9 +379,14 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
 				BYT_RT5651_JDSRC(byt_rt5651_quirk));
 
+	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
+		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,dmic-en");
+
 	ret = device_add_properties(codec->dev, props);
 	if (ret)
 		return ret;
+
+	rt5651_apply_properties(codec);
 
 	ret = snd_soc_card_jack_new(runtime->card, "Headset",
 				    SND_JACK_HEADSET, &priv->jack,
