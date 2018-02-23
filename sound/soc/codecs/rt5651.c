@@ -1592,12 +1592,48 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 			   struct snd_soc_jack *hp_jack, void *data)
 {
 	struct rt5651_priv *rt5651 = snd_soc_component_get_drvdata(component);
+	/*
+	 * Testing on various boards has shown that good defaults for the OVCD
+	 * threshold and scale-factor are 2000µA and 0.75. For an effective
+	 * limit of 1500µA, this seems to be more reliable then 1500µA and 1.0.
+	 */
+	unsigned int ovcd_th = RT5651_MIC1_OVTH_2000UA;
+	unsigned int ovcd_sf = RT5651_MIC_OVCD_SF_0P75;
 	int ret;
 	u32 val;
 
 	if (device_property_read_u32(component->dev,
 				     "realtek,jack-detect-source", &val) == 0)
 		rt5651->jd_src = val;
+
+	if (device_property_read_u32(component->dev,
+			"realtek,over-current-threshold", &val) == 0) {
+		switch (val) {
+		case 600:
+			ovcd_th = RT5651_MIC1_OVTH_600UA;
+			break;
+		case 1500:
+			ovcd_th = RT5651_MIC1_OVTH_1500UA;
+			break;
+		case 2000:
+			ovcd_th = RT5651_MIC1_OVTH_2000UA;
+			break;
+		default:
+			dev_err(component->dev, "Invalid over-current-threshold value: %d\n",
+				val);
+			return -EINVAL;
+		}
+	}
+
+	if (device_property_read_u32(component->dev,
+			"realtek,over-current-scale-factor", &val) == 0) {
+		if (val > RT5651_OVCD_SF_1P5) {
+			dev_err(component->dev, "Invalid over-current-scale-factor value: %d\n",
+				val);
+			return -EINVAL;
+		}
+		ovcd_sf = val << RT5651_MIC_OVCD_SF_SFT;
+	}
 
 	if (!rt5651->irq)
 		return -EINVAL;
@@ -1637,13 +1673,17 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 	snd_soc_component_update_bits(component, RT5651_PWR_ANLG2,
 		RT5651_PWR_JD_M, RT5651_PWR_JD_M);
 
+	/* Set OVCD threshold current and scale-factor */
+	snd_soc_component_write(component, RT5651_PR_BASE + RT5651_BIAS_CUR4,
+				0xa800 | ovcd_sf);
+
 	snd_soc_component_update_bits(component, RT5651_MICBIAS,
 				      RT5651_MIC1_OVCD_MASK |
 				      RT5651_MIC1_OVTH_MASK |
 				      RT5651_PWR_CLK12M_MASK |
 				      RT5651_PWR_MB_MASK,
 				      RT5651_MIC1_OVCD_EN |
-				      RT5651_MIC1_OVTH_600UA |
+				      ovcd_th |
 				      RT5651_PWR_MB_PU |
 				      RT5651_PWR_CLK12M_PU);
 
