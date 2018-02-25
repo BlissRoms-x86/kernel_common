@@ -1555,11 +1555,12 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 		snd_soc_write(codec, RT5651_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5651_PWR_VOL, 0x0000);
 		snd_soc_write(codec, RT5651_PWR_MIXER, 0x0000);
+		/* Do not touch the LDO voltage select bits on bias-off */
+		snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
+			~RT5651_PWR_LDO_DVO_MASK, 0);
 		if (rt5651->jd_src) {
 			snd_soc_write(codec, RT5651_PWR_ANLG2, 0x0204);
-			snd_soc_write(codec, RT5651_PWR_ANLG1, 0x0002);
 		} else {
-			snd_soc_write(codec, RT5651_PWR_ANLG1, 0x0000);
 			snd_soc_write(codec, RT5651_PWR_ANLG2, 0x0000);
 		}
 		break;
