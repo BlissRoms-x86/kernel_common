@@ -1540,9 +1540,6 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
 				RT5651_PWR_FV1 | RT5651_PWR_FV2,
 				RT5651_PWR_FV1 | RT5651_PWR_FV2);
-			snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
-				RT5651_PWR_LDO_DVO_MASK,
-				RT5651_PWR_LDO_DVO_1_2V);
 			snd_soc_update_bits(codec, RT5651_D_MISC, 0x1, 0x1);
 		}
 		break;
@@ -1661,6 +1658,9 @@ static int rt5651_probe(struct snd_soc_codec *codec)
 	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
 
 	rt5651->codec = codec;
+
+	snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
+		RT5651_PWR_LDO_DVO_MASK, RT5651_PWR_LDO_DVO_1_2V);
 
 	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
