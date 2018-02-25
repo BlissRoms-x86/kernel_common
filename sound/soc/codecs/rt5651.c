@@ -1662,16 +1662,6 @@ static int rt5651_probe(struct snd_soc_codec *codec)
 
 	rt5651->codec = codec;
 
-	snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
-		RT5651_PWR_VREF1 | RT5651_PWR_MB |
-		RT5651_PWR_BG | RT5651_PWR_VREF2,
-		RT5651_PWR_VREF1 | RT5651_PWR_MB |
-		RT5651_PWR_BG | RT5651_PWR_VREF2);
-	usleep_range(10000, 15000);
-	snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
-		RT5651_PWR_FV1 | RT5651_PWR_FV2,
-		RT5651_PWR_FV1 | RT5651_PWR_FV2);
-
 	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 
 	rt5651_apply_properties(codec);
