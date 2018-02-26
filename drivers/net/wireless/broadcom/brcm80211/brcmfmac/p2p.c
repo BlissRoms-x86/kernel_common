@@ -462,8 +462,8 @@ static int brcmf_p2p_set_firmware(struct brcmf_if *ifp, u8 *p2p_mac)
  * @dev_addr: optional device address.
  *
  * P2P needs mac addresses for P2P device and interface. If no device
- * address it specified, these are derived from the primary net device, ie.
- * the permanent ethernet address of the device.
+ * address it specified, these are derived from the permanent ethernet
+ * address of the device.
  */
 static void brcmf_p2p_generate_bss_mac(struct brcmf_p2p_info *p2p, u8 *dev_addr)
 {
@@ -471,12 +471,12 @@ static void brcmf_p2p_generate_bss_mac(struct brcmf_p2p_info *p2p, u8 *dev_addr)
 	bool local_admin = false;
 
 	if (!dev_addr || is_zero_ether_addr(dev_addr)) {
-		dev_addr = pri_ifp->mac_addr;
+		dev_addr = pri_ifp->drvr->mac;
 		local_admin = true;
 	}
 
 	/* Generate the P2P Device Address.  This consists of the device's
-	 * primary MAC address with the locally administered bit set.
+	 * permanent ethernet address with the locally administered bit set.
 	 */
 	memcpy(p2p->dev_addr, dev_addr, ETH_ALEN);
 	if (local_admin)
@@ -486,7 +486,7 @@ static void brcmf_p2p_generate_bss_mac(struct brcmf_p2p_info *p2p, u8 *dev_addr)
 	 * BSSCFGs need to simultaneously co-exist, then this address must be
 	 * different from the P2P Device Address, but also locally administered.
 	 */
-	memcpy(p2p->int_addr, p2p->dev_addr, ETH_ALEN);
+	memcpy(p2p->int_addr, dev_addr, ETH_ALEN);
 	p2p->int_addr[0] |= 0x02;
 	p2p->int_addr[4] ^= 0x80;
 }
