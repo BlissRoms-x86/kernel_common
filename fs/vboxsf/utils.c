@@ -24,10 +24,7 @@ void vboxsf_init_inode(struct sf_glob_info *sf_g, struct inode *inode,
 
 #define mode_set(r) ((attr->mode & (SHFL_UNIX_##r)) ? (S_##r) : 0)
 
-	mode = mode_set(ISUID);
-	mode |= mode_set(ISGID);
-
-	mode |= mode_set(IRUSR);
+	mode = mode_set(IRUSR);
 	mode |= mode_set(IWUSR);
 	mode |= mode_set(IXUSR);
 
@@ -226,9 +223,7 @@ int vboxsf_setattr(struct dentry *dentry, struct iattr *iattr)
 	 */
 	if (iattr->ia_valid & (ATTR_MODE | ATTR_ATIME | ATTR_MTIME)) {
 		if (iattr->ia_valid & ATTR_MODE) {
-			info.attr.mode = mode_set(ISUID);
-			info.attr.mode |= mode_set(ISGID);
-			info.attr.mode |= mode_set(IRUSR);
+			info.attr.mode = mode_set(IRUSR);
 			info.attr.mode |= mode_set(IWUSR);
 			info.attr.mode |= mode_set(IXUSR);
 			info.attr.mode |= mode_set(IRGRP);
