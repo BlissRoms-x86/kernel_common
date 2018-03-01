@@ -291,7 +291,9 @@ static int max9867_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 		value |= MAX9867_PSCLK_40_60;
 		max9867->pclk =  freq/4;
 	} else {
-		pr_err("bad clock frequency %d", freq);
+		dev_err(component->dev,
+			"Invalid clock frequency %uHz (required 10-60MHz)\n",
+			freq);
 		return -EINVAL;
 	}
 	value = value << MAX9867_PSCLK_SHIFT;
@@ -323,10 +325,16 @@ static int max9867_dai_set_fmt(struct snd_soc_dai *codec_dai,
 		return -EINVAL;
 	}
 
-	/* for i2s compatible mode */
-	iface1A |= MAX9867_I2S_DLY;
-	/* SDOUT goes to hiz state after all data is transferred */
-	iface1A |= MAX9867_SDOUT_HIZ;
+	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_I2S:
+		iface1A |= MAX9867_I2S_DLY;
+		break;
+	case SND_SOC_DAIFMT_DSP_A:
+		iface1A |= MAX9867_TDM_MODE | MAX9867_SDOUT_HIZ;
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	/* Clock inversion bits, BCI and WCI */
 	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
@@ -367,19 +375,20 @@ static struct snd_soc_dai_driver max9867_dai[] = {
 	.name = "max9867-aif1",
 	.playback = {
 		.stream_name = "HiFi Playback",
-		.channels_min = 1,
+		.channels_min = 2,
 		.channels_max = 2,
 		.rates = MAX9867_RATES,
 		.formats = MAX9867_FORMATS,
 	},
 	.capture = {
 		.stream_name = "HiFi Capture",
-		.channels_min = 1,
+		.channels_min = 2,
 		.channels_max = 2,
 		.rates = MAX9867_RATES,
 		.formats = MAX9867_FORMATS,
 	},
 	.ops = &max9867_dai_ops,
+	.symmetric_rates = 1,
 	}
 };
 
@@ -486,8 +495,7 @@ static int max9867_i2c_probe(struct i2c_client *i2c,
 	max9867->regmap = devm_regmap_init_i2c(i2c, &max9867_regmap);
 	if (IS_ERR(max9867->regmap)) {
 		ret = PTR_ERR(max9867->regmap);
-		dev_err(&i2c->dev,
-				"Failed to allocate regmap: %d\n", ret);
+		dev_err(&i2c->dev, "Failed to allocate regmap: %d\n", ret);
 		return ret;
 	}
 	ret = regmap_read(max9867->regmap,
