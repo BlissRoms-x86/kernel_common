@@ -13,7 +13,6 @@
 #define _RT5640_H
 
 #include <linux/clk.h>
-#include <linux/workqueue.h>
 #include <sound/rt5640.h>
 
 /* Info */
@@ -147,7 +146,6 @@
 
 
 /* Index of Codec Private Register definition */
-#define RT5640_BIAS_CUR4			0x15
 #define RT5640_CHPUMP_INT_REG1			0x24
 #define RT5640_MAMP_INT_REG2			0x37
 #define RT5640_3D_SPK				0x63
@@ -1609,17 +1607,10 @@
 #define RT5640_MB2_OC_P_SFT			6
 #define RT5640_MB2_OC_P_NOR			(0x0 << 6)
 #define RT5640_MB2_OC_P_INV			(0x1 << 6)
-#define RT5640_MB1_OC_STATUS			(0x1 << 3)
-#define RT5640_MB1_OC_STATUS_SFT		3
-#define RT5640_MB2_OC_STATUS			(0x1 << 2)
-#define RT5640_MB2_OC_STATUS_SFT		2
-
-/* GPIO and Internal Status (0xbf) */
-#define RT5640_GPIO1_STATUS			(0x1 << 8)
-#define RT5640_GPIO2_STATUS			(0x1 << 7)
-#define RT5640_JD_STATUS			(0x1 << 4)
-#define RT5640_OVT_STATUS			(0x1 << 3)
-#define RT5640_CLS_D_OVCD_STATUS		(0x1 << 0)
+#define RT5640_MB1_OC_CLR			(0x1 << 3)
+#define RT5640_MB1_OC_CLR_SFT			3
+#define RT5640_MB2_OC_CLR			(0x1 << 2)
+#define RT5640_MB2_OC_CLR_SFT			2
 
 /* GPIO Control 1 (0xc0) */
 #define RT5640_GP1_PIN_MASK			(0x1 << 15)
@@ -1987,15 +1978,6 @@
 #define RT5640_MCLK_DET				(0x1 << 11)
 
 /* Codec Private Register definition */
-
-/* MIC Over current threshold scale factor (0x15) */
-#define RT5640_MIC_OVCD_SF_MASK			(0x3 << 8)
-#define RT5640_MIC_OVCD_SF_SFT			8
-#define RT5640_MIC_OVCD_SF_0P5			(0x0 << 8)
-#define RT5640_MIC_OVCD_SF_0P75			(0x1 << 8)
-#define RT5640_MIC_OVCD_SF_1P0			(0x2 << 8)
-#define RT5640_MIC_OVCD_SF_1P5			(0x3 << 8)
-
 /* 3D Speaker Control (0x63) */
 #define RT5640_3D_SPK_MASK			(0x1 << 15)
 #define RT5640_3D_SPK_SFT			15
@@ -2119,18 +2101,12 @@ enum {
 	RT5640_AD_MONO_R_FILTER = (0x1 << 5),
 };
 
-struct rt5640_jack_data {
-	const char *clk;	/* Platform clock (dapm supply) name */
-	int pin;		/* RT5640_JD_MASK value */
-};
-
 struct rt5640_priv {
 	struct snd_soc_codec *codec;
 	struct rt5640_platform_data pdata;
 	struct regmap *regmap;
 	struct clk *mclk;
 
-	int irq;
 	int sysclk;
 	int sysclk_src;
 	int lrck[RT5640_AIFS];
@@ -2143,18 +2119,6 @@ struct rt5640_priv {
 
 	bool hp_mute;
 	bool asrc_en;
-
-	/* Jack and button detect data */
-	bool ovcd_irq_enabled;
-	bool pressed;
-	bool press_reported;
-	int press_count;
-	int release_count;
-	int poll_count;
-	struct delayed_work bp_work;
-	struct work_struct jack_work;
-	struct snd_soc_jack *jack;
-	const struct rt5640_jack_data *jack_data;
 };
 
 int rt5640_dmic_enable(struct snd_soc_codec *codec,
