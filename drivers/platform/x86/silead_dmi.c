@@ -203,6 +203,21 @@ static const struct silead_ts_dmi_data onda_obook_20_plus_data = {
 	.properties	= onda_obook_20_plus_props,
 };
 
+static const struct property_entry onda_obook_11_pro_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1962),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1542),
+	PROPERTY_ENTRY_BOOL("touchscreen-inverted-x"),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl3676-onda-obook-11-pro.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data onda_obook_11_pro_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= onda_obook_11_pro_props,
+};
+
 static const struct property_entry chuwi_hi8_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-size-x", 1665),
 	PROPERTY_ENTRY_U32("touchscreen-size-y", 1140),
@@ -417,6 +432,14 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "ONDA"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "OBOOK 20 PLUS"),
+		},
+	},
+	{
+		/* Onda oBook 11 Pro */
+		.driver_data = (void *)&onda_obook_11_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "ONDA"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "OBOOK11 PRO"),
 		},
 	},
 	{
