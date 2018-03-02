@@ -60,7 +60,6 @@ struct sst_acpi_mach {
 	struct sst_acpi_mach * (*machine_quirk)(void *arg);
 	const void *quirk_data;
 	void *pdata;
-	bool streams_lost_on_suspend;
 };
 
 #define SST_ACPI_MAX_CODECS 3

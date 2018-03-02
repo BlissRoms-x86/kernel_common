@@ -355,7 +355,6 @@ static int sst_acpi_probe(struct platform_device *pdev)
 
 	/* Fill sst platform data */
 	ctx->pdata = pdata;
-	ctx->streams_lost_on_suspend = mach->streams_lost_on_suspend;
 	strcpy(ctx->firmware_name, mach->fw_filename);
 
 	ret = sst_platform_get_resources(ctx);
@@ -500,7 +499,6 @@ static struct sst_acpi_mach sst_acpi_bytcr[] = {
 		.board = "bytcr_rt5640",
 		.machine_quirk = byt_quirk,
 		.pdata = &byt_rvp_platform_data,
-		.streams_lost_on_suspend = true,
 	},
 	{
 		.id = "10EC5642",

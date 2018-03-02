@@ -179,8 +179,6 @@ struct sst_block {
  *
  * @status : stream current state
  * @prev : stream prev state
- * @resume_status : stream current state to restore on resume
- * @resume_prev : stream prev state to restore on resume
  * @lock : stream mutex for protecting state
  * @alloc_param : parameters used for stream (re-)allocation
  * @pcm_substream : PCM substream
@@ -191,8 +189,6 @@ struct sst_block {
 struct stream_info {
 	unsigned int		status;
 	unsigned int		prev;
-	unsigned int		resume_status;
-	unsigned int		resume_prev;
 	struct mutex		lock;
 	struct snd_sst_alloc_mrfld alloc_param;
 
@@ -354,7 +350,6 @@ struct sst_fw_save {
  * @cp_streams : total active cp streams
  * @audio_start : audio status
  * @qos		: PM Qos struct
- * @streams_lost_on_suspend : SST looses track of streams over a suspend/resume
  * firmware_name : Firmware / Library name
  */
 struct intel_sst_drv {
@@ -403,7 +398,6 @@ struct intel_sst_drv {
 	unsigned int		use_lli;
 	atomic_t		fw_clear_context;
 	bool			lib_dwnld_reqd;
-	bool			streams_lost_on_suspend;
 	struct list_head	memcpy_list;
 	struct sst_ipc_reg	ipc_reg;
 	struct sst_mem_mgr      lib_mem_mgr;
