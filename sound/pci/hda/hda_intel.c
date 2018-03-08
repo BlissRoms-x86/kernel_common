@@ -2202,7 +2202,7 @@ static struct snd_pci_quirk power_save_blacklist[] = {
 	SND_PCI_QUIRK(0x17aa, 0x2227, "Lenovo X1 Carbon 3rd Gen", 0),
 	{}
 };
-#endif /* CONFIG_PM */
+#endif
 
 /* number of codec slots for each chipset: 0 = default slots (i.e. 4) */
 static unsigned int azx_max_codecs[AZX_NUM_DRIVERS] = {
@@ -2215,6 +2215,7 @@ static int azx_probe_continue(struct azx *chip)
 	struct hda_intel *hda = container_of(chip, struct hda_intel, chip);
 	struct hdac_bus *bus = azx_bus(chip);
 	struct pci_dev *pci = chip->pci;
+	const struct snd_pci_quirk *q;
 	int dev = chip->dev_index;
 	int val;
 	int err;
@@ -2302,7 +2303,6 @@ static int azx_probe_continue(struct azx *chip)
 #ifdef CONFIG_PM
 	if (val == -1) {
 		const struct snd_pci_quirk *q;
-
 		val = CONFIG_SND_HDA_POWER_SAVE_DEFAULT;
 		q = snd_pci_quirk_lookup(chip->pci, power_save_blacklist);
 		if (q && val) {
@@ -2311,7 +2311,7 @@ static int azx_probe_continue(struct azx *chip)
 			val = 0;
 		}
 	}
-#endif /* CONFIG_PM */
+#endif
 	snd_hda_set_power_save(&chip->bus, val * 1000);
 	if (azx_has_pm_runtime(chip) || hda->use_vga_switcheroo)
 		pm_runtime_put_autosuspend(&pci->dev);
