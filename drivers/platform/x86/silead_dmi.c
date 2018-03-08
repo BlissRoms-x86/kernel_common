@@ -292,6 +292,20 @@ static const struct silead_ts_dmi_data teclast_x3_plus_data = {
 	.properties	= teclast_x3_plus_props,
 };
 
+static const struct property_entry teclast_x5_pro_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1982),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1527),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl1680-teclast-x5-pro.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data teclast_x5_pro_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= teclast_x5_pro_props,
+};
+
 static const struct property_entry onda_v891w_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-size-x", 1625),
 	PROPERTY_ENTRY_U32("touchscreen-size-y", 1135),
@@ -482,6 +496,15 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "TECLAST"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "X3 Plus"),
 			DMI_MATCH(DMI_BOARD_NAME, "X3 Plus"),
+		},
+	},
+	{
+		/* Teclast X5 Pro */
+		.driver_data = (void *)&teclast_x5_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "TECLAST"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "X5 Pro"),
+			DMI_MATCH(DMI_BOARD_NAME, "X5 Pro"),
 		},
 	},
 	{
