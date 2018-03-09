@@ -35,6 +35,7 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/soc-acpi.h>
+#include <dt-bindings/sound/rt5640.h>
 #include "../../codecs/rt5640.h"
 #include "../atom/sst-atom-controls.h"
 #include "../common/sst-dsp.h"
@@ -49,7 +50,6 @@ enum {
 #define BYT_RT5640_MAP(quirk)	((quirk) &  GENMASK(7, 0))
 /* JACK_PIN values have a 1:1 mapping with RT5640_JD_MASK values */
 #define BYT_RT5640_JACK_PIN(quirk)	((quirk) & GENMASK(15, 13))
-#define BYT_RT5640_DMIC_EN	BIT(16)
 #define BYT_RT5640_MONO_SPEAKER BIT(17)
 #define BYT_RT5640_DIFF_MIC     BIT(18) /* default is single-ended */
 #define BYT_RT5640_SSP2_AIF2    BIT(19) /* default is using AIF1  */
@@ -106,12 +106,6 @@ static void log_quirks(struct device *dev)
 	jack_pin = BYT_RT5640_JACK_PIN(byt_rt5640_quirk);
 	if (jack_pin)
 		dev_info(dev, "quirk jack pin %#x\n", jack_pin);
-	if (byt_rt5640_quirk & BYT_RT5640_DMIC_EN) {
-		if (has_dmic)
-			dev_info(dev, "quirk DMIC enabled\n");
-		else
-			dev_err(dev, "quirk DMIC enabled but no DMIC input set, will be ignored\n");
-	}
 	if (byt_rt5640_quirk & BYT_RT5640_MONO_SPEAKER)
 		dev_info(dev, "quirk MONO_SPEAKER enabled\n");
 	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC) {
@@ -408,7 +402,6 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Venue 8 Pro 5830"),
 		},
 		.driver_data = (void *)(BYT_RT5640_DMIC2_MAP |
-					BYT_RT5640_DMIC_EN |
 					BYT_RT5640_MCLK_EN |
 					RT5640_JD_JD2_IN4N),
 	},
@@ -427,8 +420,7 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Circuitco"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Minnowboard Max B3 PLATFORM"),
 		},
-		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP |
-					BYT_RT5640_DMIC_EN),
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP),
 	},
 	{
 		.callback = byt_rt5640_quirk_cb,
@@ -480,6 +472,17 @@ static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
 
 	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
 		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,in1-differential");
+
+	switch (BYT_RT5640_MAP(byt_rt5640_quirk)) {
+	case BYT_RT5640_DMIC1_MAP:
+		props[cnt++] = PROPERTY_ENTRY_U32("realtek,dmic1-data-pin",
+						  RT5640_DMIC1_DATA_PIN_IN1P);
+		break;
+	case BYT_RT5640_DMIC2_MAP:
+		props[cnt++] = PROPERTY_ENTRY_U32("realtek,dmic2-data-pin",
+						  RT5640_DMIC2_DATA_PIN_IN1N);
+		break;
+	}
 
 	ret = device_add_properties(i2c_dev, props);
 	put_device(i2c_dev);
@@ -572,12 +575,6 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	}
 	if (ret)
 		return ret;
-
-	if (byt_rt5640_quirk & BYT_RT5640_DMIC_EN) {
-		ret = rt5640_dmic_enable(component, 0, 0);
-		if (ret)
-			return ret;
-	}
 
 	if (byt_rt5640_quirk & BYT_RT5640_MCLK_EN) {
 		/*
@@ -894,8 +891,7 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 		byt_rt5640_quirk |= BYT_RT5640_IN1_MAP;
 		byt_rt5640_quirk |= BYT_RT5640_DIFF_MIC;
 	} else {
-		byt_rt5640_quirk |= (BYT_RT5640_DMIC1_MAP |
-				BYT_RT5640_DMIC_EN);
+		byt_rt5640_quirk |= BYT_RT5640_DMIC1_MAP;
 	}
 
 	/* check quirks before creating card */
