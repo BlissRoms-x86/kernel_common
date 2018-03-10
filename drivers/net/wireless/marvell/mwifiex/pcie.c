@@ -310,6 +310,8 @@ static void mwifiex_pcie_remove(struct pci_dev *pdev)
 		mwifiex_init_shutdown_fw(priv, MWIFIEX_FUNC_SHUTDOWN);
 	}
 
+	cancel_work_sync(&card->work);
+
 	mwifiex_remove_card(adapter);
 }
 
@@ -1729,6 +1731,16 @@ static int mwifiex_pcie_process_cmd_complete(struct mwifiex_adapter *adapter)
 	}
 
 	rx_len = get_unaligned_le16(skb->data);
+
+
+	if (rx_len == 0) {
+		mwifiex_dbg(adapter, ERROR,
+				    "0 byte cmdrsp\n");
+		mwifiex_map_pci_memory(adapter, skb, MWIFIEX_UPLD_SIZE,
+					   PCI_DMA_FROMDEVICE);
+		return 0;
+	}
+
 	skb_put(skb, MWIFIEX_UPLD_SIZE - skb->len);
 	skb_trim(skb, rx_len);
 
