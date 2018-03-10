@@ -17,6 +17,7 @@
 #include "acpi_thermal_rel.h"
 
 #define INT3400_THERMAL_TABLE_CHANGED 0x83
+#define INT3400_CHARGER_EVENT         0x86
 
 enum int3400_thermal_uuid {
 	INT3400_THERMAL_PASSIVE_1,
@@ -209,6 +210,8 @@ static void int3400_notify(acpi_handle handle,
 		thermal_prop[4] = NULL;
 		kobject_uevent_env(&priv->thermal->device.kobj, KOBJ_CHANGE,
 				thermal_prop);
+		break;
+	case INT3400_CHARGER_EVENT:
 		break;
 	default:
 		dev_err(&priv->adev->dev, "Unsupported event [0x%x]\n", event);

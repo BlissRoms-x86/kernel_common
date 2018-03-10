@@ -241,7 +241,7 @@ acpi_status acpi_tb_load_namespace(void)
 	if (!tables_failed) {
 		ACPI_INFO(("%u ACPI AML tables successfully acquired and loaded", tables_loaded));
 	} else {
-		ACPI_ERROR((AE_INFO,
+		ACPI_WARNING((AE_INFO,
 			    "%u table load failures, %u successful",
 			    tables_failed, tables_loaded));
 
