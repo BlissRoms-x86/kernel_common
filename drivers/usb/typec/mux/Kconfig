@@ -1,0 +1,18 @@
+
+menu "USB Type-C Multiplexer/DeMultiplexer Switch support"
+
+config TYPEC_MUX_PI3USB302
+	tristate "Pericom PI3USB302_A Mux/DeMux Switch"
+	help
+	  Say Y or M if your system has Pericom PI3USB302_A 2-differential
+	  channel bi-directional multiplexer/demultiplexer switch for USB 3.0
+	  signals.
+
+config TYPEC_MUX_PI3USB30532
+	tristate "Pericom PI3USB30532 Type-C cross switch driver"
+	depends on I2C
+	help
+	  Say Y or M if your system has a Pericom PI3USB30532 Type-C cross
+	  switch / mux chip found on some devices with a Type-C port.
+
+endmenu
