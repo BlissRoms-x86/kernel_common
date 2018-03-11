@@ -256,7 +256,7 @@ static int __i2c_hid_command(struct i2c_client *client,
 	ret = 0;
 
 	if (wait && (ihid->quirks & I2C_HID_QUIRK_NO_IRQ_AFTER_RESET)) {
-		msleep(100);
+		msleep(200);
 	} else if (wait) {
 		i2c_hid_dbg(ihid, "%s: waiting...\n", __func__);
 		if (!wait_event_timeout(ihid->wait,

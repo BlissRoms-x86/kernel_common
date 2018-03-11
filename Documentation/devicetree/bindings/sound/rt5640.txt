@@ -22,6 +22,16 @@ Optional properties:
 
 - realtek,ldo1-en-gpios : The GPIO that controls the CODEC's LDO1_EN pin.
 
+- realtek,dmic1-data-pin
+  0: dmic1 is not used
+  1: using IN1P pin as dmic1 data pin
+  2: using GPIO3 pin as dmic1 data pin
+
+- realtek,dmic2-data-pin
+  0: dmic2 is not used
+  1: using IN1N pin as dmic2 data pin
+  2: using GPIO4 pin as dmic2 data pin
+
 Pins on the device (for linking into audio routes) for RT5639/RT5640:
 
   * DMIC1
