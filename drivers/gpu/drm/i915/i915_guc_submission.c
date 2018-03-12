@@ -88,6 +88,7 @@ static inline bool is_high_priority(struct i915_guc_client* client)
 
 static int __reserve_doorbell(struct i915_guc_client *client)
 {
+	struct drm_i915_private *dev_priv = guc_to_i915(client->guc);
 	unsigned long offset;
 	unsigned long end;
 	u16 id;
@@ -100,10 +101,15 @@ static int __reserve_doorbell(struct i915_guc_client *client)
 	 * priority contexts, the second half for high-priority ones.
 	 */
 	offset = 0;
-	end = GUC_NUM_DOORBELLS/2;
-	if (is_high_priority(client)) {
-		offset = end;
-		end += offset;
+	if (IS_SKYLAKE(dev_priv)) {
+		end = GUC_NUM_DOORBELLS;
+	}
+	else {
+		end = GUC_NUM_DOORBELLS/2;
+		if (is_high_priority(client)) {
+			offset = end;
+			end += offset;
+		}
 	}
 
 	id = find_next_zero_bit(client->guc->doorbell_bitmap, end, offset);
@@ -1194,7 +1200,7 @@ int i915_guc_ipts_submission_enable(struct drm_i915_private *dev_priv,
 	/* client for execbuf submission */
 	client = guc_client_alloc(dev_priv,
 				  INTEL_INFO(dev_priv)->ring_mask,
-				  GUC_CLIENT_PRIORITY_NORMAL,
+				  IS_SKYLAKE(dev_priv) ? GUC_CLIENT_PRIORITY_HIGH : GUC_CLIENT_PRIORITY_NORMAL,
 				  ctx);
 	if (!client) {
 		DRM_ERROR("Failed to create normal GuC client!\n");
