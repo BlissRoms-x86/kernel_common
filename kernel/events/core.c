@@ -397,8 +397,13 @@ static cpumask_var_t perf_online_mask;
  *   0 - disallow raw tracepoint access for unpriv
  *   1 - disallow cpu events for unpriv
  *   2 - disallow kernel profiling for unpriv
+ *   3 - disallow all unpriv perf event use
  */
+#ifdef CONFIG_SECURITY_PERF_EVENTS_RESTRICT
+int sysctl_perf_event_paranoid __read_mostly = 3;
+#else
 int sysctl_perf_event_paranoid __read_mostly = 2;
+#endif
 
 /* Minimum for 512 kiB + 1 user control page */
 int sysctl_perf_event_mlock __read_mostly = 512 + (PAGE_SIZE / 1024); /* 'free' kiB per user */
@@ -4233,7 +4238,7 @@ static void perf_remove_from_owner(struct perf_event *event)
 	 * indeed free this event, otherwise we need to serialize on
 	 * owner->perf_event_mutex.
 	 */
-	owner = lockless_dereference(event->owner);
+	owner = READ_ONCE(event->owner);
 	if (owner) {
 		/*
 		 * Since delayed_put_task_struct() also drops the last
@@ -4330,7 +4335,7 @@ again:
 		 * Cannot change, child events are not migrated, see the
 		 * comment with perf_event_ctx_lock_nested().
 		 */
-		ctx = lockless_dereference(child->ctx);
+		ctx = READ_ONCE(child->ctx);
 		/*
 		 * Since child_mutex nests inside ctx::mutex, we must jump
 		 * through hoops. We start by grabbing a reference on the ctx.
@@ -4433,6 +4438,8 @@ static int __perf_read_group_add(struct perf_event *leader,
 	if (ret)
 		return ret;
 
+	raw_spin_lock_irqsave(&ctx->lock, flags);
+
 	/*
 	 * Since we co-schedule groups, {enabled,running} times of siblings
 	 * will be identical to those of the leader, so we only publish one
@@ -4454,8 +4461,6 @@ static int __perf_read_group_add(struct perf_event *leader,
 	values[n++] += perf_event_count(leader);
 	if (read_format & PERF_FORMAT_ID)
 		values[n++] = primary_event_id(leader);
-
-	raw_spin_lock_irqsave(&ctx->lock, flags);
 
 	list_for_each_entry(sub, &leader->sibling_list, group_entry) {
 		values[n++] += perf_event_count(sub);
@@ -6719,6 +6724,7 @@ static void perf_event_namespaces_output(struct perf_event *event,
 	struct perf_namespaces_event *namespaces_event = data;
 	struct perf_output_handle handle;
 	struct perf_sample_data sample;
+	u16 header_size = namespaces_event->event_id.header.size;
 	int ret;
 
 	if (!perf_event_namespaces_match(event))
@@ -6729,7 +6735,7 @@ static void perf_event_namespaces_output(struct perf_event *event,
 	ret = perf_output_begin(&handle, event,
 				namespaces_event->event_id.header.size);
 	if (ret)
-		return;
+		goto out;
 
 	namespaces_event->event_id.pid = perf_event_pid(event,
 							namespaces_event->task);
@@ -6741,6 +6747,8 @@ static void perf_event_namespaces_output(struct perf_event *event,
 	perf_event__output_id_sample(event, &handle, &sample);
 
 	perf_output_end(&handle);
+out:
+	namespaces_event->event_id.header.size = header_size;
 }
 
 static void perf_fill_ns_link_info(struct perf_ns_link_info *ns_link_info,
@@ -6756,6 +6764,7 @@ static void perf_fill_ns_link_info(struct perf_ns_link_info *ns_link_info,
 		ns_inode = ns_path.dentry->d_inode;
 		ns_link_info->dev = new_encode_dev(ns_inode->i_sb->s_dev);
 		ns_link_info->ino = ns_inode->i_ino;
+		path_put(&ns_path);
 	}
 }
 
@@ -9928,6 +9937,9 @@ SYSCALL_DEFINE5(perf_event_open,
 	/* for future expandability... */
 	if (flags & ~PERF_FLAG_ALL)
 		return -EINVAL;
+
+	if (perf_paranoid_any() && !capable(CAP_SYS_ADMIN))
+		return -EACCES;
 
 	err = perf_copy_attr(attr_uptr, &attr);
 	if (err)

@@ -26,6 +26,7 @@
  * any later version.
  */
 
+#include <linux/dmi.h>
 #include <linux/hid.h>
 #include <linux/module.h>
 #include <linux/input/mt.h>
@@ -67,6 +68,7 @@ MODULE_DESCRIPTION("Asus HID Keyboard and TouchPad");
 #define QUIRK_USE_KBD_BACKLIGHT		BIT(5)
 #define QUIRK_T100_KEYBOARD		BIT(6)
 #define QUIRK_T100CHI			BIT(7)
+#define QUIRK_G752_KEYBOARD		BIT(8)
 
 #define I2C_KEYBOARD_QUIRKS			(QUIRK_FIX_NOTEBOOK_REPORT | \
 						 QUIRK_NO_INIT_REPORTS | \
@@ -114,6 +116,15 @@ static const struct asus_touchpad_info asus_t100ta_tp = {
 	.max_y = 1120,
 	.res_x = 30, /* units/mm */
 	.res_y = 27, /* units/mm */
+	.contact_size = 5,
+	.max_contacts = 5,
+};
+
+static const struct asus_touchpad_info asus_t100ha_tp = {
+	.max_x = 2640,
+	.max_y = 1320,
+	.res_x = 30, /* units/mm */
+	.res_y = 29, /* units/mm */
 	.contact_size = 5,
 	.max_contacts = 5,
 };
@@ -605,7 +616,14 @@ static int asus_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 		if (intf->altsetting->desc.bInterfaceNumber == T100_TPAD_INTF) {
 			drvdata->quirks = QUIRK_SKIP_INPUT_MAPPING;
-			drvdata->tp = &asus_t100ta_tp;
+			/*
+			 * The T100HA uses the same USB-ids as the T100TAF,
+			 * but has different max_x / max_y values.
+			 */
+			if (dmi_match(DMI_PRODUCT_NAME, "T100HAN"))
+				drvdata->tp = &asus_t100ha_tp;
+			else
+				drvdata->tp = &asus_t100ta_tp;
 		}
 	}
 
@@ -670,6 +688,11 @@ static void asus_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 }
 
+static const __u8 asus_g752_fixed_rdesc[] = {
+        0x19, 0x00,			/*   Usage Minimum (0x00)       */
+        0x2A, 0xFF, 0x00,		/*   Usage Maximum (0xFF)       */
+};
+
 static __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		unsigned int *rsize)
 {
@@ -708,6 +731,27 @@ static __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		rdesc[391] = 0xff;
 		rdesc[402] = 0x00;
 	}
+	if (drvdata->quirks & QUIRK_G752_KEYBOARD &&
+		 *rsize == 75 && rdesc[61] == 0x15 && rdesc[62] == 0x00) {
+		/* report is missing usage mninum and maximum */
+		__u8 *new_rdesc;
+		size_t new_size = *rsize + sizeof(asus_g752_fixed_rdesc);
+
+		new_rdesc = devm_kzalloc(&hdev->dev, new_size, GFP_KERNEL);
+		if (new_rdesc == NULL)
+			return rdesc;
+
+		hid_info(hdev, "Fixing up Asus G752 keyb report descriptor\n");
+		/* copy the valid part */
+		memcpy(new_rdesc, rdesc, 61);
+		/* insert missing part */
+		memcpy(new_rdesc + 61, asus_g752_fixed_rdesc, sizeof(asus_g752_fixed_rdesc));
+		/* copy remaining data */
+		memcpy(new_rdesc + 61 + sizeof(asus_g752_fixed_rdesc), rdesc + 61, *rsize - 61);
+
+		*rsize = new_size;
+		rdesc = new_rdesc;
+	}
 
 	return rdesc;
 }
@@ -722,7 +766,12 @@ static const struct hid_device_id asus_devices[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
 		USB_DEVICE_ID_ASUSTEK_ROG_KEYBOARD2), QUIRK_USE_KBD_BACKLIGHT },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
-		USB_DEVICE_ID_ASUSTEK_T100_KEYBOARD),
+		USB_DEVICE_ID_ASUSTEK_ROG_KEYBOARD3), QUIRK_G752_KEYBOARD },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
+		USB_DEVICE_ID_ASUSTEK_T100TA_KEYBOARD),
+	  QUIRK_T100_KEYBOARD | QUIRK_NO_CONSUMER_USAGES },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
+		USB_DEVICE_ID_ASUSTEK_T100TAF_KEYBOARD),
 	  QUIRK_T100_KEYBOARD | QUIRK_NO_CONSUMER_USAGES },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_CHICONY, USB_DEVICE_ID_ASUS_AK1D) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_TURBOX, USB_DEVICE_ID_ASUS_MD_5110) },

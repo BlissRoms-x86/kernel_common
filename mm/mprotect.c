@@ -166,7 +166,7 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 		next = pmd_addr_end(addr, end);
 		if (!is_swap_pmd(*pmd) && !pmd_trans_huge(*pmd) && !pmd_devmap(*pmd)
 				&& pmd_none_or_clear_bad(pmd))
-			continue;
+			goto next;
 
 		/* invoke the mmu notifier if the pmd is populated */
 		if (!mni_start) {
@@ -188,7 +188,7 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 					}
 
 					/* huge pmd was handled */
-					continue;
+					goto next;
 				}
 			}
 			/* fall through, the trans huge pmd just split */
@@ -196,6 +196,8 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 		this_pages = change_pte_range(vma, pmd, addr, next, newprot,
 				 dirty_accountable, prot_numa);
 		pages += this_pages;
+next:
+		cond_resched();
 	} while (pmd++, addr = next, addr != end);
 
 	if (mni_start)
@@ -333,7 +335,7 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
 	*pprev = vma_merge(mm, *pprev, start, end, newflags,
 			   vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
-			   vma->vm_userfaultfd_ctx);
+			   vma->vm_userfaultfd_ctx, vma_get_anon_name(vma));
 	if (*pprev) {
 		vma = *pprev;
 		VM_WARN_ON((vma->vm_flags ^ newflags) & ~VM_SOFTDIRTY);

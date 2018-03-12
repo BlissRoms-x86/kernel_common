@@ -30,7 +30,6 @@
 #include <linux/proc_fs.h>
 #include <linux/security.h>
 #include <linux/ctype.h>
-#include <linux/kmemcheck.h>
 #include <linux/kmemleak.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -328,6 +327,50 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= sched_proc_update_handler,
 		.extra1		= &min_sched_granularity_ns,
 		.extra2		= &max_sched_granularity_ns,
+	},
+#ifdef CONFIG_SCHED_WALT
+	{
+		.procname	= "sched_use_walt_cpu_util",
+		.data		= &sysctl_sched_use_walt_cpu_util,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_use_walt_task_util",
+		.data		= &sysctl_sched_use_walt_task_util,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_walt_init_task_load_pct",
+		.data		= &sysctl_sched_walt_init_task_load_pct,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_walt_cpu_high_irqload",
+		.data		= &sysctl_sched_walt_cpu_high_irqload,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+#endif
+	{
+		.procname	= "sched_sync_hint_enable",
+		.data		= &sysctl_sched_sync_hint_enable,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_cstate_aware",
+		.data		= &sysctl_sched_cstate_aware,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "sched_wakeup_granularity_ns",
@@ -1174,15 +1217,6 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &one_thousand,
 	},
 #endif
-#ifdef CONFIG_KMEMCHECK
-	{
-		.procname	= "kmemcheck",
-		.data		= &kmemcheck_enabled,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-#endif
 	{
 		.procname	= "panic_on_warn",
 		.data		= &panic_on_warn,
@@ -1822,7 +1856,7 @@ static struct ctl_table fs_table[] = {
 	{
 		.procname	= "pipe-max-size",
 		.data		= &pipe_max_size,
-		.maxlen		= sizeof(int),
+		.maxlen		= sizeof(pipe_max_size),
 		.mode		= 0644,
 		.proc_handler	= &pipe_proc_fn,
 		.extra1		= &pipe_min_size,

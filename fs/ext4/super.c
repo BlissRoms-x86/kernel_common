@@ -703,6 +703,37 @@ void __ext4_warning_inode(const struct inode *inode, const char *function,
 	va_end(args);
 }
 
+void __ext4_corrupted_block_group(struct super_block *sb, ext4_group_t group,
+				  unsigned int flags, const char *function,
+				  unsigned int line)
+{
+	struct ext4_sb_info *sbi = EXT4_SB(sb);
+	struct ext4_group_info *grp = ext4_get_group_info(sb, group);
+	struct ext4_group_desc *gdp = ext4_get_group_desc(sb, group, NULL);
+
+	if (flags & EXT4_GROUP_INFO_BBITMAP_CORRUPT &&
+	    !EXT4_MB_GRP_BBITMAP_CORRUPT(grp)) {
+		percpu_counter_sub(&sbi->s_freeclusters_counter,
+					grp->bb_free);
+		set_bit(EXT4_GROUP_INFO_BBITMAP_CORRUPT_BIT,
+			&grp->bb_state);
+	}
+
+	if (flags & EXT4_GROUP_INFO_IBITMAP_CORRUPT &&
+	    !EXT4_MB_GRP_IBITMAP_CORRUPT(grp)) {
+		if (gdp) {
+			int count;
+
+			count = ext4_free_inodes_count(sb, gdp);
+			percpu_counter_sub(&sbi->s_freeinodes_counter,
+					   count);
+		}
+		set_bit(EXT4_GROUP_INFO_IBITMAP_CORRUPT_BIT,
+			&grp->bb_state);
+	}
+	save_error_info(sb, function, line);
+}
+
 void __ext4_grp_locked_error(const char *function, unsigned int line,
 			     struct super_block *sb, ext4_group_t grp,
 			     unsigned long ino, ext4_fsblk_t block,
@@ -742,6 +773,7 @@ __acquires(bitlock)
 	}
 
 	ext4_unlock_group(sb, grp);
+	ext4_commit_super(sb, 1);
 	ext4_handle_error(sb);
 	/*
 	 * We only get here in the ERRORS_RO case; relocking the group
@@ -1181,7 +1213,8 @@ static int ext4_set_context(struct inode *inode, const void *ctx, size_t len,
 			ext4_clear_inode_state(inode,
 					EXT4_STATE_MAY_INLINE_DATA);
 			/*
-			 * Update inode->i_flags - e.g. S_DAX may get disabled
+			 * Update inode->i_flags - S_ENCRYPTED will be enabled,
+			 * S_DAX may be disabled
 			 */
 			ext4_set_inode_flags(inode);
 		}
@@ -1206,7 +1239,10 @@ retry:
 				    ctx, len, 0);
 	if (!res) {
 		ext4_set_inode_flag(inode, EXT4_INODE_ENCRYPT);
-		/* Update inode->i_flags - e.g. S_DAX may get disabled */
+		/*
+		 * Update inode->i_flags - S_ENCRYPTED will be enabled,
+		 * S_DAX may be disabled
+		 */
 		ext4_set_inode_flags(inode);
 		res = ext4_mark_inode_dirty(handle, inode);
 		if (res)
@@ -1237,13 +1273,8 @@ static const struct fscrypt_operations ext4_cryptops = {
 	.get_context		= ext4_get_context,
 	.set_context		= ext4_set_context,
 	.dummy_context		= ext4_dummy_context,
-	.is_encrypted		= ext4_encrypted_inode,
 	.empty_dir		= ext4_empty_dir,
 	.max_namelen		= ext4_max_namelen,
-};
-#else
-static const struct fscrypt_operations ext4_cryptops = {
-	.is_encrypted		= ext4_encrypted_inode,
 };
 #endif
 
@@ -3708,6 +3739,11 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	if (sbi->s_mount_opt & EXT4_MOUNT_DAX) {
+		if (ext4_has_feature_inline_data(sb)) {
+			ext4_msg(sb, KERN_ERR, "Cannot use DAX on a filesystem"
+					" that may contain inline data");
+			goto failed_mount;
+		}
 		err = bdev_dax_supported(sb, blocksize);
 		if (err)
 			goto failed_mount;
@@ -3996,7 +4032,9 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_op = &ext4_sops;
 	sb->s_export_op = &ext4_export_ops;
 	sb->s_xattr = ext4_xattr_handlers;
+#ifdef CONFIG_EXT4_FS_ENCRYPTION
 	sb->s_cop = &ext4_cryptops;
+#endif
 #ifdef CONFIG_QUOTA
 	sb->dq_op = &ext4_quota_operations;
 	if (ext4_has_feature_quota(sb))

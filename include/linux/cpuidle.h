@@ -214,7 +214,7 @@ static inline void cpuidle_use_deepest_state(bool enable)
 #endif
 
 /* kernel/sched/idle.c */
-extern void sched_idle_set_state(struct cpuidle_state *idle_state);
+extern void sched_idle_set_state(struct cpuidle_state *idle_state, int index);
 extern void default_idle_call(void);
 
 #ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
@@ -225,7 +225,7 @@ static inline void cpuidle_coupled_parallel_barrier(struct cpuidle_device *dev, 
 }
 #endif
 
-#ifdef CONFIG_ARCH_HAS_CPU_RELAX
+#if defined(CONFIG_CPU_IDLE) && defined(CONFIG_ARCH_HAS_CPU_RELAX)
 void cpuidle_poll_state_init(struct cpuidle_driver *drv);
 #else
 static inline void cpuidle_poll_state_init(struct cpuidle_driver *drv) {}
