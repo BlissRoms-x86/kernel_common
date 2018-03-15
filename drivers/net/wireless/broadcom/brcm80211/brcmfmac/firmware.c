@@ -14,6 +14,8 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/dmi.h>
+#include <linux/efi.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/device.h>
@@ -446,6 +448,67 @@ struct brcmf_fw {
 		     void *nvram_image, u32 nvram_len);
 };
 
+#ifdef CONFIG_EFI
+static u8 *brcmf_fw_nvram_from_efi(size_t *data_len_ret)
+{
+	const u16 name[] = { 'n', 'v', 'r', 'a', 'm', 0 };
+	struct efivar_entry *nvram_efivar;
+	unsigned long data_len = 0;
+	u8 *data = NULL;
+	char *ccode;
+	int err;
+
+	/* So far only Asus devices store the nvram in an EFI var */
+	if (!dmi_name_in_vendors("ASUSTeK COMPUTER INC."))
+		return NULL;
+
+	nvram_efivar = kzalloc(sizeof(*nvram_efivar), GFP_KERNEL);
+	if (!nvram_efivar)
+		return NULL;
+
+	memcpy(&nvram_efivar->var.VariableName, name, sizeof(name));
+	nvram_efivar->var.VendorGuid = EFI_GUID(0x74b00bd9, 0x805a, 0x4d61,
+						0xb5, 0x1f, 0x43, 0x26,
+						0x81, 0x23, 0xd1, 0x13);
+
+	err = efivar_entry_size(nvram_efivar, &data_len);
+	if (err)
+		goto fail;
+
+	data = kmalloc(data_len, GFP_KERNEL);
+	if (!data)
+		goto fail;
+
+	err = efivar_entry_get(nvram_efivar, NULL, &data_len, data);
+	if (err)
+		goto fail;
+
+	/* In some cases the EFI-var stored nvram contains "ccode=ALL" but
+	 * the firmware does not understand "ALL" change this to "XV" which
+	 * is the correct way to specify the "worldwide" compatible settings.
+	 */
+	ccode = strnstr((char *)data, "ccode=ALL", data_len);
+	if (ccode) {
+		ccode[6] = 'X';
+		ccode[7] = 'V';
+		ccode[8] = '\n';
+	}
+
+	brcmf_info("Using nvram EFI variable\n");
+
+	kfree(nvram_efivar);
+	*data_len_ret = data_len;
+	return data;
+
+fail:
+	kfree(data);
+	kfree(nvram_efivar);
+	return NULL;
+}
+#else
+static u8 *brcmf_fw_nvram_from_efi(size_t *data_len) { return NULL; }
+#endif
+
 static void brcmf_fw_request_nvram_done(const struct firmware *fw, void *ctx)
 {
 	struct brcmf_fw *fwctx = ctx;
@@ -462,6 +525,8 @@ static void brcmf_fw_request_nvram_done(const struct firmware *fw, void *ctx)
 		raw_nvram = false;
 	} else {
 		data = bcm47xx_nvram_get_contents(&data_len);
+		if (!data)
+			data = brcmf_fw_nvram_from_efi(&data_len);
 		if (!data && !(fwctx->flags & BRCMF_FW_REQ_NV_OPTIONAL))
 			goto fail;
 		raw_nvram = true;
@@ -472,7 +537,8 @@ static void brcmf_fw_request_nvram_done(const struct firmware *fw, void *ctx)
 					     fwctx->domain_nr, fwctx->bus_nr);
 
 	if (raw_nvram)
-		bcm47xx_nvram_release_contents(data);
+		kvfree(data); /* vfree for bcm47xx case / kfree for efi case */
+
 	release_firmware(fw);
 	if (!nvram && !(fwctx->flags & BRCMF_FW_REQ_NV_OPTIONAL))
 		goto fail;

@@ -126,6 +126,10 @@ struct bcm_data {
 static DEFINE_MUTEX(bcm_device_lock);
 static LIST_HEAD(bcm_device_list);
 
+static int irq_polarity = -1;
+module_param(irq_polarity, int, 0444);
+MODULE_PARM_DESC(irq_polarity, "IRQ polarity 0: active-high 1: active-low");
+
 static inline void host_set_baudrate(struct hci_uart *hu, unsigned int speed)
 {
 	if (hu->serdev)
@@ -244,7 +248,9 @@ static irqreturn_t bcm_host_wake(int irq, void *data)
 
 	bt_dev_dbg(bdev, "Host wake IRQ");
 
-	pm_request_resume(bdev->dev);
+	pm_runtime_get(bdev->dev);
+	pm_runtime_mark_last_busy(bdev->dev);
+	pm_runtime_put_autosuspend(bdev->dev);
 
 	return IRQ_HANDLED;
 }
@@ -301,7 +307,7 @@ static const struct bcm_set_sleep_mode default_sleep_params = {
 	.usb_auto_sleep = 0,
 	.usb_resume_timeout = 0,
 	.break_to_host = 0,
-	.pulsed_host_wake = 0,
+	.pulsed_host_wake = 1,
 };
 
 static int bcm_setup_sleep(struct hci_uart *hu)
@@ -586,8 +592,11 @@ static int bcm_recv(struct hci_uart *hu, const void *data, int count)
 	} else if (!bcm->rx_skb) {
 		/* Delay auto-suspend when receiving completed packet */
 		mutex_lock(&bcm_device_lock);
-		if (bcm->dev && bcm_device_exists(bcm->dev))
-			pm_request_resume(bcm->dev->dev);
+		if (bcm->dev && bcm_device_exists(bcm->dev)) {
+			pm_runtime_get(bcm->dev->dev);
+			pm_runtime_mark_last_busy(bcm->dev->dev);
+			pm_runtime_put_autosuspend(bcm->dev->dev);
+		}
 		mutex_unlock(&bcm_device_lock);
 	}
 
@@ -765,47 +774,27 @@ unlock:
 }
 #endif
 
-static const struct acpi_gpio_params int_last_device_wakeup_gpios = { 0, 0, false };
-static const struct acpi_gpio_params int_last_shutdown_gpios = { 1, 0, false };
-static const struct acpi_gpio_params int_last_host_wakeup_gpios = { 2, 0, false };
+static const struct acpi_gpio_params first_gpio = { 0, 0, false };
+static const struct acpi_gpio_params second_gpio = { 1, 0, false };
+static const struct acpi_gpio_params third_gpio = { 2, 0, false };
 
 static const struct acpi_gpio_mapping acpi_bcm_int_last_gpios[] = {
-	{ "device-wakeup-gpios", &int_last_device_wakeup_gpios, 1 },
-	{ "shutdown-gpios", &int_last_shutdown_gpios, 1 },
-	{ "host-wakeup-gpios", &int_last_host_wakeup_gpios, 1 },
+	{ "device-wakeup-gpios", &first_gpio, 1 },
+	{ "shutdown-gpios", &second_gpio, 1 },
+	{ "host-wakeup-gpios", &third_gpio, 1 },
 	{ },
 };
 
-static const struct acpi_gpio_params int_first_host_wakeup_gpios = { 0, 0, false };
-static const struct acpi_gpio_params int_first_device_wakeup_gpios = { 1, 0, false };
-static const struct acpi_gpio_params int_first_shutdown_gpios = { 2, 0, false };
-
 static const struct acpi_gpio_mapping acpi_bcm_int_first_gpios[] = {
-	{ "device-wakeup-gpios", &int_first_device_wakeup_gpios, 1 },
-	{ "shutdown-gpios", &int_first_shutdown_gpios, 1 },
-	{ "host-wakeup-gpios", &int_first_host_wakeup_gpios, 1 },
+	{ "host-wakeup-gpios", &first_gpio, 1 },
+	{ "device-wakeup-gpios", &second_gpio, 1 },
+	{ "shutdown-gpios", &third_gpio, 1 },
 	{ },
 };
 
 #ifdef CONFIG_ACPI
 /* IRQ polarity of some chipsets are not defined correctly in ACPI table. */
 static const struct dmi_system_id bcm_active_low_irq_dmi_table[] = {
-	{
-		.ident = "Asus T100TA",
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR,
-					"ASUSTeK COMPUTER INC."),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TA"),
-		},
-	},
-	{
-		.ident = "Asus T100CHI",
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR,
-					"ASUSTeK COMPUTER INC."),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100CHI"),
-		},
-	},
 	{	/* Handle ThinkPad 8 tablets with BCM2E55 chipset ACPI ID */
 		.ident = "Lenovo ThinkPad 8",
 		.matches = {
@@ -833,7 +822,9 @@ static int bcm_resource(struct acpi_resource *ares, void *data)
 	switch (ares->type) {
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ:
 		irq = &ares->data.extended_irq;
-		dev->irq_active_low = irq->polarity == ACPI_ACTIVE_LOW;
+		if (irq->polarity != ACPI_ACTIVE_LOW)
+			dev_info(dev->dev, "ACPI Interrupt resource is active-high, this is usually wrong, treating the IRQ as active-low\n");
+		dev->irq_active_low = true;
 		break;
 
 	case ACPI_RESOURCE_TYPE_GPIO:
@@ -984,11 +975,17 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 	}
 	acpi_dev_free_resource_list(&resources);
 
-	dmi_id = dmi_first_match(bcm_active_low_irq_dmi_table);
-	if (dmi_id) {
-		dev_warn(dev->dev, "%s: Overwriting IRQ polarity to active low",
-			    dmi_id->ident);
-		dev->irq_active_low = true;
+	if (irq_polarity != -1) {
+		dev->irq_active_low = irq_polarity;
+		dev_warn(dev->dev, "Overwriting IRQ polarity to active %s by module-param\n",
+			 dev->irq_active_low ? "low" : "high");
+	} else {
+		dmi_id = dmi_first_match(bcm_active_low_irq_dmi_table);
+		if (dmi_id) {
+			dev_warn(dev->dev, "%s: Overwriting IRQ polarity to active low",
+				 dmi_id->ident);
+			dev->irq_active_low = true;
+		}
 	}
 
 	return 0;
@@ -1090,6 +1087,7 @@ static const struct acpi_device_id bcm_acpi_match[] = {
 	{ "BCM2E7B", (kernel_ulong_t)&acpi_bcm_int_last_gpios },
 	{ "BCM2E7C", (kernel_ulong_t)&acpi_bcm_int_last_gpios },
 	{ "BCM2E7E", (kernel_ulong_t)&acpi_bcm_int_first_gpios },
+	{ "BCM2E84", (kernel_ulong_t)&acpi_bcm_int_last_gpios },
 	{ "BCM2E95", (kernel_ulong_t)&acpi_bcm_int_first_gpios },
 	{ "BCM2E96", (kernel_ulong_t)&acpi_bcm_int_first_gpios },
 	{ "BCM2EA4", (kernel_ulong_t)&acpi_bcm_int_first_gpios },
