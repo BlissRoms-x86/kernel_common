@@ -464,7 +464,7 @@ static int bcm_close(struct hci_uart *hu)
 		err = bcm_gpio_set_power(bdev, false);
 		if (err)
 			bt_dev_err(hu->hdev, "Failed to power down");
-		else
+		else if (IS_ENABLED(CONFIG_PM) && bdev->irq > 0)
 			pm_runtime_set_suspended(bdev->dev);
 	}
 	mutex_unlock(&bcm_device_lock);
