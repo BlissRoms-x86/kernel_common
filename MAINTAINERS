@@ -5536,7 +5536,7 @@ F:	include/linux/firewire.h
 F:	include/uapi/linux/firewire*.h
 F:	tools/firewire/
 
-FIRMWARE LOADER (request_firmware)
+FIRMWARE LOADER (firmware_request)
 M:	Luis R. Rodriguez <mcgrof@kernel.org>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained

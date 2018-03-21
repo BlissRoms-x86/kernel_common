@@ -106,13 +106,13 @@ config EXTRA_FIRMWARE
 
 	  This option is a string and takes the (space-separated) names of the
 	  firmware files -- the same names that appear in MODULE_FIRMWARE()
-	  and request_firmware() in the source. These files should exist under
+	  and firmware_request() in the source. These files should exist under
 	  the directory specified by the EXTRA_FIRMWARE_DIR option, which is
 	  /lib/firmware by default.
 
 	  For example, you might set CONFIG_EXTRA_FIRMWARE="usb8388.bin", copy
 	  the usb8388.bin file into /lib/firmware, and build the kernel. Then
-	  any request_firmware("usb8388.bin") will be satisfied internally
+	  any firmware_request("usb8388.bin") will be satisfied internally
 	  without needing to call out to userspace.
 
 	  WARNING: If you include additional firmware files into your binary

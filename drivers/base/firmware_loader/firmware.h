@@ -26,7 +26,7 @@ enum fw_status {
 };
 
 /*
- * Concurrent request_firmware() for the same firmware need to be
+ * Concurrent firmware_request() for the same firmware need to be
  * serialized.  struct fw_state is simple state machine which hold the
  * state of the firmware loading.
  */

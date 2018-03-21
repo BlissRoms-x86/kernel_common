@@ -3254,7 +3254,7 @@ S: 8006 Zuerich
 S: Switzerland
 
 N: Manuel Estrada Sainz
-D: Firmware loader (request_firmware)
+D: Firmware loader (firmware_request)
 
 N: Wayne Salamon
 E: wsalamon@tislabs.com

@@ -24,10 +24,10 @@ root filesystem mounts.
 Some implementation details about the firmware cache setup:
 
 * The firmware cache is setup by adding a devres entry for each device that
-  uses all synchronous call except :c:func:`request_firmware_into_buf`.
+  uses all synchronous call except :c:func:`firmware_request_into_buf`.
 
 * If an asynchronous call is used the firmware cache is only set up for a
-  device if if the second argument (uevent) to request_firmware_nowait() is
+  device if if the second argument (uevent) to firmware_request_nowait() is
   true. When uevent is true it requests that a kobject uevent be sent to
   userspace for the firmware request. For details refer to the Fackback
   mechanism documented below.
@@ -37,7 +37,7 @@ Some implementation details about the firmware cache setup:
   device making the firmware request.
 
 * The firmware devres entry is maintained throughout the lifetime of the
-  device. This means that even if you release_firmware() the firmware cache
+  device. This means that even if you firmware_release() the firmware cache
   will still be used on resume from suspend.
 
 * The timeout for the fallback mechanism is temporarily reduced to 10 seconds
