@@ -164,11 +164,11 @@ i915_param_named_unsafe(edp_vswing, int, 0400,
 
 i915_param_named_unsafe(enable_guc_loading, int, 0400,
 	"Enable GuC firmware loading "
-	"(-1=auto, 0=never [default], 1=if available, 2=required)");
+	"(-1=auto, 0=never, 1=if available [default], 2=required)");
 
 i915_param_named_unsafe(enable_guc_submission, int, 0400,
 	"Enable GuC submission "
-	"(-1=auto, 0=never [default], 1=if available, 2=required)");
+	"(-1=auto, 0=never, 1=if available [default], 2=required)");
 
 i915_param_named(guc_log_level, int, 0400,
 	"GuC firmware logging level (-1:disabled (default), 0-3:enabled)");
