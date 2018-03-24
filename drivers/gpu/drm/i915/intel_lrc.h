@@ -107,4 +107,12 @@ intel_lr_context_descriptor(struct i915_gem_context *ctx,
 	return ctx->engine[engine->id].lrc_desc;
 }
 
+struct intel_ring *
+execlists_context_pin(struct intel_engine_cs *engine,
+		      struct i915_gem_context *ctx);
+void execlists_context_unpin(struct intel_engine_cs *engine,
+				    struct i915_gem_context *ctx);
+int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
+					    struct intel_engine_cs *engine);
+
 #endif /* _INTEL_LRC_H_ */

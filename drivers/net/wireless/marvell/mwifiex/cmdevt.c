@@ -998,6 +998,7 @@ mwifiex_cmd_timeout_func(struct timer_list *t)
 		if (cmd_node->wait_q_enabled) {
 			adapter->cmd_wait_q.status = -ETIMEDOUT;
 			mwifiex_cancel_pending_ioctl(adapter);
+			adapter->cmd_sent = false;
 		}
 	}
 	if (adapter->hw_status == MWIFIEX_HW_STATUS_INITIALIZING) {
