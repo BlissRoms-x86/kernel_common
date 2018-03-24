@@ -690,6 +690,11 @@ void __cfg80211_connect_result(struct net_device *dev,
 		return;
 	}
 
+	if (WARN_ON(!wdev->ssid_len)) {
+		cfg80211_put_bss(wdev->wiphy, cr->bss);
+		return;
+	}
+
 	nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev, cr,
 				    GFP_KERNEL);
 
@@ -1107,7 +1112,7 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 	/*
 	 * If we have an ssid_len, we're trying to connect or are
 	 * already connected, so reject a new SSID unless it's the
-	 * same (which is the case for re-association.)
+	 * same (which is the case for Re-Association.
 	 */
 	if (wdev->ssid_len &&
 	    (wdev->ssid_len != connect->ssid_len ||
