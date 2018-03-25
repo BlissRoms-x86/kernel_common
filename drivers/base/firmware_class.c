@@ -12,6 +12,7 @@
 
 #include <linux/capability.h>
 #include <linux/device.h>
+#include <linux/efi.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/timer.h>
@@ -1207,6 +1208,32 @@ static inline void unregister_sysfs_loader(void)
 
 #endif /* CONFIG_FW_LOADER_USER_HELPER */
 
+#ifdef CONFIG_EFI
+static int
+fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv, int ret)
+{
+	size_t size;
+	int rc;
+
+	rc = efi_get_embedded_fw(fw_priv->fw_name, &fw_priv->data, &size,
+				 fw_priv->data ? fw_priv->allocated_size : 0);
+	if (rc == 0) {
+		dev_dbg(dev, "efi-embedded fw %s\n", fw_priv->fw_name);
+		fw_priv->size = size;
+		fw_state_done(fw_priv);
+		ret = 0;
+	}
+
+	return ret;
+}
+#else
+static inline int
+fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv, int ret)
+{
+	return ret;
+}
+#endif
+
 /* prepare firmware and firmware_buf structs;
  * return 0 if a firmware is already assigned, 1 if need to load one,
  * or a negative error code
@@ -1296,6 +1323,8 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 		goto out;
 
 	ret = fw_get_filesystem_firmware(device, fw->priv);
+	if (ret)
+		ret = fw_get_efi_embedded_fw(device, fw->priv, ret);
 	if (ret) {
 		if (!(opt_flags & FW_OPT_NO_WARN))
 			dev_warn(device,
