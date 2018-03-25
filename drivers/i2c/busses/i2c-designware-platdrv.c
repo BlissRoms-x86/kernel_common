@@ -296,6 +296,13 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	}
 	acpi_speed = supported_speeds[i - 1];
 
+	dev_dbg(dev->dev, "Params after pdata / device-prop init:\n");
+	dev_dbg(dev->dev, "i2c-sda-hold-time-ns: %d\n", ht);
+	dev_dbg(dev->dev, "sda_falling_time:     %d\n", dev->sda_falling_time);
+	dev_dbg(dev->dev, "scl_falling_time:     %d\n", dev->scl_falling_time);
+	dev_dbg(dev->dev, "clk_freq:             %d\n", dev->clk_freq);
+	dev_dbg(dev->dev, "acpi_speed:           %d\n", acpi_speed);
+
 	/*
 	 * Find bus speed from the "clock-frequency" device property, ACPI
 	 * or by using fast mode if neither is set.
@@ -307,8 +314,11 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	else
 		dev->clk_freq = 400000;
 
-	if (has_acpi_companion(&pdev->dev))
+	if (has_acpi_companion(&pdev->dev)) {
 		dw_i2c_acpi_configure(pdev);
+		dev_dbg(dev->dev, "sda_hold_time (ACPI): %#x\n",
+			dev->sda_hold_time);
+	}
 
 	/*
 	 * Only standard mode at 100kHz, fast mode at 400kHz,
@@ -336,10 +346,13 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	if (!i2c_dw_prepare_clk(dev, true)) {
 		dev->get_clk_rate_khz = i2c_dw_get_clk_rate_khz;
 
-		if (!dev->sda_hold_time && ht)
+		if (!dev->sda_hold_time && ht) {
 			dev->sda_hold_time = div_u64(
 				(u64)dev->get_clk_rate_khz(dev) * ht + 500000,
 				1000000);
+			dev_dbg(dev->dev, "sda_hold_time (prop): %#x\n",
+				dev->sda_hold_time);
+		}
 	}
 
 	dw_i2c_set_fifo_size(dev, pdev->id);
