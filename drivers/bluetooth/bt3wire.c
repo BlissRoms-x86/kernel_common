@@ -26,6 +26,9 @@
 #include <linux/skbuff.h>
 #include <linux/serdev.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/acpi.h>
+#include <linux/gpio/consumer.h>
 #include <linux/firmware.h>
 #include <linux/crc-ccitt.h>
 #include <linux/bitrev.h>
@@ -33,6 +36,8 @@
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
+
+#include "btrtl.h"
 
 #define VERSION "1.0"
 
@@ -68,6 +73,7 @@ struct bt3wire_vnd {
 	int (*setup)(struct bt3wire_dev *bdev);
 	int (*open)(struct bt3wire_dev *bdev);
 	int (*close)(struct bt3wire_dev *bdev);
+	const struct acpi_gpio_mapping *acpi_gpios;
 };
 
 #define BT3WIRE_TX_STATE_ACTIVE	1
@@ -687,6 +693,9 @@ static int bt3wire_probe(struct serdev_device *serdev)
 
 	if (has_acpi_companion(&serdev->dev)) {
 		bdev->vnd = acpi_device_get_match_data(&serdev->dev);
+		if (bdev->vnd->acpi_gpios)
+			devm_acpi_dev_add_driver_gpios(&serdev->dev,
+						       bdev->vnd->acpi_gpios);
 	} else {
 		bdev->vnd = of_device_get_match_data(&serdev->dev);
 	}
@@ -738,9 +747,132 @@ static void bt3wire_remove(struct serdev_device *serdev)
 	hci_free_dev(hdev);
 }
 
+static int bt3wire_btrtl_setup(struct bt3wire_dev *bdev)
+{
+	struct btrtl_device_info *btrtl_dev;
+	struct sk_buff *skb;
+	__le32 baudrate_data;
+	u32 device_baudrate;
+	unsigned int controller_baudrate;
+	bool flow_control;
+	int err;
+
+	btrtl_dev = btrtl_initialize(bdev->hdev);
+	if (IS_ERR(btrtl_dev))
+		return PTR_ERR(btrtl_dev);
+
+	err = btrtl_get_uart_settings(bdev->hdev, btrtl_dev,
+				      &controller_baudrate, &device_baudrate,
+				      &flow_control);
+	if (err)
+		goto out_free;
+
+	baudrate_data = cpu_to_le32(device_baudrate);
+	skb = __hci_cmd_sync(bdev->hdev, 0xfc17, sizeof(baudrate_data),
+			     &baudrate_data, HCI_INIT_TIMEOUT);
+	if (IS_ERR(skb)) {
+		bt_dev_err(bdev->hdev, "set baud rate command failed");
+		err = PTR_ERR(skb);
+		goto out_free;
+	} else {
+		kfree_skb(skb);
+	}
+	/* Give the device some type to set up the new baudrate. This value was
+	 * chosen by manually testing on a RTL8723BS. Shorter wait times lead to
+	 * a non-responsive device when downloading the firmware.
+	 */
+	msleep(10);
+
+	serdev_device_set_baudrate(bdev->serdev, controller_baudrate);
+	serdev_device_set_flow_control(bdev->serdev, flow_control);
+
+	err = btrtl_download_firmware(bdev->hdev, btrtl_dev);
+
+out_free:
+	btrtl_free(btrtl_dev);
+
+	return err;
+}
+
+static int bt3wire_btrtl_open(struct bt3wire_dev *bdev)
+{
+	struct gpio_desc *enable_gpio;
+	struct gpio_desc *reset_gpio;
+	int err;
+
+	/* devices always start with flow control disabled and even parity */
+	serdev_device_set_flow_control(bdev->serdev, false);
+	err = serdev_device_set_parity(bdev->serdev, SERDEV_PARITY_EVEN);
+	if (err)
+		return err;
+
+	enable_gpio = devm_gpiod_get_optional(&bdev->serdev->dev, "enable",
+					      GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_gpio))
+		return PTR_ERR(enable_gpio);
+	reset_gpio = devm_gpiod_get_optional(&bdev->serdev->dev, "reset",
+					     GPIOD_OUT_LOW);
+	if (IS_ERR(reset_gpio))
+		return PTR_ERR(reset_gpio);
+
+	/* Disable the device and put it into reset. Some devices only have one
+	 * of these lines, so toggle both to support all combinations. After
+	 * toggling, we need to wait for the device to disable/reset. 500ms was
+	 * chosen by manually testing on a RTL8723BS. Shorter wait times lead to
+	 * a non-responsible device.
+	 */
+	gpiod_set_value_cansleep(reset_gpio, 1);
+	gpiod_set_value_cansleep(enable_gpio, 0);
+	msleep(500);
+
+	/* Re-enable the device and wait another 500ms, otherwise the device
+	 * might not respond in all cases. This value was chosen by manually
+	 * testing on an RTL8723BS.
+	 */
+	gpiod_set_value_cansleep(reset_gpio, 0);
+	gpiod_set_value_cansleep(enable_gpio, 1);
+	msleep(500);
+
+	return 0;
+}
+
+static int bt3wire_btrtl_close(struct bt3wire_dev *bdev)
+{
+	struct gpio_desc *enable_gpio;
+	enable_gpio = devm_gpiod_get_optional(&bdev->serdev->dev, "enable",
+					      GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_gpio))
+		return PTR_ERR(enable_gpio);
+	gpiod_set_value_cansleep(enable_gpio, 0);
+	return 0;
+}
+
+static const struct acpi_gpio_params btrtl_enable_gpios = { 0, 0, false };
+static const struct acpi_gpio_mapping acpi_btrtl_gpios[] = {
+	{ "enable-gpios", &btrtl_enable_gpios, 1 },
+	{},
+};
+
+static struct bt3wire_vnd rtl_vnd = {
+	.setup		= bt3wire_btrtl_setup,
+	.open		= bt3wire_btrtl_open,
+	.close		= bt3wire_btrtl_close,
+	.acpi_gpios	= acpi_btrtl_gpios,
+};
+
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id bt3wire_acpi_match[] = {
+	{ "OBDA8723", (kernel_ulong_t)&rtl_vnd },
+	{ },
+};
+MODULE_DEVICE_TABLE(acpi, bt3wire_acpi_match);
+#endif
+
 #ifdef CONFIG_OF
 static const struct of_device_id bt3wire_of_match[] = {
 	{ .compatible = "brcm,bcm43438-bt" },
+	{ .compatible = "realtek,rtl8723bs-bluetooth", .data = &rtl_vnd },
+	{ .compatible = "realtek,rtl8723ds-bluetooth", .data = &rtl_vnd },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, bt3wire_of_match);
@@ -752,6 +884,7 @@ static struct serdev_device_driver bt3wire_driver = {
 	.driver = {
 		.name = "bt3wire",
 		.of_match_table = of_match_ptr(bt3wire_of_match),
+		.acpi_match_table = ACPI_PTR(bt3wire_acpi_match),
 	},
 };
 
