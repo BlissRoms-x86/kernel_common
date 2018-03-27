@@ -60,6 +60,14 @@ struct bt3wire_dev {
 	} link_state;
 	struct delayed_work link_timer;
 	wait_queue_head_t link_wait;
+
+	const struct bt3wire_vnd *vnd;
+};
+
+struct bt3wire_vnd {
+	int (*setup)(struct bt3wire_dev *bdev);
+	int (*open)(struct bt3wire_dev *bdev);
+	int (*close)(struct bt3wire_dev *bdev);
 };
 
 #define BT3WIRE_TX_STATE_ACTIVE	1
@@ -277,6 +285,15 @@ static int bt3wire_open(struct hci_dev *hdev)
 		return err;
 	}
 
+	if (bdev->vnd->open) {
+		err = bdev->vnd->open(bdev);
+		if (err) {
+			bt_dev_err(hdev, "Vendor setup failed");
+			serdev_device_close(bdev->serdev);
+			return err;
+		}
+	}
+
 	serdev_device_set_baudrate(bdev->serdev, 115200);
 
 	bdev->link_state = LINK_UNINITIALIZED;
@@ -301,6 +318,10 @@ static int bt3wire_open(struct hci_dev *hdev)
 static int bt3wire_close(struct hci_dev *hdev)
 {
 	struct bt3wire_dev *bdev = hci_get_drvdata(hdev);
+	int err = 0;
+
+	if (bdev->vnd->close)
+		err = bdev->vnd->close(bdev);
 
 	cancel_delayed_work_sync(&bdev->link_timer);
 	serdev_device_close(bdev->serdev);
@@ -320,6 +341,16 @@ static int bt3wire_flush(struct hci_dev *hdev)
 
 	kfree_skb(bdev->rx_skb);
 	bdev->rx_skb = NULL;
+
+	return 0;
+}
+
+static int bt3wire_setup(struct hci_dev *hdev)
+{
+	struct bt3wire_dev *bdev = hci_get_drvdata(hdev);
+
+	if (bdev->vnd->setup)
+		return bdev->vnd->setup(bdev);
 
 	return 0;
 }
@@ -654,6 +685,12 @@ static int bt3wire_probe(struct serdev_device *serdev)
 	bdev->serdev = serdev;
 	serdev_device_set_drvdata(serdev, bdev);
 
+	if (has_acpi_companion(&serdev->dev)) {
+		bdev->vnd = acpi_device_get_match_data(&serdev->dev);
+	} else {
+		bdev->vnd = of_device_get_match_data(&serdev->dev);
+	}
+
 	serdev_device_set_client_ops(serdev, &bt3wire_client_ops);
 
 	INIT_WORK(&bdev->tx_work, bt3wire_tx_work);
@@ -679,6 +716,7 @@ static int bt3wire_probe(struct serdev_device *serdev)
 	hdev->open  = bt3wire_open;
 	hdev->close = bt3wire_close;
 	hdev->flush = bt3wire_flush;
+	hdev->setup = bt3wire_setup;
 	hdev->send  = bt3wire_send_frame;
 	SET_HCIDEV_DEV(hdev, &serdev->dev);
 
