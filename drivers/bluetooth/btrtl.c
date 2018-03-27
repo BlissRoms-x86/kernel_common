@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/firmware.h>
 #include <asm/unaligned.h>
+#include <linux/of.h>
 #include <linux/usb.h>
 
 #include <net/bluetooth/bluetooth.h>
@@ -509,6 +510,41 @@ void btrtl_free(struct btrtl_device_info *btrtl_dev)
 }
 EXPORT_SYMBOL_GPL(btrtl_free);
 
+static int rtl_load_config_from_dt(struct hci_dev *hdev,
+				   struct btrtl_device_info *btrtl_dev)
+{
+	struct device_node *np = hdev->dev.parent->of_node;
+	int ret, config_len;
+
+	if (!of_device_is_available(np))
+		return -ENOENT;
+
+	if (!of_find_property(np, "realtek,config-data", NULL))
+		return -ENOENT;
+
+	config_len = of_property_count_u8_elems(np, "realtek,config-data");
+	if (config_len <= 0)
+		return -ENOENT;
+
+	btrtl_dev->cfg_data = kzalloc(config_len, GFP_KERNEL);
+	if (!btrtl_dev->cfg_data)
+		return -ENOMEM;
+
+	ret = of_property_read_u8_array(np, "realtek,config-data",
+					btrtl_dev->cfg_data, config_len);
+	if (ret) {
+		kfree(btrtl_dev->cfg_data);
+		return ret;
+	}
+
+	btrtl_dev->cfg_len = config_len;
+
+	bt_dev_dbg(hdev, "rtl: using config data with len %d from DT",
+		   config_len);
+
+	return 0;
+}
+
 struct btrtl_device_info *btrtl_initialize(struct hci_dev *hdev)
 {
 	struct btrtl_device_info *btrtl_dev;
@@ -567,13 +603,16 @@ struct btrtl_device_info *btrtl_initialize(struct hci_dev *hdev)
 		goto err_free;
 	}
 
-	if (btrtl_dev->ic_info->cfg_name) {
+	/* try loading the config blob from device-tree first: */
+	ret = rtl_load_config_from_dt(hdev, btrtl_dev);
+	/* fall back to loading the config via request_firmware: */
+	if (ret && btrtl_dev->ic_info->cfg_name) {
 		btrtl_dev->cfg_len = rtl_load_file(hdev,
 						   btrtl_dev->ic_info->cfg_name,
 						   &btrtl_dev->cfg_data);
 		if (btrtl_dev->ic_info->config_needed && btrtl_dev->cfg_len <= 0) {
 			bt_dev_err(hdev,
-				   "mandatory config file %s not found\n",
+				   "mandatory config blob not found in %s or DT\n",
 				   btrtl_dev->ic_info->cfg_name);
 			ret = btrtl_dev->cfg_len;
 			goto err_free;
