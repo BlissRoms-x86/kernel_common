@@ -230,7 +230,13 @@ __setup_efi_pci64(efi_pci_io_protocol_64 *pci, struct pci_setup_rom **__rom)
 	if (status != EFI_SUCCESS)
 		return status;
 
-	if (!pci->romimage || !pci->romsize)
+	/*
+	 * Some firmwares contain EFI function pointers at the place where the
+	 * romimage and romsize fields are supposed to be. Typically the EFI
+	 * code is mapped at high addresses, translating to an unrealistically
+	 * large romsize. We reject any roms over 256M in size to catch this.
+	 */
+	if (!pci->romimage || !pci->romsize || pci->romsize > 0x10000000)
 		return EFI_INVALID_PARAMETER;
 
 	size = pci->romsize + sizeof(*rom);
