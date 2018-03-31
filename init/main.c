@@ -710,6 +710,7 @@ asmlinkage __visible void __init start_kernel(void)
 	sfi_init_late();
 
 	if (efi_enabled(EFI_RUNTIME_SERVICES)) {
+		efi_check_for_embedded_firmwares();
 		efi_free_boot_services();
 	}
 
