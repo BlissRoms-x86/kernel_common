@@ -126,47 +126,95 @@ static inline void pwm_lpss_cond_enable(struct pwm_device *pwm, bool cond)
 		pwm_lpss_write(pwm, pwm_lpss_read(pwm) | PWM_ENABLE);
 }
 
+static void pwm_lpss_get_put_runtime_pm(struct pwm_chip *chip,
+					bool old_enabled, bool new_enabled)
+{
+	if (new_enabled == old_enabled)
+		return;
+
+	if (new_enabled)
+		pm_runtime_get(chip->dev);
+	else
+		pm_runtime_put(chip->dev);
+}
+
 static int pwm_lpss_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			  struct pwm_state *state)
 {
 	struct pwm_lpss_chip *lpwm = to_lpwm(chip);
-	int ret;
+	int ret = 0;
+
+	pm_runtime_get_sync(chip->dev);
 
 	if (state->enabled) {
 		if (!pwm_is_enabled(pwm)) {
-			pm_runtime_get_sync(chip->dev);
 			ret = pwm_lpss_is_updating(pwm);
-			if (ret) {
-				pm_runtime_put(chip->dev);
-				return ret;
-			}
+			if (ret)
+				goto out;
+
 			pwm_lpss_prepare(lpwm, pwm, state->duty_cycle, state->period);
 			pwm_lpss_write(pwm, pwm_lpss_read(pwm) | PWM_SW_UPDATE);
 			pwm_lpss_cond_enable(pwm, lpwm->info->bypass == false);
 			ret = pwm_lpss_wait_for_update(pwm);
-			if (ret) {
-				pm_runtime_put(chip->dev);
-				return ret;
-			}
+			if (ret)
+				goto out;
+
 			pwm_lpss_cond_enable(pwm, lpwm->info->bypass == true);
 		} else {
 			ret = pwm_lpss_is_updating(pwm);
 			if (ret)
-				return ret;
+				goto out;
+
 			pwm_lpss_prepare(lpwm, pwm, state->duty_cycle, state->period);
 			pwm_lpss_write(pwm, pwm_lpss_read(pwm) | PWM_SW_UPDATE);
-			return pwm_lpss_wait_for_update(pwm);
+			ret = pwm_lpss_wait_for_update(pwm);
 		}
 	} else if (pwm_is_enabled(pwm)) {
 		pwm_lpss_write(pwm, pwm_lpss_read(pwm) & ~PWM_ENABLE);
-		pm_runtime_put(chip->dev);
 	}
 
-	return 0;
+	pwm_lpss_get_put_runtime_pm(chip, pwm_is_enabled(pwm), state->enabled);
+
+out:
+	pm_runtime_put(chip->dev);
+	return ret;
+}
+
+/* This function gets called once from pwmchip_add to get the initial state */
+static void pwm_lpss_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
+			       struct pwm_state *state)
+{
+	struct pwm_lpss_chip *lpwm = to_lpwm(chip);
+	unsigned long base_unit_range;
+	unsigned long long base_unit, freq, on_time_div;
+	u32 ctrl;
+
+	base_unit_range = BIT(lpwm->info->base_unit_bits);
+
+	ctrl = pwm_lpss_read(pwm);
+	on_time_div = 255 - (ctrl & PWM_ON_TIME_DIV_MASK);
+	base_unit = (ctrl >> PWM_BASE_UNIT_SHIFT) & (base_unit_range - 1);
+
+	freq = base_unit * lpwm->info->clk_rate;
+	do_div(freq, base_unit_range);
+	if (freq == 0)
+		state->period = NSEC_PER_SEC;
+	else
+		state->period = NSEC_PER_SEC / (unsigned long)freq;
+
+	on_time_div *= state->period;
+	do_div(on_time_div, 255);
+	state->duty_cycle = on_time_div;
+
+	state->polarity = PWM_POLARITY_NORMAL;
+	state->enabled = !!(ctrl & PWM_ENABLE);
+
+	pwm_lpss_get_put_runtime_pm(chip, false, state->enabled);
 }
 
 static const struct pwm_ops pwm_lpss_ops = {
 	.apply = pwm_lpss_apply,
+	.get_state = pwm_lpss_get_state,
 	.owner = THIS_MODULE,
 };
 
@@ -208,6 +256,10 @@ EXPORT_SYMBOL_GPL(pwm_lpss_probe);
 
 int pwm_lpss_remove(struct pwm_lpss_chip *lpwm)
 {
+	bool enabled = pwm_is_enabled(&lpwm->chip.pwms[0]);
+
+	pwm_lpss_get_put_runtime_pm(&lpwm->chip, enabled, false);
+
 	return pwmchip_remove(&lpwm->chip);
 }
 EXPORT_SYMBOL_GPL(pwm_lpss_remove);

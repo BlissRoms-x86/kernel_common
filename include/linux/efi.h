@@ -1573,6 +1573,8 @@ efi_enable_reset_attack_mitigation(efi_system_table_t *sys_table_arg) { }
 #endif
 
 void efi_retrieve_tpm2_eventlog(efi_system_table_t *sys_table);
+void efi_check_for_embedded_firmwares(void);
+int efi_get_embedded_fw(const char *name, void **dat, size_t *sz, size_t msize);
 
 /*
  * Arch code can implement the following three template macros, avoiding
