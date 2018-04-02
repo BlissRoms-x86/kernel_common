@@ -364,6 +364,15 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 		},
 	},
 	{
+		/* Jumper EZpad 6 Pro */
+		.driver_data = (void *)&jumper_ezpad_6s_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Jumper"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "EZpad"),
+			DMI_MATCH(DMI_BOARD_VERSION, ".A008"),
+		},
+	},
+	{
 		/* DEXP Ursus 7W */
 		.driver_data = (void *)&dexp_ursus_7w_data,
 		.matches = {
