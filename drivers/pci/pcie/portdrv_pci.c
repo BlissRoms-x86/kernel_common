@@ -150,6 +150,11 @@ static int pcie_portdrv_probe(struct pci_dev *dev,
 
 	pci_save_state(dev);
 
+	/*
+	 * D3cold disabled by default
+	 */
+	dev->d3cold_allowed = false;
+
 	if (pci_bridge_d3_possible(dev)) {
 		/*
 		 * Keep the port resumed 100ms to make sure things like
