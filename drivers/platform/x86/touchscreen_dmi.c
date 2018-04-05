@@ -1,5 +1,5 @@
 /*
- * Silead touchscreen driver DMI based configuration code
+ * Touchscreen driver DMI based configuration code
  *
  * Copyright (c) 2017 Red Hat Inc.
  *
@@ -20,7 +20,7 @@
 #include <linux/property.h>
 #include <linux/string.h>
 
-struct silead_ts_dmi_data {
+struct ts_dmi_data {
 	const char *acpi_name;
 	const struct property_entry *properties;
 };
@@ -34,7 +34,7 @@ static const struct property_entry cube_iwork8_air_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data cube_iwork8_air_data = {
+static const struct ts_dmi_data cube_iwork8_air_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= cube_iwork8_air_props,
 };
@@ -48,7 +48,7 @@ static const struct property_entry jumper_ezpad_mini3_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data jumper_ezpad_mini3_data = {
+static const struct ts_dmi_data jumper_ezpad_mini3_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= jumper_ezpad_mini3_props,
 };
@@ -62,7 +62,7 @@ static const struct property_entry dexp_ursus_7w_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data dexp_ursus_7w_data = {
+static const struct ts_dmi_data dexp_ursus_7w_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= dexp_ursus_7w_props,
 };
@@ -77,7 +77,7 @@ static const struct property_entry surftab_twin_10_1_st10432_8_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data surftab_twin_10_1_st10432_8_data = {
+static const struct ts_dmi_data surftab_twin_10_1_st10432_8_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= surftab_twin_10_1_st10432_8_props,
 };
@@ -92,7 +92,7 @@ static const struct property_entry surftab_wintron70_st70416_6_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data surftab_wintron70_st70416_6_data = {
+static const struct ts_dmi_data surftab_wintron70_st70416_6_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= surftab_wintron70_st70416_6_props,
 };
@@ -107,7 +107,7 @@ static const struct property_entry gp_electronic_t701_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data gp_electronic_t701_data = {
+static const struct ts_dmi_data gp_electronic_t701_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= gp_electronic_t701_props,
 };
@@ -122,7 +122,7 @@ static const struct property_entry pipo_w2s_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data pipo_w2s_data = {
+static const struct ts_dmi_data pipo_w2s_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= pipo_w2s_props,
 };
@@ -137,7 +137,7 @@ static const struct property_entry pov_mobii_wintab_p800w_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data pov_mobii_wintab_p800w_data = {
+static const struct ts_dmi_data pov_mobii_wintab_p800w_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= pov_mobii_wintab_p800w_props,
 };
@@ -151,7 +151,7 @@ static const struct property_entry itworks_tw891_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data itworks_tw891_data = {
+static const struct ts_dmi_data itworks_tw891_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= itworks_tw891_props,
 };
@@ -165,7 +165,7 @@ static const struct property_entry chuwi_hi8_pro_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data chuwi_hi8_pro_data = {
+static const struct ts_dmi_data chuwi_hi8_pro_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= chuwi_hi8_pro_props,
 };
@@ -181,7 +181,7 @@ static const struct property_entry digma_citi_e200_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data digma_citi_e200_data = {
+static const struct ts_dmi_data digma_citi_e200_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= digma_citi_e200_props,
 };
@@ -198,7 +198,7 @@ static const struct property_entry onda_obook_20_plus_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data onda_obook_20_plus_data = {
+static const struct ts_dmi_data onda_obook_20_plus_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= onda_obook_20_plus_props,
 };
@@ -212,7 +212,7 @@ static const struct property_entry chuwi_hi8_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data chuwi_hi8_data = {
+static const struct ts_dmi_data chuwi_hi8_data = {
 	.acpi_name      = "MSSL0001:00",
 	.properties     = chuwi_hi8_props,
 };
@@ -227,7 +227,7 @@ static const struct property_entry chuwi_vi8_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data chuwi_vi8_data = {
+static const struct ts_dmi_data chuwi_vi8_data = {
 	.acpi_name      = "MSSL1680:00",
 	.properties     = chuwi_vi8_props,
 };
@@ -242,7 +242,7 @@ static const struct property_entry trekstor_primebook_c13_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data trekstor_primebook_c13_data = {
+static const struct ts_dmi_data trekstor_primebook_c13_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= trekstor_primebook_c13_props,
 };
@@ -258,7 +258,7 @@ static const struct property_entry teclast_x98plus2_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data teclast_x98plus2_data = {
+static const struct ts_dmi_data teclast_x98plus2_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= teclast_x98plus2_props,
 };
@@ -272,12 +272,12 @@ static const struct property_entry teclast_x3_plus_props[] = {
 	{ }
 };
 
-static const struct silead_ts_dmi_data teclast_x3_plus_data = {
+static const struct ts_dmi_data teclast_x3_plus_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= teclast_x3_plus_props,
 };
 
-static const struct dmi_system_id silead_ts_dmi_table[] = {
+static const struct dmi_system_id touchscreen_dmi_table[] = {
 	{
 		/* CUBE iwork8 Air */
 		.driver_data = (void *)&cube_iwork8_air_data,
@@ -466,22 +466,22 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 	{ },
 };
 
-static const struct silead_ts_dmi_data *silead_ts_data;
+static const struct ts_dmi_data *ts_data;
 
-static void silead_ts_dmi_add_props(struct i2c_client *client)
+static void ts_dmi_add_props(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	int error;
 
 	if (has_acpi_companion(dev) &&
-	    !strncmp(silead_ts_data->acpi_name, client->name, I2C_NAME_SIZE)) {
-		error = device_add_properties(dev, silead_ts_data->properties);
+	    !strncmp(ts_data->acpi_name, client->name, I2C_NAME_SIZE)) {
+		error = device_add_properties(dev, ts_data->properties);
 		if (error)
 			dev_err(dev, "failed to add properties: %d\n", error);
 	}
 }
 
-static int silead_ts_dmi_notifier_call(struct notifier_block *nb,
+static int ts_dmi_notifier_call(struct notifier_block *nb,
 				       unsigned long action, void *data)
 {
 	struct device *dev = data;
@@ -491,7 +491,7 @@ static int silead_ts_dmi_notifier_call(struct notifier_block *nb,
 	case BUS_NOTIFY_ADD_DEVICE:
 		client = i2c_verify_client(dev);
 		if (client)
-			silead_ts_dmi_add_props(client);
+			ts_dmi_add_props(client);
 		break;
 
 	default:
@@ -501,22 +501,22 @@ static int silead_ts_dmi_notifier_call(struct notifier_block *nb,
 	return 0;
 }
 
-static struct notifier_block silead_ts_dmi_notifier = {
-	.notifier_call = silead_ts_dmi_notifier_call,
+static struct notifier_block ts_dmi_notifier = {
+	.notifier_call = ts_dmi_notifier_call,
 };
 
-static int __init silead_ts_dmi_init(void)
+static int __init ts_dmi_init(void)
 {
 	const struct dmi_system_id *dmi_id;
 	int error;
 
-	dmi_id = dmi_first_match(silead_ts_dmi_table);
+	dmi_id = dmi_first_match(touchscreen_dmi_table);
 	if (!dmi_id)
 		return 0; /* Not an error */
 
-	silead_ts_data = dmi_id->driver_data;
+	ts_data = dmi_id->driver_data;
 
-	error = bus_register_notifier(&i2c_bus_type, &silead_ts_dmi_notifier);
+	error = bus_register_notifier(&i2c_bus_type, &ts_dmi_notifier);
 	if (error)
 		pr_err("%s: failed to register i2c bus notifier: %d\n",
 			__func__, error);
@@ -529,4 +529,4 @@ static int __init silead_ts_dmi_init(void)
  * itself is ready (which happens at postcore initcall level), but before
  * ACPI starts enumerating devices (at subsys initcall level).
  */
-arch_initcall(silead_ts_dmi_init);
+arch_initcall(ts_dmi_init);
