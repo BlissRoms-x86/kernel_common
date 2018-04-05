@@ -53,6 +53,20 @@ static const struct silead_ts_dmi_data jumper_ezpad_mini3_data = {
 	.properties	= jumper_ezpad_mini3_props,
 };
 
+static const struct property_entry jumper_ezpad_6s_pro_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1980),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1500),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl3692-jumper-ezpad-6s-pro.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data jumper_ezpad_6s_pro_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= jumper_ezpad_6s_pro_props,
+};
+
 static const struct property_entry dexp_ursus_7w_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-size-x", 890),
 	PROPERTY_ENTRY_U32("touchscreen-size-y", 630),
@@ -203,6 +217,21 @@ static const struct silead_ts_dmi_data onda_obook_20_plus_data = {
 	.properties	= onda_obook_20_plus_props,
 };
 
+static const struct property_entry onda_obook_11_pro_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1962),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1542),
+	PROPERTY_ENTRY_BOOL("touchscreen-inverted-x"),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl3676-onda-obook-11-pro.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data onda_obook_11_pro_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= onda_obook_11_pro_props,
+};
+
 static const struct property_entry chuwi_hi8_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-size-x", 1665),
 	PROPERTY_ENTRY_U32("touchscreen-size-y", 1140),
@@ -277,6 +306,35 @@ static const struct silead_ts_dmi_data teclast_x3_plus_data = {
 	.properties	= teclast_x3_plus_props,
 };
 
+static const struct property_entry teclast_x5_pro_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1982),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1527),
+	PROPERTY_ENTRY_STRING("firmware-name", "gsl1680-teclast-x5-pro.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data teclast_x5_pro_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= teclast_x5_pro_props,
+};
+
+static const struct property_entry onda_v891w_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1625),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1135),
+	PROPERTY_ENTRY_BOOL("touchscreen-inverted-y"),
+	PROPERTY_ENTRY_STRING("firmware-name", "FW_I89_GSL3676B_19201200_.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct silead_ts_dmi_data onda_v891w_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= onda_v891w_props,
+};
+
 static const struct dmi_system_id silead_ts_dmi_table[] = {
 	{
 		/* CUBE iwork8 Air */
@@ -294,6 +352,24 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
 			/* jumperx.T87.KFBNEEA02 with the version-nr dropped */
 			DMI_MATCH(DMI_BIOS_VERSION, "jumperx.T87.KFBNEEA"),
+		},
+	},
+	{
+		/* Jumper EZpad 6S Pro */
+		.driver_data = (void *)&jumper_ezpad_6s_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Jumper"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "EZpad"),
+			DMI_MATCH(DMI_BOARD_VERSION, ".A002"),
+		},
+	},
+	{
+		/* Jumper EZpad 6 Pro */
+		.driver_data = (void *)&jumper_ezpad_6s_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "Jumper"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "EZpad"),
+			DMI_MATCH(DMI_BOARD_VERSION, ".A008"),
 		},
 	},
 	{
@@ -405,6 +481,14 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 		},
 	},
 	{
+		/* Onda oBook 11 Pro */
+		.driver_data = (void *)&onda_obook_11_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "ONDA"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "OBOOK11 PRO"),
+		},
+	},
+	{
 		/* Chuwi Hi8 */
 		.driver_data = (void *)&chuwi_hi8_data,
 		.matches = {
@@ -444,6 +528,42 @@ static const struct dmi_system_id silead_ts_dmi_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "TECLAST"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "X3 Plus"),
 			DMI_MATCH(DMI_BOARD_NAME, "X3 Plus"),
+		},
+	},
+	{
+		/* Teclast X5 Pro */
+		.driver_data = (void *)&teclast_x5_pro_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "TECLAST"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "X5 Pro"),
+			DMI_MATCH(DMI_BOARD_NAME, "X5 Pro"),
+		},
+	},
+	{
+		/* I.T.Works TW701 */
+		.driver_data = (void *)&surftab_wintron70_st70416_6_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "i71c"),
+			DMI_MATCH(DMI_BIOS_VERSION, "itWORKS.G.WI71C.JGBMRB"),
+		},
+	},
+	{
+		/* ONDA v891w Dual OS */
+		.driver_data = (void *)&onda_v891w_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ONDA Tablet"),
+			DMI_MATCH(DMI_BIOS_VERSION, "ONDA.D890HBBNR0A"),
+		},
+	},
+	{
+		/* ONDA v891w single OS */
+		.driver_data = (void *)&onda_v891w_data,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ONDA Tablet"),
+			DMI_MATCH(DMI_BIOS_VERSION, "ONDA.W89EBBN08"),
 		},
 	},
 	{ },

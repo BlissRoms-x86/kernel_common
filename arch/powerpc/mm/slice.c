@@ -96,10 +96,10 @@ static int slice_area_is_free(struct mm_struct *mm, unsigned long addr,
 {
 	struct vm_area_struct *vma;
 
-	if ((mm->context.slb_addr_limit - len) < addr)
+	if ((mm->task_size - len) < addr)
 		return 0;
 	vma = find_vma(mm, addr);
-	return (!vma || (addr + len) <= vm_start_gap(vma));
+	return (!vma || (addr + len) <= vma->vm_start);
 }
 
 static int slice_low_has_vma(struct mm_struct *mm, unsigned long slice)
@@ -122,8 +122,7 @@ static int slice_high_has_vma(struct mm_struct *mm, unsigned long slice)
 	return !slice_area_is_free(mm, start, end - start);
 }
 
-static void slice_mask_for_free(struct mm_struct *mm, struct slice_mask *ret,
-				unsigned long high_limit)
+static void slice_mask_for_free(struct mm_struct *mm, struct slice_mask *ret)
 {
 	unsigned long i;
 
@@ -134,16 +133,15 @@ static void slice_mask_for_free(struct mm_struct *mm, struct slice_mask *ret,
 		if (!slice_low_has_vma(mm, i))
 			ret->low_slices |= 1u << i;
 
-	if (high_limit <= SLICE_LOW_TOP)
+	if (mm->task_size <= SLICE_LOW_TOP)
 		return;
 
-	for (i = 0; i < GET_HIGH_SLICE_INDEX(high_limit); i++)
+	for (i = 0; i < GET_HIGH_SLICE_INDEX(mm->context.addr_limit); i++)
 		if (!slice_high_has_vma(mm, i))
 			__set_bit(i, ret->high_slices);
 }
 
-static void slice_mask_for_size(struct mm_struct *mm, int psize, struct slice_mask *ret,
-				unsigned long high_limit)
+static void slice_mask_for_size(struct mm_struct *mm, int psize, struct slice_mask *ret)
 {
 	unsigned char *hpsizes;
 	int index, mask_index;
@@ -158,11 +156,8 @@ static void slice_mask_for_size(struct mm_struct *mm, int psize, struct slice_ma
 		if (((lpsizes >> (i * 4)) & 0xf) == psize)
 			ret->low_slices |= 1u << i;
 
-	if (high_limit <= SLICE_LOW_TOP)
-		return;
-
 	hpsizes = mm->context.high_slices_psize;
-	for (i = 0; i < GET_HIGH_SLICE_INDEX(high_limit); i++) {
+	for (i = 0; i < GET_HIGH_SLICE_INDEX(mm->context.addr_limit); i++) {
 		mask_index = i & 0x1;
 		index = i >> 1;
 		if (((hpsizes[index] >> (mask_index * 4)) & 0xf) == psize)
@@ -174,11 +169,7 @@ static int slice_check_fit(struct mm_struct *mm,
 			   struct slice_mask mask, struct slice_mask available)
 {
 	DECLARE_BITMAP(result, SLICE_NUM_HIGH);
-	/*
-	 * Make sure we just do bit compare only to the max
-	 * addr limit and not the full bit map size.
-	 */
-	unsigned long slice_count = GET_HIGH_SLICE_INDEX(mm->context.slb_addr_limit);
+	unsigned long slice_count = GET_HIGH_SLICE_INDEX(mm->context.addr_limit);
 
 	bitmap_and(result, mask.high_slices,
 		   available.high_slices, slice_count);
@@ -228,7 +219,7 @@ static void slice_convert(struct mm_struct *mm, struct slice_mask mask, int psiz
 	mm->context.low_slices_psize = lpsizes;
 
 	hpsizes = mm->context.high_slices_psize;
-	for (i = 0; i < GET_HIGH_SLICE_INDEX(mm->context.slb_addr_limit); i++) {
+	for (i = 0; i < GET_HIGH_SLICE_INDEX(mm->context.addr_limit); i++) {
 		mask_index = i & 0x1;
 		index = i >> 1;
 		if (test_bit(i, mask.high_slices))
@@ -338,8 +329,8 @@ static unsigned long slice_find_area_topdown(struct mm_struct *mm,
 	 * Only for that request for which high_limit is above
 	 * DEFAULT_MAP_WINDOW we should apply this.
 	 */
-	if (high_limit > DEFAULT_MAP_WINDOW)
-		addr += mm->context.slb_addr_limit - DEFAULT_MAP_WINDOW;
+	if (high_limit  > DEFAULT_MAP_WINDOW)
+		addr += mm->context.addr_limit - DEFAULT_MAP_WINDOW;
 
 	while (addr > PAGE_SIZE) {
 		info.high_limit = addr;
@@ -421,31 +412,25 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 	struct slice_mask compat_mask;
 	int fixed = (flags & MAP_FIXED);
 	int pshift = max_t(int, mmu_psize_defs[psize].shift, PAGE_SHIFT);
-	unsigned long page_size = 1UL << pshift;
 	struct mm_struct *mm = current->mm;
 	unsigned long newaddr;
 	unsigned long high_limit;
 
-	high_limit = DEFAULT_MAP_WINDOW;
-	if (addr >= high_limit || (fixed && (addr + len > high_limit)))
-		high_limit = TASK_SIZE;
-
-	if (len > high_limit)
-		return -ENOMEM;
-	if (len & (page_size - 1))
-		return -EINVAL;
-	if (fixed) {
-		if (addr & (page_size - 1))
-			return -EINVAL;
-		if (addr > high_limit - len)
-			return -ENOMEM;
-	}
-
-	if (high_limit > mm->context.slb_addr_limit) {
-		mm->context.slb_addr_limit = high_limit;
+	/*
+	 * Check if we need to expland slice area.
+	 */
+	if (unlikely(addr > mm->context.addr_limit &&
+		     mm->context.addr_limit != TASK_SIZE)) {
+		mm->context.addr_limit = TASK_SIZE;
 		on_each_cpu(slice_flush_segments, mm, 1);
 	}
-
+	/*
+	 * This mmap request can allocate upt to 512TB
+	 */
+	if (addr > DEFAULT_MAP_WINDOW)
+		high_limit = mm->context.addr_limit;
+	else
+		high_limit = DEFAULT_MAP_WINDOW;
 	/*
 	 * init different masks
 	 */
@@ -461,19 +446,27 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 
 	/* Sanity checks */
 	BUG_ON(mm->task_size == 0);
-	BUG_ON(mm->context.slb_addr_limit == 0);
 	VM_BUG_ON(radix_enabled());
 
 	slice_dbg("slice_get_unmapped_area(mm=%p, psize=%d...\n", mm, psize);
 	slice_dbg(" addr=%lx, len=%lx, flags=%lx, topdown=%d\n",
 		  addr, len, flags, topdown);
 
+	if (len > mm->task_size)
+		return -ENOMEM;
+	if (len & ((1ul << pshift) - 1))
+		return -EINVAL;
+	if (fixed && (addr & ((1ul << pshift) - 1)))
+		return -EINVAL;
+	if (fixed && addr > (mm->task_size - len))
+		return -ENOMEM;
+
 	/* If hint, make sure it matches our alignment restrictions */
 	if (!fixed && addr) {
-		addr = _ALIGN_UP(addr, page_size);
+		addr = _ALIGN_UP(addr, 1ul << pshift);
 		slice_dbg(" aligned addr=%lx\n", addr);
 		/* Ignore hint if it's too large or overlaps a VMA */
-		if (addr > high_limit - len ||
+		if (addr > mm->task_size - len ||
 		    !slice_area_is_free(mm, addr, len))
 			addr = 0;
 	}
@@ -481,7 +474,7 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 	/* First make up a "good" mask of slices that have the right size
 	 * already
 	 */
-	slice_mask_for_size(mm, psize, &good_mask, high_limit);
+	slice_mask_for_size(mm, psize, &good_mask);
 	slice_print_mask(" good_mask", good_mask);
 
 	/*
@@ -506,7 +499,7 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 #ifdef CONFIG_PPC_64K_PAGES
 	/* If we support combo pages, we can allow 64k pages in 4k slices */
 	if (psize == MMU_PAGE_64K) {
-		slice_mask_for_size(mm, MMU_PAGE_4K, &compat_mask, high_limit);
+		slice_mask_for_size(mm, MMU_PAGE_4K, &compat_mask);
 		if (fixed)
 			slice_or_mask(&good_mask, &compat_mask);
 	}
@@ -539,11 +532,11 @@ unsigned long slice_get_unmapped_area(unsigned long addr, unsigned long len,
 			return newaddr;
 		}
 	}
-	/*
-	 * We don't fit in the good mask, check what other slices are
+
+	/* We don't fit in the good mask, check what other slices are
 	 * empty and thus can be converted
 	 */
-	slice_mask_for_free(mm, &potential_mask, high_limit);
+	slice_mask_for_free(mm, &potential_mask);
 	slice_or_mask(&potential_mask, &good_mask);
 	slice_print_mask(" potential", potential_mask);
 
@@ -753,18 +746,17 @@ int is_hugepage_only_range(struct mm_struct *mm, unsigned long addr,
 {
 	struct slice_mask mask, available;
 	unsigned int psize = mm->context.user_psize;
-	unsigned long high_limit = mm->context.slb_addr_limit;
 
 	if (radix_enabled())
 		return 0;
 
 	slice_range_to_mask(addr, len, &mask);
-	slice_mask_for_size(mm, psize, &available, high_limit);
+	slice_mask_for_size(mm, psize, &available);
 #ifdef CONFIG_PPC_64K_PAGES
 	/* We need to account for 4k slices too */
 	if (psize == MMU_PAGE_64K) {
 		struct slice_mask compat_mask;
-		slice_mask_for_size(mm, MMU_PAGE_4K, &compat_mask, high_limit);
+		slice_mask_for_size(mm, MMU_PAGE_4K, &compat_mask);
 		slice_or_mask(&available, &compat_mask);
 	}
 #endif
