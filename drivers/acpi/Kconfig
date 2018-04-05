@@ -168,6 +168,19 @@ config ACPI_BATTERY
 	  To compile this driver as a module, choose M here:
 	  the module will be called battery.
 
+config ACPI_TPT10_BATTERY
+	tristate "TPT10 Battery"
+	depends on X86
+	select POWER_SUPPLY
+	default y
+	help
+	  This driver adds support for battery information through
+	  /proc/acpi/battery for Lenovo thinkpad Tablet 10.
+	  If you have a mobile system with a battery, say Y.
+	  
+	  To compile this driver as a module, choose M here:
+	  the module will be called battery.
+
 config ACPI_BUTTON
 	tristate "Button"
 	depends on INPUT

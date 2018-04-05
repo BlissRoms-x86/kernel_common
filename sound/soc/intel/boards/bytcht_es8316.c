@@ -37,20 +37,6 @@ struct byt_cht_es8316_private {
 	struct clk *mclk;
 };
 
-#define CODEC_DAI1	"ES8316 HiFi"
-
-static inline struct snd_soc_dai *get_codec_dai(struct snd_soc_card *card)
-{
-	struct snd_soc_pcm_runtime *rtd;
-
-	list_for_each_entry(rtd, &card->rtd_list, list) {
-		if (!strncmp(rtd->codec_dai->name, CODEC_DAI1,
-			     strlen(CODEC_DAI1)))
-			return rtd->codec_dai;
-	}
-	return NULL;
-}
-
 static const struct snd_soc_dapm_widget byt_cht_es8316_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
 
@@ -223,7 +209,7 @@ static struct snd_soc_dai_link byt_cht_es8316_dais[] = {
 		 * require SSP0 will not work.
 		 */
 		.name = "SSP2-Codec",
-		.id = 1,
+		.id = 0,
 		.cpu_dai_name = "ssp2-port",
 		.platform_name = "sst-mfld-platform",
 		.no_pcm = 1,
@@ -255,14 +241,38 @@ static struct snd_soc_card byt_cht_es8316_card = {
 	.fully_routed = true,
 };
 
+static char codec_name[16]; /* i2c-<HID>:00 with HID being 8 chars */
+
 static int snd_byt_cht_es8316_mc_probe(struct platform_device *pdev)
 {
-	int ret = 0;
 	struct byt_cht_es8316_private *priv;
+	struct sst_acpi_mach *mach;
+	const char *i2c_name = NULL;
+	int dai_index = 0;
+	int i;
+	int ret = 0;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_ATOMIC);
 	if (!priv)
 		return -ENOMEM;
+
+	mach = (&pdev->dev)->platform_data;
+	/* fix index of codec dai */
+	for (i = 0; i < ARRAY_SIZE(byt_cht_es8316_dais); i++) {
+		if (!strcmp(byt_cht_es8316_dais[i].codec_name,
+			    "i2c-ESSX8316:00")) {
+			dai_index = i;
+			break;
+		}
+	}
+
+	/* fixup codec name based on HID */
+	i2c_name = sst_acpi_find_name_from_hid(mach->id);
+	if (i2c_name) {
+		snprintf(codec_name, sizeof(codec_name),
+			"%s%s", "i2c-", i2c_name);
+		byt_cht_es8316_dais[dai_index].codec_name = codec_name;
+	}
 
 	/* register the soc card */
 	byt_cht_es8316_card.dev = &pdev->dev;

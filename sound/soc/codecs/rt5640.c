@@ -24,6 +24,7 @@
 #include <linux/spi/spi.h>
 #include <linux/acpi.h>
 #include <sound/core.h>
+#include <sound/jack.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -474,20 +475,6 @@ static int set_dmic_clk(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, RT5640_DMIC, RT5640_DMIC_CLK_MASK,
 					idx << RT5640_DMIC_CLK_SFT);
 	return idx;
-}
-
-static int is_sys_clk_from_pll(struct snd_soc_dapm_widget *source,
-			 struct snd_soc_dapm_widget *sink)
-{
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(source->dapm);
-	unsigned int val;
-
-	val = snd_soc_read(codec, RT5640_GLB_CLK);
-	val &= RT5640_SCLK_SRC_MASK;
-	if (val == RT5640_SCLK_SRC_PLL1)
-		return 1;
-	else
-		return 0;
 }
 
 static int is_using_asrc(struct snd_soc_dapm_widget *source,
@@ -1071,9 +1058,6 @@ static int rt5640_hp_post_event(struct snd_soc_dapm_widget *w,
 }
 
 static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
-	SND_SOC_DAPM_SUPPLY("PLL1", RT5640_PWR_ANLG2,
-			RT5640_PWR_PLL_BIT, 0, NULL, 0),
-
 	/* ASRC */
 	SND_SOC_DAPM_SUPPLY_S("Stereo Filter ASRC", 1, RT5640_ASRC_1,
 			 15, 0, NULL, 0),
@@ -1427,22 +1411,18 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 	{"Stereo ADC MIXL", "ADC1 Switch", "Stereo ADC L1 Mux"},
 	{"Stereo ADC MIXL", "ADC2 Switch", "Stereo ADC L2 Mux"},
 	{"Stereo ADC MIXL", NULL, "Stereo Filter"},
-	{"Stereo Filter", NULL, "PLL1", is_sys_clk_from_pll},
 
 	{"Stereo ADC MIXR", "ADC1 Switch", "Stereo ADC R1 Mux"},
 	{"Stereo ADC MIXR", "ADC2 Switch", "Stereo ADC R2 Mux"},
 	{"Stereo ADC MIXR", NULL, "Stereo Filter"},
-	{"Stereo Filter", NULL, "PLL1", is_sys_clk_from_pll},
 
 	{"Mono ADC MIXL", "ADC1 Switch", "Mono ADC L1 Mux"},
 	{"Mono ADC MIXL", "ADC2 Switch", "Mono ADC L2 Mux"},
 	{"Mono ADC MIXL", NULL, "Mono Left Filter"},
-	{"Mono Left Filter", NULL, "PLL1", is_sys_clk_from_pll},
 
 	{"Mono ADC MIXR", "ADC1 Switch", "Mono ADC R1 Mux"},
 	{"Mono ADC MIXR", "ADC2 Switch", "Mono ADC R2 Mux"},
 	{"Mono ADC MIXR", NULL, "Mono Right Filter"},
-	{"Mono Right Filter", NULL, "PLL1", is_sys_clk_from_pll},
 
 	{"IF2 ADC L", NULL, "Mono ADC MIXL"},
 	{"IF2 ADC R", NULL, "Mono ADC MIXR"},
@@ -1512,10 +1492,8 @@ static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
 	{"DIG MIXR", "DAC R1 Switch", "DAC MIXR"},
 
 	{"DAC L1", NULL, "Stereo DAC MIXL"},
-	{"DAC L1", NULL, "PLL1", is_sys_clk_from_pll},
 	{"DAC L1", NULL, "DAC L1 Power"},
 	{"DAC R1", NULL, "Stereo DAC MIXR"},
-	{"DAC R1", NULL, "PLL1", is_sys_clk_from_pll},
 	{"DAC R1", NULL, "DAC R1 Power"},
 
 	{"SPK MIXL", "REC MIXL Switch", "RECMIXL"},
@@ -1622,10 +1600,8 @@ static const struct snd_soc_dapm_route rt5640_specific_dapm_routes[] = {
 	{"DIG MIXL", "DAC L2 Switch", "DAC L2 Mux"},
 
 	{"DAC L2", NULL, "Mono DAC MIXL"},
-	{"DAC L2", NULL, "PLL1", is_sys_clk_from_pll},
 	{"DAC L2", NULL, "DAC L2 Power"},
 	{"DAC R2", NULL, "Mono DAC MIXR"},
-	{"DAC R2", NULL, "PLL1", is_sys_clk_from_pll},
 	{"DAC R2", NULL, "DAC R2 Power"},
 
 	{"SPK MIXL", "DAC L2 Switch", "DAC L2"},
@@ -1861,6 +1837,7 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 	struct snd_soc_codec *codec = dai->codec;
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	unsigned int reg_val = 0;
+	unsigned int pll_bit = 0;
 
 	if (freq == rt5640->sysclk && clk_id == rt5640->sysclk_src)
 		return 0;
@@ -1871,6 +1848,7 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 		break;
 	case RT5640_SCLK_S_PLL1:
 		reg_val |= RT5640_SCLK_SRC_PLL1;
+		pll_bit |= RT5640_PWR_PLL;
 		break;
 	case RT5640_SCLK_S_RCCLK:
 		reg_val |= RT5640_SCLK_SRC_RCCLK;
@@ -1879,6 +1857,9 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 		dev_err(codec->dev, "Invalid clock id (%d)\n", clk_id);
 		return -EINVAL;
 	}
+
+	snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
+		RT5640_PWR_PLL, pll_bit);
 	snd_soc_update_bits(codec, RT5640_GLB_CLK,
 		RT5640_SCLK_SRC_MASK, reg_val);
 	rt5640->sysclk = freq;
@@ -2114,6 +2095,231 @@ int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(rt5640_sel_asrc_clk_src);
 
+static void rt5640_enable_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+
+	snd_soc_dapm_mutex_lock(dapm);
+	snd_soc_dapm_force_enable_pin_unlocked(dapm, "LDO2");
+	snd_soc_dapm_force_enable_pin_unlocked(dapm, "MICBIAS1");
+	/* OVCD is unreliable when used with RCCLK as sysclk-source */
+	snd_soc_dapm_force_enable_pin_unlocked(dapm, "Platform Clock");
+	snd_soc_dapm_sync_unlocked(dapm);
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static void rt5640_disable_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+
+	snd_soc_dapm_mutex_lock(dapm);
+	snd_soc_dapm_disable_pin_unlocked(dapm, "Platform Clock");
+	snd_soc_dapm_disable_pin_unlocked(dapm, "MICBIAS1");
+	snd_soc_dapm_disable_pin_unlocked(dapm, "LDO2");
+	snd_soc_dapm_sync_unlocked(dapm);
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static void rt5640_clear_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+		RT5640_MB1_OC_STATUS, 0);
+}
+
+static bool rt5640_micbias1_ovcd(struct snd_soc_codec *codec)
+{
+	int val;
+
+	val = snd_soc_read(codec, RT5640_IRQ_CTRL2);
+	dev_info(codec->dev, "irq ctrl2 %#04x\n", val);
+
+	return (val & RT5640_MB1_OC_STATUS);
+}
+
+static bool rt5640_jack_inserted(struct snd_soc_codec *codec)
+{
+	int val;
+
+	val = snd_soc_read(codec, RT5640_INT_IRQ_ST);
+	dev_info(codec->dev, "irq status %#04x\n", val);
+
+	return !(val & RT5640_JD_STATUS);
+}
+
+/* Jack detect timings */
+#define JACK_SETTLE_TIME	100 /* milli seconds */
+#define JACK_DETECT_COUNT	5
+#define JACK_DETECT_MAXCOUNT	20  /* Aprox. 2 seconds worth of tries */
+
+static int rt5640_detect_headset(struct snd_soc_codec *codec)
+{
+	int i, headset_count = 0, headphone_count = 0;
+
+	/*
+	 * We get the insertion event before the jack is fully inserted at which
+	 * point the second ring on a TRRS connector may short the 2nd ring and
+	 * sleeve contacts, also the overcurrent detection is not entirely
+	 * reliable. So we try several times with a wait in between until we
+	 * detect the same type JACK_DETECT_COUNT times in a row.
+	 */
+	for (i = 0; i < JACK_DETECT_MAXCOUNT; i++) {
+		/* Clear any previous over-current status flag */
+		rt5640_clear_micbias1_ovcd(codec);
+
+		msleep(JACK_SETTLE_TIME);
+
+		/* Check the jack is still connected before checking ovcd */
+		if (!rt5640_jack_inserted(codec))
+			return 0;
+
+		if (rt5640_micbias1_ovcd(codec)) {
+			/*
+			 * Over current detected, there is a short between the
+			 * 2nd ring contact and the ground, so a TRS connector
+			 * without a mic contact and thus plain headphones.
+			 */
+			dev_info(codec->dev, "jack mic-gnd shorted\n");
+			headset_count = 0;
+			headphone_count++;
+			if (headphone_count == JACK_DETECT_COUNT)
+				return SND_JACK_HEADPHONE;
+		} else {
+			dev_info(codec->dev, "jack mic-gnd open\n");
+			headphone_count = 0;
+			headset_count++;
+			if (headset_count == JACK_DETECT_COUNT)
+				return SND_JACK_HEADSET;
+		}
+	}
+
+	dev_err(codec->dev, "Error detecting headset vs headphones, bad contact?, assuming headphones\n");
+	return SND_JACK_HEADPHONE;
+}
+
+static void rt5640_jack_work(struct work_struct *work)
+{
+	struct rt5640_priv *rt5640 =
+		container_of(work, struct rt5640_priv, jack_work);
+	struct snd_soc_codec *codec = rt5640->codec;
+	int status;
+
+	if (!rt5640_jack_inserted(codec)) {
+		/* Jack removed, or spurious IRQ? */
+		if (rt5640->jack->status & SND_JACK_HEADPHONE) {
+			snd_soc_jack_report(rt5640->jack, 0, SND_JACK_HEADSET);
+			dev_info(codec->dev, "jack unplugged\n");
+		}
+	} else if (!(rt5640->jack->status & SND_JACK_HEADPHONE)) {
+		/* Jack inserted */
+		rt5640_enable_micbias1_ovcd(codec);
+		status = rt5640_detect_headset(codec);
+		rt5640_disable_micbias1_ovcd(codec);
+
+		dev_info(codec->dev, "detect status %#02x\n", status);
+		snd_soc_jack_report(rt5640->jack, status, SND_JACK_HEADSET);
+	}
+}
+
+static irqreturn_t rt5640_irq(int irq, void *data)
+{
+	struct rt5640_priv *rt5640 = data;
+
+	queue_work(system_long_wq, &rt5640->jack_work);
+
+	return IRQ_HANDLED;
+}
+
+static void rt5640_cancel_work(void *data)
+{
+	struct rt5640_priv *rt5640 = data;
+
+	cancel_work_sync(&rt5640->jack_work);
+}
+
+static void rt5640_set_ovcd_params(struct snd_soc_codec *codec)
+{
+	/*
+	 * Enable OVCD at 1500uA, we do this by selecting 2000uA and a scale-
+	 * factor of 0.75, using a scale factor 0f 1.0 seems to be unreliable.
+	 * OVCD seems to be more reliable when enabled before enabling the
+	 * LDO2 / MICBIAS1 supplies, so we enable it here once.
+	 */
+	snd_soc_write(codec, RT5640_PR_BASE + RT5640_BIAS_CUR4,
+		0xa800 | RT5640_MIC_OVCD_SF_0P75);
+
+	snd_soc_update_bits(codec, RT5640_MICBIAS,
+		RT5640_MIC1_OVTH_MASK | RT5640_MIC1_OVCD_MASK,
+		RT5640_MIC1_OVTH_2000UA | RT5640_MIC1_OVCD_EN);
+
+	/*
+	 * The over-current-detect is only reliable in detecting the absence
+	 * of over-current, when the mic-contact in the jack is short-circuited,
+	 * the hardware periodically retries if it can apply the bias-current
+	 * leading to the ovcd status flip-flopping 1-0-1 with it being 0 about
+	 * 10% of the time, as we poll the ovcd status bit we might hit that
+	 * 10%, so we enable sticky mode and when checking OVCD we clear the
+	 * status, msleep() a bit and then check to get a reliable reading.
+	 */
+	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+		RT5640_MB1_OC_STKY_MASK, RT5640_MB1_OC_STKY_EN);
+
+}
+
+static int rt5640_set_jack(struct snd_soc_codec *codec,
+			   struct snd_soc_jack *jack, void *data)
+{
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	int ret;
+
+	if (rt5640->irq <= 0) {
+		dev_err(codec->dev, "Invalid IRQ: %d\n", rt5640->irq);
+		return -EINVAL;
+	}
+
+	rt5640->jack = jack;
+	rt5640->jack_data = data;
+
+	/* Select JD-source */
+	snd_soc_update_bits(codec, RT5640_JD_CTRL,
+		RT5640_JD_MASK, rt5640->jack_data->pin);
+
+	/* Selecting GPIO01 as an interrupt */
+	snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
+		RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_IRQ);
+
+	/* Set GPIO1 output */
+	snd_soc_update_bits(codec, RT5640_GPIO_CTRL3,
+		RT5640_GP1_PF_MASK, RT5640_GP1_PF_OUT);
+
+	/* Enabling jd2 in general control 1 */
+	snd_soc_write(codec, RT5640_DUMMY1, 0x3f41);
+
+	/* Enabling jd2 in general control 2 */
+	snd_soc_write(codec, RT5640_DUMMY2, 0x4001);
+
+	rt5640_set_ovcd_params(codec);
+
+	snd_soc_write(codec, RT5640_IRQ_CTRL1,
+				RT5640_IRQ_JD_NOR);
+
+	/* Make sure work is stopped on probe-error / remove */
+	ret = devm_add_action_or_reset(codec->dev, rt5640_cancel_work, rt5640);
+	if (ret)
+		return ret;
+
+	ret = devm_request_irq(codec->dev, rt5640->irq, rt5640_irq,
+			      IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+			      | IRQF_ONESHOT, "rt5640", rt5640);
+	if (ret) {
+		dev_err(codec->dev, "Failed to reguest IRQ: %d\n", ret);
+		return ret;
+	}
+
+	/* sync initial jack state */
+	queue_work(system_long_wq, &rt5640->jack_work);
+	return 0;
+}
+
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
 	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
@@ -2200,6 +2406,9 @@ static int rt5640_resume(struct snd_soc_codec *codec)
 	regcache_cache_only(rt5640->regmap, false);
 	regcache_sync(rt5640->regmap);
 
+	/* The regmap-cache does not fully restore these. */
+	rt5640_set_ovcd_params(codec);
+
 	return 0;
 }
 #else
@@ -2265,6 +2474,7 @@ static const struct snd_soc_codec_driver soc_codec_dev_rt5640 = {
 	.suspend = rt5640_suspend,
 	.resume = rt5640_resume,
 	.set_bias_level = rt5640_set_bias_level,
+	.set_jack = rt5640_set_jack,
 	.idle_bias_off = true,
 	.component_driver = {
 		.controls		= rt5640_snd_controls,
@@ -2426,6 +2636,8 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 					RT5640_IN_DF2, RT5640_IN_DF2);
 
 	rt5640->hp_mute = 1;
+	rt5640->irq = i2c->irq;
+	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);
 
 	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt5640,
 				      rt5640_dai, ARRAY_SIZE(rt5640_dai));

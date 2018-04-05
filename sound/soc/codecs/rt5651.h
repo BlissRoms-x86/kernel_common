@@ -2060,9 +2060,12 @@ struct rt5651_pll_code {
 
 struct rt5651_priv {
 	struct snd_soc_codec *codec;
-	struct rt5651_platform_data pdata;
 	struct regmap *regmap;
+	struct snd_soc_jack *hp_jack;
+	struct delayed_work jack_detect_work;
+	enum rt5651_jd_src jd_src;
 
+	int irq;
 	int sysclk;
 	int sysclk_src;
 	int lrck[RT5651_AIFS];
@@ -2076,5 +2079,7 @@ struct rt5651_priv {
 	int dmic_en;
 	bool hp_mute;
 };
+
+void rt5651_apply_properties(struct snd_soc_codec *codec);
 
 #endif /* __RT5651_H__ */
