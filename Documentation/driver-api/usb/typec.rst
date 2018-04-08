@@ -212,6 +212,8 @@ port drivers can use USB Role Class API with those.
 
 Illustration of the muxes behind a connector that supports an alternate mode::
 
+::
+
                      ------------------------
                      |       Connector      |
                      ------------------------
