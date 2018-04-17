@@ -1014,6 +1014,10 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 
 		if (interrupted)
 			ret = -EINTR;
+		else  if (epfile->ep != ep) {
+    /* In the meantime, endpoint got disabled or changed. */
+		ret = -ESHUTDOWN;
+		}
 		else if (io_data->read && ep->status > 0)
 			ret = __ffs_epfile_read_data(epfile, data, ep->status,
 						     &io_data->data);
