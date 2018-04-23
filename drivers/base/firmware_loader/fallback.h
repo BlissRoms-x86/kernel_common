@@ -31,7 +31,7 @@ struct firmware_fallback_config {
 };
 
 #ifdef CONFIG_FW_LOADER_USER_HELPER
-int fw_sysfs_fallback(struct firmware *fw, const char *name,
+int firmware_sysfs_fallback(struct firmware *fw, const char *name,
 		      struct device *device,
 		      enum fw_opt opt_flags,
 		      int ret);
@@ -43,7 +43,7 @@ void fw_fallback_set_default_timeout(void);
 int register_sysfs_loader(void);
 void unregister_sysfs_loader(void);
 #else /* CONFIG_FW_LOADER_USER_HELPER */
-static inline int fw_sysfs_fallback(struct firmware *fw, const char *name,
+static inline int firmware_sysfs_fallback(struct firmware *fw, const char *name,
 				    struct device *device,
 				    enum fw_opt opt_flags,
 				    int ret)
