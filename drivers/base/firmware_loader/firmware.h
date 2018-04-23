@@ -2,6 +2,7 @@
 #ifndef __FIRMWARE_LOADER_H
 #define __FIRMWARE_LOADER_H
 
+#include <linux/bitops.h>
 #include <linux/firmware.h>
 #include <linux/types.h>
 #include <linux/kref.h>
@@ -10,13 +11,14 @@
 
 #include <generated/utsrelease.h>
 
-/* firmware behavior options */
-#define FW_OPT_UEVENT			(1U << 0)
-#define FW_OPT_NOWAIT			(1U << 1)
-#define FW_OPT_USERHELPER		(1U << 2)
-#define FW_OPT_NO_WARN			(1U << 3)
-#define FW_OPT_NOCACHE			(1U << 4)
-#define FW_OPT_NOFALLBACK		(1U << 5)
+enum fw_opt {
+	FW_OPT_UEVENT =         BIT(0),
+	FW_OPT_NOWAIT =         BIT(1),
+	FW_OPT_USERHELPER =     BIT(2),
+	FW_OPT_NO_WARN =        BIT(3),
+	FW_OPT_NOCACHE =        BIT(4),
+	FW_OPT_NOFALLBACK =     BIT(5),
+};
 
 enum fw_status {
 	FW_STATUS_UNKNOWN,
@@ -110,6 +112,6 @@ static inline void fw_state_done(struct fw_priv *fw_priv)
 }
 
 int assign_fw(struct firmware *fw, struct device *device,
-	      unsigned int opt_flags);
+	      enum fw_opt opt_flags);
 
 #endif /* __FIRMWARE_LOADER_H */
