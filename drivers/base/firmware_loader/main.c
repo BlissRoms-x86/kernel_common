@@ -597,7 +597,7 @@ _firmware_request(const struct firmware **firmware_p, const char *name,
 }
 
 /**
- * firmware_request: - send firmware request and wait for it
+ * firmware_request() - send firmware request and wait for it
  * @firmware_p: pointer to firmware image
  * @name: name of firmware file
  * @device: device for which firmware is being loaded
@@ -632,7 +632,7 @@ firmware_request(const struct firmware **firmware_p, const char *name,
 EXPORT_SYMBOL(firmware_request);
 
 /**
- * firmware_request_direct: - load firmware directly without usermode helper
+ * firmware_request_direct() - load firmware directly without usermode helper
  * @firmware_p: pointer to firmware image
  * @name: name of firmware file
  * @device: device for which firmware is being loaded
@@ -657,7 +657,7 @@ int firmware_request_direct(const struct firmware **firmware_p,
 EXPORT_SYMBOL_GPL(firmware_request_direct);
 
 /**
- * firmware_request_cache: - cache firmware for suspend so resume can use it
+ * firmware_request_cache() - cache firmware for suspend so resume can use it
  * @name: name of firmware file
  * @device: device for which firmware should be cached for
  *
@@ -681,7 +681,7 @@ int firmware_request_cache(struct device *device, const char *name)
 EXPORT_SYMBOL_GPL(firmware_request_cache);
 
 /**
- * firmware_request_into_buf - load firmware into a previously allocated buffer
+ * firmware_request_into_buf() - load firmware into a previously allocated buffer
  * @firmware_p: pointer to firmware image
  * @name: name of firmware file
  * @device: device for which firmware is being loaded and DMA region allocated
@@ -713,7 +713,7 @@ firmware_request_into_buf(const struct firmware **firmware_p, const char *name,
 EXPORT_SYMBOL(firmware_request_into_buf);
 
 /**
- * firmware_release: - release the resource associated with a firmware image
+ * firmware_release() - release the resource associated with a firmware image
  * @fw: firmware resource to release
  **/
 void firmware_release(const struct firmware *fw)
@@ -755,7 +755,7 @@ static void firmware_request_work_func(struct work_struct *work)
 }
 
 /**
- * firmware_request_nowait - asynchronous version of firmware_request
+ * firmware_request_nowait() - asynchronous version of firmware_request
  * @module: module requesting the firmware
  * @uevent: sends uevent to copy the firmware image if this flag
  *	is non-zero else the firmware copy must be done manually.
@@ -824,7 +824,7 @@ EXPORT_SYMBOL(firmware_request_nowait);
 static ASYNC_DOMAIN_EXCLUSIVE(fw_cache_domain);
 
 /**
- * cache_firmware - cache one firmware image in kernel memory space
+ * cache_firmware() - cache one firmware image in kernel memory space
  * @fw_name: the firmware image name
  *
  * Cache firmware in kernel memory so that drivers can use it when
@@ -866,7 +866,7 @@ static struct fw_priv *lookup_fw_priv(const char *fw_name)
 }
 
 /**
- * uncache_firmware - remove one cached firmware image
+ * uncache_firmware() - remove one cached firmware image
  * @fw_name: the firmware image name
  *
  * Uncache one firmware image which has been cached successfully
@@ -1042,7 +1042,7 @@ static void __device_uncache_fw_images(void)
 }
 
 /**
- * device_cache_fw_images - cache devices' firmware
+ * device_cache_fw_images() - cache devices' firmware
  *
  * If one device called firmware_request or its nowait version
  * successfully before, the firmware names are recored into the
@@ -1075,7 +1075,7 @@ static void device_cache_fw_images(void)
 }
 
 /**
- * device_uncache_fw_images - uncache devices' firmware
+ * device_uncache_fw_images() - uncache devices' firmware
  *
  * uncache all firmwares which have been cached successfully
  * by device_uncache_fw_images earlier
@@ -1092,7 +1092,7 @@ static void device_uncache_fw_images_work(struct work_struct *work)
 }
 
 /**
- * device_uncache_fw_images_delay - uncache devices firmwares
+ * device_uncache_fw_images_delay() - uncache devices firmwares
  * @delay: number of milliseconds to delay uncache device firmwares
  *
  * uncache all devices's firmwares which has been cached successfully
