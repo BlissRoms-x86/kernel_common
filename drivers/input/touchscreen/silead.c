@@ -77,6 +77,8 @@ struct silead_ts_data {
 	struct regulator_bulk_data regulators[2];
 	char fw_name[64];
 	struct touchscreen_properties prop;
+	int min_x;
+	int min_y;
 	u32 max_fingers;
 	u32 chip_id;
 	struct input_mt_pos pos[SILEAD_MAX_FINGERS];
@@ -144,6 +146,7 @@ static void silead_ts_read_data(struct i2c_client *client)
 	u8 *bufp, buf[SILEAD_TS_DATA_LEN];
 	int touch_nr, softbutton, error, i;
 	bool softbutton_pressed = false;
+	int x, y;
 
 	error = i2c_smbus_read_i2c_block_data(client, SILEAD_REG_DATA,
 					      SILEAD_TS_DATA_LEN, buf);
@@ -182,9 +185,14 @@ static void silead_ts_read_data(struct i2c_client *client)
 		 */
 		data->id[touch_nr] = (bufp[SILEAD_POINT_X_MSB_OFF] &
 				      SILEAD_EXTRA_DATA_MASK) >> 4;
-		touchscreen_set_mt_pos(&data->pos[touch_nr], &data->prop,
-			get_unaligned_le16(&bufp[SILEAD_POINT_X_OFF]) & 0xfff,
-			get_unaligned_le16(&bufp[SILEAD_POINT_Y_OFF]) & 0xfff);
+
+		x = get_unaligned_le16(&bufp[SILEAD_POINT_X_OFF]) & 0xfff;
+		x = max(x - data->min_x, 0);
+
+		y = get_unaligned_le16(&bufp[SILEAD_POINT_Y_OFF]) & 0xfff;
+		y = max(y - data->min_y, 0);
+
+		touchscreen_set_mt_pos(&data->pos[touch_nr], &data->prop, x, y);
 		touch_nr++;
 	}
 
@@ -408,6 +416,7 @@ static void silead_ts_read_props(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	const char *str;
 	int error;
+	u32 val;
 
 	error = device_property_read_u32(dev, "silead,max-fingers",
 					 &data->max_fingers);
@@ -422,6 +431,14 @@ static void silead_ts_read_props(struct i2c_client *client)
 			 "silead/%s", str);
 	else
 		dev_dbg(dev, "Firmware file name read error. Using default.");
+
+	error = device_property_read_u32(dev, "silead,min-x", &val);
+	if (!error)
+		data->min_x = val;
+
+	error = device_property_read_u32(dev, "silead,min-y", &val);
+	if (!error)
+		data->min_y = val;
 }
 
 #ifdef CONFIG_ACPI
