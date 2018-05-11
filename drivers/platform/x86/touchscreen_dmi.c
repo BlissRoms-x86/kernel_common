@@ -145,8 +145,10 @@ static const struct ts_dmi_data pipo_w2s_data = {
 };
 
 static const struct property_entry pov_mobii_wintab_p800w_v20_props[] = {
-	PROPERTY_ENTRY_U32("touchscreen-size-x", 1694),
-	PROPERTY_ENTRY_U32("touchscreen-size-y", 1150),
+	PROPERTY_ENTRY_U32("silead,min-x", 32),
+	PROPERTY_ENTRY_U32("silead,min-y", 16),
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1660),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1130),
 	PROPERTY_ENTRY_BOOL("touchscreen-swapped-x-y"),
 	PROPERTY_ENTRY_STRING("firmware-name",
 			      "gsl3680-pov-mobii-wintab-p800w-v20.fw"),
