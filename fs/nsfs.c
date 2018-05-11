@@ -252,6 +252,7 @@ out_invalid:
 	fput(file);
 	return ERR_PTR(-EINVAL);
 }
+EXPORT_SYMBOL(proc_ns_fget);
 
 /**
  * ns_match() - Returns true if current namespace matches dev/ino provided.
