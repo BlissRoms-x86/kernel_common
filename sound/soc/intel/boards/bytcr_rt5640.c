@@ -17,6 +17,7 @@
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
+#include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -53,6 +54,9 @@ enum {
 #define BYT_RT5640_SSP0_AIF2    BIT(21)
 #define BYT_RT5640_MCLK_EN	BIT(22)
 #define BYT_RT5640_MCLK_25MHZ	BIT(23)
+
+/* in-diff + terminating empty entry */
+#define MAX_NO_PROPS 2
 
 struct byt_rt5640_private {
 	struct clk *mclk;
@@ -141,6 +145,52 @@ static void log_quirks(struct device *dev)
 	}
 }
 
+static int byt_rt5640_prepare_and_enable_pll1(struct snd_soc_dai *codec_dai,
+					      int rate)
+{
+	int ret;
+
+	/* Configure the PLL before selecting it */
+	if (!(byt_rt5640_quirk & BYT_RT5640_MCLK_EN)) {
+		/* use bitclock as PLL input */
+		if ((byt_rt5640_quirk & BYT_RT5640_SSP0_AIF1) ||
+		    (byt_rt5640_quirk & BYT_RT5640_SSP0_AIF2)) {
+			/* 2x16 bit slots on SSP0 */
+			ret = snd_soc_dai_set_pll(codec_dai, 0,
+						  RT5640_PLL1_S_BCLK1,
+						  rate * 32, rate * 512);
+		} else {
+			/* 2x15 bit slots on SSP2 */
+			ret = snd_soc_dai_set_pll(codec_dai, 0,
+						  RT5640_PLL1_S_BCLK1,
+						  rate * 50, rate * 512);
+		}
+	} else {
+		if (byt_rt5640_quirk & BYT_RT5640_MCLK_25MHZ) {
+			ret = snd_soc_dai_set_pll(codec_dai, 0,
+						  RT5640_PLL1_S_MCLK,
+						  25000000, rate * 512);
+		} else {
+			ret = snd_soc_dai_set_pll(codec_dai, 0,
+						  RT5640_PLL1_S_MCLK,
+						  19200000, rate * 512);
+		}
+	}
+
+	if (ret < 0) {
+		dev_err(codec_dai->codec->dev, "can't set pll: %d\n", ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
+				     rate * 512, SND_SOC_CLOCK_IN);
+	if (ret < 0) {
+		dev_err(codec_dai->codec->dev, "can't set clock %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
 
 #define BYT_CODEC_DAI1	"rt5640-aif1"
 #define BYT_CODEC_DAI2	"rt5640-aif2"
@@ -173,9 +223,7 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 				return ret;
 			}
 		}
-		ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
-					     48000 * 512,
-					     SND_SOC_CLOCK_IN);
+		ret = byt_rt5640_prepare_and_enable_pll1(codec_dai, 48000);
 	} else {
 		/*
 		 * Set codec clock source to internal clock before
@@ -299,55 +347,9 @@ static int byt_rt5640_aif1_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	int ret;
+	struct snd_soc_dai *dai = rtd->codec_dai;
 
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
-				     params_rate(params) * 512,
-				     SND_SOC_CLOCK_IN);
-
-	if (ret < 0) {
-		dev_err(rtd->dev, "can't set codec clock %d\n", ret);
-		return ret;
-	}
-
-	if (!(byt_rt5640_quirk & BYT_RT5640_MCLK_EN)) {
-		/* use bitclock as PLL input */
-		if ((byt_rt5640_quirk & BYT_RT5640_SSP0_AIF1) ||
-			(byt_rt5640_quirk & BYT_RT5640_SSP0_AIF2)) {
-
-			/* 2x16 bit slots on SSP0 */
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						RT5640_PLL1_S_BCLK1,
-						params_rate(params) * 32,
-						params_rate(params) * 512);
-		} else {
-			/* 2x15 bit slots on SSP2 */
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						RT5640_PLL1_S_BCLK1,
-						params_rate(params) * 50,
-						params_rate(params) * 512);
-		}
-	} else {
-		if (byt_rt5640_quirk & BYT_RT5640_MCLK_25MHZ) {
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						RT5640_PLL1_S_MCLK,
-						25000000,
-						params_rate(params) * 512);
-		} else {
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						RT5640_PLL1_S_MCLK,
-						19200000,
-						params_rate(params) * 512);
-		}
-	}
-
-	if (ret < 0) {
-		dev_err(rtd->dev, "can't set codec pll: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
+	return byt_rt5640_prepare_and_enable_pll1(dai, params_rate(params));
 }
 
 static int byt_rt5640_quirk_cb(const struct dmi_system_id *id)
@@ -440,6 +442,39 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 	{}
 };
 
+/*
+ * Note this MUST be called before snd_soc_register_card(), so that the props
+ * are in place before the codec component driver's probe function parses them.
+ */
+static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
+{
+	struct property_entry props[MAX_NO_PROPS] = {};
+	struct device *i2c_dev;
+	int ret, cnt = 0;
+
+	i2c_dev = bus_find_device_by_name(&i2c_bus_type, NULL, i2c_dev_name);
+	if (!i2c_dev)
+		return -EPROBE_DEFER;
+
+	switch (BYT_RT5640_MAP(byt_rt5640_quirk)) {
+	case BYT_RT5640_IN1_MAP:
+		if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
+			props[cnt++] =
+				PROPERTY_ENTRY_BOOL("realtek,in1-differential");
+		break;
+	case BYT_RT5640_IN3_MAP:
+		if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
+			props[cnt++] =
+				PROPERTY_ENTRY_BOOL("realtek,in3-differential");
+		break;
+	}
+
+	ret = device_add_properties(i2c_dev, props);
+	put_device(i2c_dev);
+
+	return ret;
+}
+
 static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
@@ -520,11 +555,6 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	}
 	if (ret)
 		return ret;
-
-	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC) {
-		snd_soc_component_update_bits(component,  RT5640_IN1_IN2, RT5640_IN_DF1,
-				    RT5640_IN_DF1);
-	}
 
 	if (byt_rt5640_quirk & BYT_RT5640_DMIC_EN) {
 		ret = rt5640_dmic_enable(component, 0, 0);
@@ -744,7 +774,7 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 	int i;
 
 	is_bytcr = false;
-	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_ATOMIC);
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
@@ -843,6 +873,12 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 			 (unsigned int)byt_rt5640_quirk, quirk_override);
 		byt_rt5640_quirk = quirk_override;
 	}
+
+	/* Must be called before register_card, also see declaration comment. */
+	ret_val = byt_rt5640_add_codec_device_props(byt_rt5640_codec_name);
+	if (ret_val)
+		return ret_val;
+
 	log_quirks(&pdev->dev);
 
 	if ((byt_rt5640_quirk & BYT_RT5640_SSP2_AIF2) ||
