@@ -11,6 +11,7 @@ enum {
 	bma250e,
 	bma222e,
 	bma280,
+	bsg1160,
 };
 
 int bmc150_accel_core_probe(struct device *dev, struct regmap *regmap, int irq,
