@@ -214,6 +214,7 @@ static const struct acpi_device_id i2c_acpi_multiple_devices_ids[] = {
 	 * enumerate them all.
 	 */
 	{ "BOSC0200", 0 },
+	{ "BSG1160", 0 },
 	{ "INT3515", 0 },
 	{}
 };
