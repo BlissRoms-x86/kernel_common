@@ -395,9 +395,9 @@ typedef struct {
 	u32 attributes;
 	u32 get_bar_attributes;
 	u32 set_bar_attributes;
-	uint64_t romsize;
-	void *romimage;
-} efi_pci_io_protocol_32;
+	u64 romsize;
+	u32 romimage;
+} efi_pci_io_protocol_32_t;
 
 typedef struct {
 	u64 poll_mem;
@@ -415,9 +415,9 @@ typedef struct {
 	u64 attributes;
 	u64 get_bar_attributes;
 	u64 set_bar_attributes;
-	uint64_t romsize;
-	void *romimage;
-} efi_pci_io_protocol_64;
+	u64 romsize;
+	u64 romimage;
+} efi_pci_io_protocol_64_t;
 
 typedef struct {
 	void *poll_mem;
@@ -437,7 +437,7 @@ typedef struct {
 	void *set_bar_attributes;
 	uint64_t romsize;
 	void *romimage;
-} efi_pci_io_protocol;
+} efi_pci_io_protocol_t;
 
 #define EFI_PCI_IO_ATTRIBUTE_ISA_MOTHERBOARD_IO 0x0001
 #define EFI_PCI_IO_ATTRIBUTE_ISA_IO 0x0002
@@ -1144,6 +1144,7 @@ extern int __init efi_setup_pcdp_console(char *);
 #define EFI_DBG			8	/* Print additional debug info at runtime */
 #define EFI_NX_PE_DATA		9	/* Can runtime data regions be mapped non-executable? */
 #define EFI_MEM_ATTR		10	/* Did firmware publish an EFI_MEMORY_ATTRIBUTES table? */
+#define EFI_PRESERVE_BS_REGIONS	11	/* Are EFI boot-services memory segments available? */
 
 #ifdef CONFIG_EFI
 /*
@@ -1572,6 +1573,12 @@ void efi_enable_reset_attack_mitigation(efi_system_table_t *sys_table_arg);
 #else
 static inline void
 efi_enable_reset_attack_mitigation(efi_system_table_t *sys_table_arg) { }
+#endif
+
+#ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
+void efi_check_for_embedded_firmwares(void);
+#else
+static inline void efi_check_for_embedded_firmwares(void) { }
 #endif
 
 void efi_retrieve_tpm2_eventlog(efi_system_table_t *sys_table);

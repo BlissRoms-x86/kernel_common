@@ -161,7 +161,7 @@ features/
 filesystems/
 	- info on the vfs and the various filesystems that Linux supports.
 firmware_class/
-	- request_firmware() hotplug interface info.
+	- firmware_request() hotplug interface info.
 flexible-arrays.txt
 	- how to make use of flexible sized arrays in linux
 fmc/

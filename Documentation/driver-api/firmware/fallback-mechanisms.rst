@@ -10,13 +10,13 @@ configuration options related to supporting the firmware fallback mechanism are:
   * CONFIG_FW_LOADER_USER_HELPER: enables building the firmware fallback
     mechanism. Most distributions enable this option today. If enabled but
     CONFIG_FW_LOADER_USER_HELPER_FALLBACK is disabled, only the custom fallback
-    mechanism is available and for the request_firmware_nowait() call.
+    mechanism is available and for the firmware_request_nowait() call.
   * CONFIG_FW_LOADER_USER_HELPER_FALLBACK: force enables each request to
     enable the kobject uevent fallback mechanism on all firmware API calls
-    except request_firmware_direct(). Most distributions disable this option
-    today. The call request_firmware_nowait() allows for one alternative
+    except firmware_request_direct(). Most distributions disable this option
+    today. The call firmware_request_nowait() allows for one alternative
     fallback mechanism: if this kconfig option is enabled and your second
-    argument to request_firmware_nowait(), uevent, is set to false you are
+    argument to firmware_request_nowait(), uevent, is set to false you are
     informing the kernel that you have a custom fallback mechanism and it will
     manually load the firmware. Read below for more details.
 
@@ -26,7 +26,7 @@ CONFIG_FW_LOADER_USER_HELPER=y
 CONFIG_FW_LOADER_USER_HELPER_FALLBACK=n
 
 the kobject uevent fallback mechanism will never take effect even
-for request_firmware_nowait() when uevent is set to true.
+for firmware_request_nowait() when uevent is set to true.
 
 Justifying the firmware fallback mechanism
 ==========================================
@@ -39,7 +39,7 @@ fallback mechanism:
 
 * Races upon resume from suspend. This is resolved by the firmware cache, but
   the firmware cache is only supported if you use uevents, and its not
-  supported for request_firmware_into_buf().
+  supported for firmware_request_into_buf().
 
 * Firmware is not accessible through typical means:
         * It cannot be installed into the root filesystem
@@ -154,7 +154,7 @@ Below is an example simple kobject uevent script::
 Firmware custom fallback mechanism
 ==================================
 
-Users of the request_firmware_nowait() call have yet another option available
+Users of the firmware_request_nowait() call have yet another option available
 at their disposal: rely on the sysfs fallback mechanism but request that no
 kobject uevents be issued to userspace. The original logic behind this
 was that utilities other than udev might be required to lookup firmware
@@ -165,10 +165,10 @@ the other API calls as uevents are always forced for them.
 Since uevents are only meaningful if the fallback mechanism is enabled
 in your kernel it would seem odd to enable uevents with kernels that do not
 have the fallback mechanism enabled in their kernels. Unfortunately we also
-rely on the uevent flag which can be disabled by request_firmware_nowait() to
+rely on the uevent flag which can be disabled by firmware_request_nowait() to
 also setup the firmware cache for firmware requests. As documented above,
 the firmware cache is only set up if uevent is enabled for an API call.
-Although this can disable the firmware cache for request_firmware_nowait()
+Although this can disable the firmware cache for firmware_request_nowait()
 calls, users of this API should not use it for the purposes of disabling
 the cache as that was not the original purpose of the flag. Not setting
 the uevent flag means you want to opt-in for the firmware fallback mechanism

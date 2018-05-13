@@ -6,7 +6,7 @@ Linux Firmware API
 
    introduction
    core
-   request_firmware
+   firmware_request
    other_interfaces
 
 .. only::  subproject and html

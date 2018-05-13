@@ -27,8 +27,16 @@
 static int bmc150_magn_i2c_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
+	const struct acpi_device_id *acpi_id;
 	struct regmap *regmap;
+	struct device *dev = &client->dev;
 	const char *name = NULL;
+
+	/* The BSG1160 ACPI id describes multiple sensors, only bind to ours */
+	acpi_id = acpi_match_device(dev->driver->acpi_match_table, dev);
+	if (acpi_id && acpi_id->driver_data &&
+	    client->addr != acpi_id->driver_data)
+		return -ENODEV;
 
 	regmap = devm_regmap_init_i2c(client, &bmc150_magn_regmap_config);
 	if (IS_ERR(regmap)) {
@@ -51,6 +59,7 @@ static const struct acpi_device_id bmc150_magn_acpi_match[] = {
 	{"BMC150B", 0},
 	{"BMC156B", 0},
 	{"BMM150B", 0},
+	{"BSG1160", 0x13},
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, bmc150_magn_acpi_match);

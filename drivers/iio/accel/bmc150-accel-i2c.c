@@ -31,12 +31,19 @@
 static int bmc150_accel_probe(struct i2c_client *client,
 			      const struct i2c_device_id *id)
 {
+	const struct acpi_device_id *acpi_id;
 	struct regmap *regmap;
+	struct device *dev = &client->dev;
 	const char *name = NULL;
 	bool block_supported =
 		i2c_check_functionality(client->adapter, I2C_FUNC_I2C) ||
 		i2c_check_functionality(client->adapter,
 					I2C_FUNC_SMBUS_READ_I2C_BLOCK);
+
+	/* The BSG1160 ACPI id describes multiple sensors, only bind to ours */
+	acpi_id = acpi_match_device(dev->driver->acpi_match_table, dev);
+	if (acpi_id && acpi_id->driver_data == bsg1160 && client->addr != 0x11)
+		return -ENODEV;
 
 	regmap = devm_regmap_init_i2c(client, &bmc150_regmap_conf);
 	if (IS_ERR(regmap)) {
@@ -64,6 +71,7 @@ static const struct acpi_device_id bmc150_accel_acpi_match[] = {
 	{"BMA250E",	bma250e},
 	{"BMA222E",	bma222e},
 	{"BMA0280",	bma280},
+	{"BSG1160",	bsg1160},
 	{"BOSC0200"},
 	{ },
 };

@@ -176,9 +176,9 @@ read_firmwares_expect_nofile()
 	done
 }
 
-test_batched_request_firmware_nofile()
+test_batched_firmware_request_nofile()
 {
-	echo -n "Batched request_firmware() nofile try #$1: "
+	echo -n "Batched firmware_request() nofile try #$1: "
 	config_reset
 	config_set_name nope-test-firmware.bin
 	config_trigger_sync
@@ -187,9 +187,9 @@ test_batched_request_firmware_nofile()
 	echo "OK"
 }
 
-test_batched_request_firmware_direct_nofile()
+test_batched_firmware_request_direct_nofile()
 {
-	echo -n "Batched request_firmware_direct() nofile try #$1: "
+	echo -n "Batched firmware_request_direct() nofile try #$1: "
 	config_reset
 	config_set_name nope-test-firmware.bin
 	config_set_sync_direct
@@ -198,9 +198,9 @@ test_batched_request_firmware_direct_nofile()
 	echo "OK"
 }
 
-test_request_firmware_nowait_uevent_nofile()
+test_firmware_request_nowait_uevent_nofile()
 {
-	echo -n "Batched request_firmware_nowait(uevent=true) nofile try #$1: "
+	echo -n "Batched firmware_request_nowait(uevent=true) nofile try #$1: "
 	config_reset
 	config_set_name nope-test-firmware.bin
 	config_trigger_async
@@ -227,9 +227,9 @@ test_wait_and_cancel_custom_load()
 	echo -1 >"$DIR"/"$name"/loading
 }
 
-test_request_firmware_nowait_custom_nofile()
+test_firmware_request_nowait_custom_nofile()
 {
-	echo -n "Batched request_firmware_nowait(uevent=false) nofile try #$1: "
+	echo -n "Batched firmware_request_nowait(uevent=false) nofile try #$1: "
 	config_reset
 	config_unset_uevent
 	RANDOM_FILE_PATH=$(setup_random_file_fake)
@@ -242,9 +242,9 @@ test_request_firmware_nowait_custom_nofile()
 	echo "OK"
 }
 
-test_batched_request_firmware()
+test_batched_firmware_request()
 {
-	echo -n "Batched request_firmware() try #$1: "
+	echo -n "Batched firmware_request() try #$1: "
 	config_reset
 	config_trigger_sync
 	read_firmwares
@@ -252,9 +252,9 @@ test_batched_request_firmware()
 	echo "OK"
 }
 
-test_batched_request_firmware_direct()
+test_batched_firmware_request_direct()
 {
-	echo -n "Batched request_firmware_direct() try #$1: "
+	echo -n "Batched firmware_request_direct() try #$1: "
 	config_reset
 	config_set_sync_direct
 	config_trigger_sync
@@ -262,18 +262,18 @@ test_batched_request_firmware_direct()
 	echo "OK"
 }
 
-test_request_firmware_nowait_uevent()
+test_firmware_request_nowait_uevent()
 {
-	echo -n "Batched request_firmware_nowait(uevent=true) try #$1: "
+	echo -n "Batched firmware_request_nowait(uevent=true) try #$1: "
 	config_reset
 	config_trigger_async
 	release_all_firmware
 	echo "OK"
 }
 
-test_request_firmware_nowait_custom()
+test_firmware_request_nowait_custom()
 {
-	echo -n "Batched request_firmware_nowait(uevent=false) try #$1: "
+	echo -n "Batched firmware_request_nowait(uevent=false) try #$1: "
 	config_reset
 	config_unset_uevent
 	RANDOM_FILE_PATH=$(setup_random_file)
@@ -292,19 +292,19 @@ test_config_present
 echo
 echo "Testing with the file present..."
 for i in $(seq 1 5); do
-	test_batched_request_firmware $i
+	test_batched_firmware_request $i
 done
 
 for i in $(seq 1 5); do
-	test_batched_request_firmware_direct $i
+	test_batched_firmware_request_direct $i
 done
 
 for i in $(seq 1 5); do
-	test_request_firmware_nowait_uevent $i
+	test_firmware_request_nowait_uevent $i
 done
 
 for i in $(seq 1 5); do
-	test_request_firmware_nowait_custom $i
+	test_firmware_request_nowait_custom $i
 done
 
 # Test for file not found, errors are expected, the failure would be
@@ -312,19 +312,19 @@ done
 echo
 echo "Testing with the file missing..."
 for i in $(seq 1 5); do
-	test_batched_request_firmware_nofile $i
+	test_batched_firmware_request_nofile $i
 done
 
 for i in $(seq 1 5); do
-	test_batched_request_firmware_direct_nofile $i
+	test_batched_firmware_request_direct_nofile $i
 done
 
 for i in $(seq 1 5); do
-	test_request_firmware_nowait_uevent_nofile $i
+	test_firmware_request_nowait_uevent_nofile $i
 done
 
 for i in $(seq 1 5); do
-	test_request_firmware_nowait_custom_nofile $i
+	test_firmware_request_nowait_custom_nofile $i
 done
 
 exit 0

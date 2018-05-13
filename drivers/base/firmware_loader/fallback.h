@@ -5,6 +5,8 @@
 #include <linux/firmware.h>
 #include <linux/device.h>
 
+#include "firmware.h"
+
 /**
  * struct firmware_fallback_config - firmware fallback configuration settings
  *
@@ -29,9 +31,9 @@ struct firmware_fallback_config {
 };
 
 #ifdef CONFIG_FW_LOADER_USER_HELPER
-int fw_sysfs_fallback(struct firmware *fw, const char *name,
+int firmware_sysfs_fallback(struct firmware *fw, const char *name,
 		      struct device *device,
-		      unsigned int opt_flags,
+		      enum fw_opt opt_flags,
 		      int ret);
 void kill_pending_fw_fallback_reqs(bool only_kill_custom);
 
@@ -41,9 +43,9 @@ void fw_fallback_set_default_timeout(void);
 int register_sysfs_loader(void);
 void unregister_sysfs_loader(void);
 #else /* CONFIG_FW_LOADER_USER_HELPER */
-static inline int fw_sysfs_fallback(struct firmware *fw, const char *name,
+static inline int firmware_sysfs_fallback(struct firmware *fw, const char *name,
 				    struct device *device,
-				    unsigned int opt_flags,
+				    enum fw_opt opt_flags,
 				    int ret)
 {
 	/* Keep carrying over the same error */
@@ -63,5 +65,17 @@ static inline void unregister_sysfs_loader(void)
 {
 }
 #endif /* CONFIG_FW_LOADER_USER_HELPER */
+
+#ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
+int fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv,
+			   enum fw_opt *opt_flags, int ret);
+#else
+static inline int fw_get_efi_embedded_fw(struct device *dev,
+					 struct fw_priv *fw_priv,
+					 enum fw_opt *opt_flags, int ret)
+{
+	return ret;
+}
+#endif /* CONFIG_EFI_EMBEDDED_FIRMWARE */
 
 #endif /* __FIRMWARE_FALLBACK_H */

@@ -40,26 +40,28 @@ struct builtin_fw {
 	__used __section(.builtin_fw) = { name, blob, size }
 
 #if defined(CONFIG_FW_LOADER) || (defined(CONFIG_FW_LOADER_MODULE) && defined(MODULE))
-int request_firmware(const struct firmware **fw, const char *name,
+int firmware_request(const struct firmware **fw, const char *name,
 		     struct device *device);
-int request_firmware_nowait(
+int firmware_request_nowarn(const struct firmware **fw, const char *name,
+			    struct device *device);
+int firmware_request_nowait(
 	struct module *module, bool uevent,
 	const char *name, struct device *device, gfp_t gfp, void *context,
 	void (*cont)(const struct firmware *fw, void *context));
-int request_firmware_direct(const struct firmware **fw, const char *name,
+int firmware_request_direct(const struct firmware **fw, const char *name,
 			    struct device *device);
-int request_firmware_into_buf(const struct firmware **firmware_p,
+int firmware_request_into_buf(const struct firmware **firmware_p,
 	const char *name, struct device *device, void *buf, size_t size);
 
-void release_firmware(const struct firmware *fw);
+void firmware_release(const struct firmware *fw);
 #else
-static inline int request_firmware(const struct firmware **fw,
+static inline int firmware_request(const struct firmware **fw,
 				   const char *name,
 				   struct device *device)
 {
 	return -EINVAL;
 }
-static inline int request_firmware_nowait(
+static inline int firmware_request_nowait(
 	struct module *module, bool uevent,
 	const char *name, struct device *device, gfp_t gfp, void *context,
 	void (*cont)(const struct firmware *fw, void *context))
@@ -67,24 +69,39 @@ static inline int request_firmware_nowait(
 	return -EINVAL;
 }
 
-static inline void release_firmware(const struct firmware *fw)
+static inline void firmware_release(const struct firmware *fw)
 {
 }
 
-static inline int request_firmware_direct(const struct firmware **fw,
+static inline int firmware_request_direct(const struct firmware **fw,
 					  const char *name,
 					  struct device *device)
 {
 	return -EINVAL;
 }
 
-static inline int request_firmware_into_buf(const struct firmware **firmware_p,
+static inline int firmware_request_into_buf(const struct firmware **firmware_p,
 	const char *name, struct device *device, void *buf, size_t size)
 {
 	return -EINVAL;
 }
 
 #endif
+
+/*
+ * Mapping to the old scheme. This mapping will eventually be removed, once we
+ * move all subsystems to the new naming scheme. To convert a subsystem:
+ *
+ * make coccicheck COCCI=scripts/coccinelle/cross-tree/firmware-api-rename.cocci \
+ * 	MODE=patch \
+ * 	M=path-to-subsys/ \
+ * 	SPFLAGS="--in-place"
+ */
+#define request_firmware		firmware_request
+#define request_firmware_nowait		firmware_request_nowait
+#define request_firmware_direct		firmware_request_direct
+#define request_firmware_into_buf	firmware_request_into_buf
+#define release_firmware		firmware_release
 
 int firmware_request_cache(struct device *device, const char *name);
 
