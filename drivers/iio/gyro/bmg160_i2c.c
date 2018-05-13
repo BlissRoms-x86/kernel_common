@@ -15,8 +15,16 @@ static const struct regmap_config bmg160_regmap_i2c_conf = {
 static int bmg160_i2c_probe(struct i2c_client *client,
 			    const struct i2c_device_id *id)
 {
+	const struct acpi_device_id *acpi_id;
 	struct regmap *regmap;
+	struct device *dev = &client->dev;
 	const char *name = NULL;
+
+	/* The BSG1160 ACPI id describes multiple sensors, only bind to ours */
+	acpi_id = acpi_match_device(dev->driver->acpi_match_table, dev);
+	if (acpi_id && acpi_id->driver_data &&
+	    client->addr != acpi_id->driver_data)
+		return -ENODEV;
 
 	regmap = devm_regmap_init_i2c(client, &bmg160_regmap_i2c_conf);
 	if (IS_ERR(regmap)) {
@@ -41,6 +49,7 @@ static int bmg160_i2c_remove(struct i2c_client *client)
 static const struct acpi_device_id bmg160_acpi_match[] = {
 	{"BMG0160", 0},
 	{"BMI055B", 0},
+	{"BSG1160", 0x68},
 	{},
 };
 
