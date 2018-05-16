@@ -249,11 +249,13 @@ static struct gmin_cfg_var ecs7_vars[] = {
 	{"INT33BE:00_CsiFmt", "13"},
 	{"INT33BE:00_CsiBayer", "2"},
 	{"INT33BE:00_CamClk", "0"},
+	{"INT33BE:00_ClkSrc", "1"},
 	{"INT33F0:00_CsiPort", "0"},
 	{"INT33F0:00_CsiLanes", "1"},
 	{"INT33F0:00_CsiFmt", "13"},
 	{"INT33F0:00_CsiBayer", "0"},
 	{"INT33F0:00_CamClk", "1"},
+	{"INT33BE:00_I2CAddr", "-1"},
 	{"gmin_V2P8GPIO", "402"},
 	{},
 };
@@ -304,6 +306,20 @@ static const struct dmi_system_id gmin_vars[] = {
 			DMI_MATCH(DMI_BOARD_NAME, "VTA0803"),
 		},
 		.driver_data = i8880_vars,
+	},
+	{
+		.ident = "Surface Book",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_NAME, "Surface Book"),
+		},
+		.driver_data = ecs7_vars,
+	},
+	{
+		.ident = "Surface Pro 4",
+		.matches = {
+			DMI_MATCH(DMI_BOARD_NAME, "Surface Pro 4"),
+		},
+		.driver_data = ecs7_vars,
 	},
 	{}
 };
