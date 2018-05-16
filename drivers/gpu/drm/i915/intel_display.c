@@ -12501,6 +12501,22 @@ static int calc_watermark_data(struct drm_atomic_state *state)
 	return 0;
 }
 
+static bool can_fastset(struct drm_i915_private *dev_priv,
+			struct intel_crtc_state *old_crtc_state,
+			struct intel_crtc_state *new_crtc_state)
+{
+	bool reset_mode =
+		(old_crtc_state->base.mode.private_flags & I915_MODE_FLAG_INHERITED) &&
+		!(new_crtc_state->base.mode.private_flags & I915_MODE_FLAG_INHERITED);
+
+	/* Without fastboot, we always want to modeset the initial mode. */
+	if (reset_mode && !i915_modparams.fastboot)
+		return false;
+
+	return intel_pipe_config_compare(dev_priv, old_crtc_state,
+					 new_crtc_state, true);
+}
+
 /**
  * intel_atomic_check - validate state object
  * @dev: drm device
@@ -12531,6 +12547,8 @@ static int intel_atomic_check(struct drm_device *dev,
 	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, crtc_state, i) {
 		struct intel_crtc_state *pipe_config =
 			to_intel_crtc_state(crtc_state);
+		struct intel_crtc_state *old_intel_crtc_state =
+			to_intel_crtc_state(old_crtc_state);
 
 		if (!needs_modeset(crtc_state))
 			continue;
@@ -12547,10 +12565,7 @@ static int intel_atomic_check(struct drm_device *dev,
 			return ret;
 		}
 
-		if (i915_modparams.fastboot &&
-		    intel_pipe_config_compare(dev_priv,
-					to_intel_crtc_state(old_crtc_state),
-					pipe_config, true)) {
+		if (can_fastset(dev_priv, old_intel_crtc_state, pipe_config)) {
 			crtc_state->mode_changed = false;
 			pipe_config->update_pipe = true;
 		}
