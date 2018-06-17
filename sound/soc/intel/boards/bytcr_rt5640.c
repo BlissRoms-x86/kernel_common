@@ -971,7 +971,7 @@ static int byt_rt5640_suspend(struct snd_soc_card *card)
 
 	list_for_each_entry(component, &card->component_dev_list, card_list) {
 		if (!strcmp(component->name, byt_rt5640_codec_name)) {
-			dev_dbg(component->dev, "disabling jack detect before suspend\n");
+			dev_info(component->dev, "disabling jack detect before suspend\n");
 			snd_soc_component_set_jack(component, NULL, NULL);
 			break;
 		}
@@ -990,7 +990,7 @@ static int byt_rt5640_resume(struct snd_soc_card *card)
 
 	list_for_each_entry(component, &card->component_dev_list, card_list) {
 		if (!strcmp(component->name, byt_rt5640_codec_name)) {
-			dev_dbg(component->dev, "re-enabling jack detect after resume\n");
+			dev_info(component->dev, "re-enabling jack detect after resume\n");
 			snd_soc_component_set_jack(component, &priv->jack, NULL);
 			break;
 		}
