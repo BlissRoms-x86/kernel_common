@@ -39,13 +39,13 @@
 	param(int, enable_dc, -1) \
 	param(int, enable_fbc, -1) \
 	param(int, enable_ppgtt, -1) \
-	param(int, enable_execlists, -1) \
+	param(int, enable_execlists, 0) \
 	param(int, enable_psr, -1) \
 	param(int, disable_power_well, -1) \
 	param(int, enable_ips, 1) \
 	param(int, invert_brightness, 0) \
-	param(int, enable_guc_loading, 0) \
-	param(int, enable_guc_submission, 0) \
+	param(int, enable_guc_loading, 1) \
+	param(int, enable_guc_submission, 1) \
 	param(int, guc_log_level, -1) \
 	param(char *, guc_firmware_path, NULL) \
 	param(char *, huc_firmware_path, NULL) \
