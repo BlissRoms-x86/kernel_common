@@ -55,6 +55,15 @@ static int ovl_check_redirect(struct dentry *dentry, struct ovl_lookup_data *d,
 			if (s == next)
 				goto invalid;
 		}
+		/*
+		 * One of the ancestor path elements in an absolute path
+		 * lookup in ovl_lookup_layer() could have been opaque and
+		 * that will stop further lookup in lower layers (d->stop=true)
+		 * But we have found an absolute redirect in decendant path
+		 * element and that should force continue lookup in lower
+		 * layers (reset d->stop).
+		 */
+		d->stop = false;
 	} else {
 		if (strchr(buf, '/') != NULL)
 			goto invalid;
@@ -678,9 +687,6 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 		stack[ctr].layer = lower.layer;
 		ctr++;
 
-		if (d.stop)
-			break;
-
 		/*
 		 * Following redirects can have security consequences: it's like
 		 * a symlink into the lower layer without the permission checks.
@@ -696,6 +702,9 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 			pr_warn_ratelimited("overlay: refusing to follow redirect for (%pd2)\n", dentry);
 			goto out_put;
 		}
+
+		if (d.stop)
+			break;
 
 		if (d.redirect && d.redirect[0] == '/' && poe != roe) {
 			poe = roe;
