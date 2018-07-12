@@ -88,6 +88,7 @@ static inline bool is_high_priority(struct i915_guc_client* client)
 
 static int __reserve_doorbell(struct i915_guc_client *client)
 {
+	struct drm_i915_private *dev_priv = guc_to_i915(client->guc);
 	unsigned long offset;
 	unsigned long end;
 	u16 id;
@@ -100,10 +101,15 @@ static int __reserve_doorbell(struct i915_guc_client *client)
 	 * priority contexts, the second half for high-priority ones.
 	 */
 	offset = 0;
-	end = GUC_NUM_DOORBELLS/2;
-	if (is_high_priority(client)) {
-		offset = end;
-		end += offset;
+	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+		end = GUC_NUM_DOORBELLS;
+	}
+	else {
+		end = GUC_NUM_DOORBELLS/2;
+		if (is_high_priority(client)) {
+			offset = end;
+			end += offset;
+		}
 	}
 
 	id = find_next_zero_bit(client->guc->doorbell_bitmap, end, offset);
@@ -331,7 +337,14 @@ static void guc_stage_desc_init(struct intel_guc *guc,
 	desc = __get_stage_desc(client);
 	memset(desc, 0, sizeof(*desc));
 
-	desc->attribute = GUC_STAGE_DESC_ATTR_ACTIVE | GUC_STAGE_DESC_ATTR_KERNEL;
+	desc->attribute = GUC_STAGE_DESC_ATTR_ACTIVE;
+	if ((client->priority == GUC_CLIENT_PRIORITY_KMD_NORMAL) ||
+			(client->priority == GUC_CLIENT_PRIORITY_KMD_HIGH)) {
+		desc->attribute  |= GUC_STAGE_DESC_ATTR_KERNEL;
+	} else {
+		desc->attribute  |= GUC_STAGE_DESC_ATTR_PCH;
+	}
+
 	desc->stage_id = client->stage_id;
 	desc->priority = client->priority;
 	desc->db_id = client->doorbell_id;
@@ -1042,7 +1055,8 @@ static void guc_interrupts_capture(struct drm_i915_private *dev_priv)
 		I915_WRITE(RING_MODE_GEN7(engine), irqs);
 
 	/* route USER_INTERRUPT to Host, all others are sent to GuC. */
-	irqs = GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT |
+	irqs = (GT_RENDER_USER_INTERRUPT | GT_RENDER_PIPECTL_NOTIFY_INTERRUPT)
+							<< GEN8_RCS_IRQ_SHIFT |
 	       GT_RENDER_USER_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
 	/* These three registers have the same bit definitions */
 	I915_WRITE(GUC_BCS_RCS_IER, ~irqs);
@@ -1175,4 +1189,48 @@ void i915_guc_submission_disable(struct drm_i915_private *dev_priv)
 
 	guc_client_free(guc->execbuf_client);
 	guc->execbuf_client = NULL;
+}
+
+int i915_guc_ipts_submission_enable(struct drm_i915_private *dev_priv,
+				    struct i915_gem_context *ctx)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+	struct i915_guc_client *client;
+
+	/* client for execbuf submission */
+	client = guc_client_alloc(dev_priv,
+				  INTEL_INFO(dev_priv)->ring_mask,
+				  IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ? GUC_CLIENT_PRIORITY_HIGH : GUC_CLIENT_PRIORITY_NORMAL,
+				  ctx);
+	if (!client) {
+		DRM_ERROR("Failed to create normal GuC client!\n");
+		return -ENOMEM;
+	}
+
+	guc->ipts_client = client;
+	intel_guc_sample_forcewake(guc);
+	guc_init_doorbell_hw(guc);
+
+	return 0;
+}
+
+void i915_guc_ipts_submission_disable(struct drm_i915_private *dev_priv)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+
+	if (!guc->ipts_client)
+		return;
+
+	guc_client_free(guc->ipts_client);
+	guc->ipts_client = NULL;
+}
+
+void i915_guc_ipts_reacquire_doorbell(struct drm_i915_private *dev_priv)
+{
+	struct intel_guc *guc = &dev_priv->guc;
+
+	int err = __guc_allocate_doorbell(guc, guc->ipts_client->stage_id);
+
+	if (err)
+		DRM_ERROR("Not able to reacquire IPTS doorbell\n");
 }

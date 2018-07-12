@@ -252,6 +252,9 @@ struct smi_info {
 	/* Default driver model device. */
 	struct platform_device *pdev;
 
+	/* Have we added the device group to the device? */
+	bool dev_group_added;
+
 	/* Counters and things for the proc filesystem. */
 	atomic_t stats[SI_NUM_STATS];
 
@@ -2025,8 +2028,8 @@ int ipmi_si_add_smi(struct si_sm_io *io)
 	if (initialized) {
 		rv = try_smi_init(new_smi);
 		if (rv) {
-			mutex_unlock(&smi_infos_lock);
 			cleanup_one_si(new_smi);
+			mutex_unlock(&smi_infos_lock);
 			return rv;
 		}
 	}
@@ -2045,6 +2048,7 @@ static int try_smi_init(struct smi_info *new_smi)
 	int rv = 0;
 	int i;
 	char *init_name = NULL;
+	bool platform_device_registered = false;
 
 	pr_info(PFX "Trying %s-specified %s state machine at %s address 0x%lx, slave address 0x%x, irq %d\n",
 		ipmi_addr_src_to_str(new_smi->io.addr_source),
@@ -2173,6 +2177,7 @@ static int try_smi_init(struct smi_info *new_smi)
 				rv);
 			goto out_err;
 		}
+		platform_device_registered = true;
 	}
 
 	dev_set_drvdata(new_smi->io.dev, new_smi);
@@ -2183,6 +2188,7 @@ static int try_smi_init(struct smi_info *new_smi)
 			rv);
 		goto out_err_stop_timer;
 	}
+	new_smi->dev_group_added = true;
 
 	rv = ipmi_register_smi(&handlers,
 			       new_smi,
@@ -2236,7 +2242,10 @@ static int try_smi_init(struct smi_info *new_smi)
 	return 0;
 
 out_err_remove_attrs:
-	device_remove_group(new_smi->io.dev, &ipmi_si_dev_attr_group);
+	if (new_smi->dev_group_added) {
+		device_remove_group(new_smi->io.dev, &ipmi_si_dev_attr_group);
+		new_smi->dev_group_added = false;
+	}
 	dev_set_drvdata(new_smi->io.dev, NULL);
 
 out_err_stop_timer:
@@ -2279,10 +2288,12 @@ out_err:
 	}
 
 	if (new_smi->pdev) {
-		platform_device_unregister(new_smi->pdev);
+		if (platform_device_registered)
+			platform_device_unregister(new_smi->pdev);
+		else
+			platform_device_put(new_smi->pdev);
 		new_smi->pdev = NULL;
-	} else if (new_smi->pdev) {
-		platform_device_put(new_smi->pdev);
+		new_smi->io.dev = NULL;
 	}
 
 	kfree(init_name);
@@ -2379,8 +2390,10 @@ static void cleanup_one_si(struct smi_info *to_clean)
 		}
 	}
 
-	device_remove_group(to_clean->io.dev, &ipmi_si_dev_attr_group);
-	dev_set_drvdata(to_clean->io.dev, NULL);
+	if (to_clean->dev_group_added)
+		device_remove_group(to_clean->io.dev, &ipmi_si_dev_attr_group);
+	if (to_clean->io.dev)
+		dev_set_drvdata(to_clean->io.dev, NULL);
 
 	list_del(&to_clean->link);
 

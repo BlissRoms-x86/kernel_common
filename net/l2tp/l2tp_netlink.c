@@ -236,12 +236,6 @@ static int l2tp_nl_cmd_tunnel_create(struct sk_buff *skb, struct genl_info *info
 	if (info->attrs[L2TP_ATTR_DEBUG])
 		cfg.debug = nla_get_u32(info->attrs[L2TP_ATTR_DEBUG]);
 
-	tunnel = l2tp_tunnel_find(net, tunnel_id);
-	if (tunnel != NULL) {
-		ret = -EEXIST;
-		goto out;
-	}
-
 	ret = -EINVAL;
 	switch (cfg.encap) {
 	case L2TP_ENCAPTYPE_UDP:
@@ -251,9 +245,19 @@ static int l2tp_nl_cmd_tunnel_create(struct sk_buff *skb, struct genl_info *info
 		break;
 	}
 
-	if (ret >= 0)
-		ret = l2tp_tunnel_notify(&l2tp_nl_family, info,
-					 tunnel, L2TP_CMD_TUNNEL_CREATE);
+	if (ret < 0)
+		goto out;
+
+	l2tp_tunnel_inc_refcount(tunnel);
+	ret = l2tp_tunnel_register(tunnel, net, &cfg);
+	if (ret < 0) {
+		kfree(tunnel);
+		goto out;
+	}
+	ret = l2tp_tunnel_notify(&l2tp_nl_family, info, tunnel,
+				 L2TP_CMD_TUNNEL_CREATE);
+	l2tp_tunnel_dec_refcount(tunnel);
+
 out:
 	return ret;
 }
@@ -761,6 +765,8 @@ static int l2tp_nl_session_send(struct sk_buff *skb, u32 portid, u32 seq, int fl
 
 	if ((session->ifname[0] &&
 	     nla_put_string(skb, L2TP_ATTR_IFNAME, session->ifname)) ||
+	    (session->offset &&
+	     nla_put_u16(skb, L2TP_ATTR_OFFSET, session->offset)) ||
 	    (session->cookie_len &&
 	     nla_put(skb, L2TP_ATTR_COOKIE, session->cookie_len,
 		     &session->cookie[0])) ||
