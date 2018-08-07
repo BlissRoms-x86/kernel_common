@@ -243,9 +243,6 @@ static acpi_status acpi_gpiochip_request_interrupt(struct acpi_resource *ares,
 	 * may refer to OperationRegions from other (builtin) drivers which
 	 * may be probed after us.
 	 */
-	if (((irqflags & IRQF_TRIGGER_RISING) && value == 1) ||
-	    ((irqflags & IRQF_TRIGGER_FALLING) && value == 0))
-		handler(event->irq, event);
 
 	return AE_OK;
 
