@@ -1881,7 +1881,6 @@ static void uvc_unregister_video(struct uvc_device *dev)
 			continue;
 
 		video_unregister_device(&stream->vdev);
-		video_unregister_device(&stream->meta.vdev);
 
 		uvc_debugfs_cleanup_stream(stream);
 	}
@@ -1927,9 +1926,6 @@ int uvc_register_video_device(struct uvc_device *dev,
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		vdev->device_caps = V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_STREAMING;
 		break;
-	case V4L2_BUF_TYPE_META_CAPTURE:
-		vdev->device_caps = V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING;
-		break;
 	}
 
 	strlcpy(vdev->name, dev->name, sizeof(vdev->name));
@@ -1965,8 +1961,7 @@ static int uvc_register_video(struct uvc_device *dev,
 	}
 
 	if (stream->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		stream->chain->caps |= V4L2_CAP_VIDEO_CAPTURE
-			| V4L2_CAP_META_CAPTURE;
+		stream->chain->caps |= V4L2_CAP_VIDEO_CAPTURE;
 	else
 		stream->chain->caps |= V4L2_CAP_VIDEO_OUTPUT;
 
@@ -2004,11 +1999,6 @@ static int uvc_register_terms(struct uvc_device *dev,
 		if (ret < 0)
 			return ret;
 
-		/* Register a metadata node, but ignore a possible failure,
-		 * complete registration of video nodes anyway.
-		 */
-		uvc_meta_register(stream);
-
 		term->vdev = &stream->vdev;
 	}
 
@@ -2043,7 +2033,6 @@ static int uvc_register_chains(struct uvc_device *dev)
 
 struct uvc_device_info {
 	u32	quirks;
-	u32	meta_format;
 };
 
 static int uvc_probe(struct usb_interface *intf,
@@ -2082,8 +2071,6 @@ static int uvc_probe(struct usb_interface *intf,
 	dev->intfnum = intf->cur_altsetting->desc.bInterfaceNumber;
 	dev->quirks = (uvc_quirks_param == -1)
 		    ? quirks : uvc_quirks_param;
-	if (info)
-		dev->meta_format = info->meta_format;
 
 	if (udev->product != NULL)
 		strlcpy(dev->name, udev->product, sizeof(dev->name));
