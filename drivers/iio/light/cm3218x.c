@@ -656,7 +656,6 @@ static const struct attribute_group cm3218x_attribute_group = {
 };
 
 static const struct iio_info cm3218x_info = {
-	.driver_module		= THIS_MODULE,
 	.read_raw		= &cm3218x_read_raw,
 	.write_raw		= &cm3218x_write_raw,
 	.attrs			= &cm3218x_attribute_group,
