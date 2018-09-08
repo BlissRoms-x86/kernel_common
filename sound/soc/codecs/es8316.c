@@ -41,6 +41,11 @@ struct es8316_priv {
 	unsigned int sysclk;
 	unsigned int allowed_rates[NR_SUPPORTED_MCLK_LRCK_RATIOS];
 	struct snd_pcm_hw_constraint_list sysclk_constraints;
+	
+	unsigned int hp_irq;
+	bool hpdet_inv_flag;
+	struct gpio_desc *gpiod_spken;
+	struct gpio_desc *gpiod_hpint;
 };
 
 /*
@@ -534,8 +539,27 @@ static struct snd_soc_dai_driver es8316_dai = {
 	.symmetric_rates = 1,
 };
 
+//FIXME: do proper impl via alsa-jack in machine driver
+static void es8316_sync_spk_status(struct snd_soc_component *component)
+{
+	struct es8316_priv *es8316 = snd_soc_component_get_drvdata(component);
+	unsigned int data;
+ 	data = snd_soc_component_read32(component, ES8316_GPIO_FLAG);
+	dev_info(component->dev, "Status: %u / HPIns %u / GMShrt %u / OUT: %d\n", data, !!(data & BIT(2)), !!(data & BIT(1)), !(!!(data & BIT(2)) ^ es8316->hpdet_inv_flag));
+ 	gpiod_set_value(es8316->gpiod_spken, !(!!(data & BIT(2)) ^ es8316->hpdet_inv_flag));
+}
+
+static irqreturn_t es8316_irq_handler(int irq, void *dev_id)
+{
+	es8316_sync_spk_status((struct snd_soc_component *)dev_id);
+	return IRQ_HANDLED;
+}
+
 static int es8316_probe(struct snd_soc_component *component)
 {
+	struct es8316_priv *es8316 = snd_soc_component_get_drvdata(component);
+	int error;
+
 	/* Reset codec and enable current state machine */
 	snd_soc_component_write(component, ES8316_RESET, 0x3f);
 	usleep_range(5000, 5500);
@@ -554,12 +578,42 @@ static int es8316_probe(struct snd_soc_component *component)
 	 * and quality for Intel CHT platforms.
 	 */
 	snd_soc_component_write(component, ES8316_CLKMGR_ADCOSR, 0x32);
+	
+	if (es8316->hp_irq && es8316->gpiod_spken) {
+		es8316_sync_spk_status(component);
+ 		error = devm_request_threaded_irq(component->dev, es8316->hp_irq, NULL, es8316_irq_handler,
+					 								irq_get_trigger_type(es8316->hp_irq) | IRQF_ONESHOT, 
+					 								"ES8316", component);
+		if (error) {
+			dev_err(component->dev, "Failed to acquire HP-DET IRQ#%u with trigType %u: %d\n", es8316->hp_irq, irq_get_trigger_type(es8316->hp_irq), error);
+			return error;
+		}
+ 		//according to my tests on Hi12, minimal debounce intervals are just fine
+		error = snd_soc_component_write(component, ES8316_GPIO_DEBOUNCE, 0x02);
+		if (error) {
+			dev_err(component->dev, "Failed to enable HP-DET interrupt: %d\n", error);
+			return error;
+		}
+	}
+ 	return 0;
+}
+ static int es8316_remove(struct snd_soc_component *component)
+{
+	struct es8316_priv *es8316 = snd_soc_component_get_drvdata(component);
+ 	if (es8316->hp_irq && es8316->gpiod_spken) {
+		/* It is necessary to disable HP interrupt, otherwise the chip may get stuck with int pin held HI
+		 * in case HP event occur while the driver is unloaded, and so remain unhandled (no following reg read) */
+		snd_soc_component_write(component, ES8316_GPIO_DEBOUNCE, 0x00);
+		devm_free_irq(component->dev, es8316->hp_irq, component);
+		gpiod_set_value(es8316->gpiod_spken, 0);
+	}
 
 	return 0;
 }
 
 static const struct snd_soc_component_driver soc_component_dev_es8316 = {
 	.probe			= es8316_probe,
+	.remove		= es8316_remove,
 	.controls		= es8316_snd_controls,
 	.num_controls		= ARRAY_SIZE(es8316_snd_controls),
 	.dapm_widgets		= es8316_dapm_widgets,
@@ -571,14 +625,24 @@ static const struct snd_soc_component_driver soc_component_dev_es8316 = {
 	.non_legacy_dai_naming	= 1,
 };
 
+static const struct regmap_range es8316_volatile_regs_ranges[] = {
+	regmap_reg_range(ES8316_GPIO_FLAG,  ES8316_GPIO_FLAG),
+};
+static const struct regmap_access_table es8316_volatile_regs = {
+	.yes_ranges =	es8316_volatile_regs_ranges,
+	.n_yes_ranges =	ARRAY_SIZE(es8316_volatile_regs_ranges),
+};
+
 static const struct regmap_config es8316_regmap = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = 0x53,
 	.cache_type = REGCACHE_RBTREE,
+	.volatile_table =	&es8316_volatile_regs,
 };
 
-static const struct dmi_system_id chuwi_hi12[] = {
+//It seems that Hi12 uses non-reference HP-det circuit, so that HPINS=1 means not inserted
+static const struct dmi_system_id hpdet_inverted_flag[] = {
 #if defined(CONFIG_DMI) && defined(CONFIG_X86)
 	{
 		.ident = "Chuwi Hi12",
@@ -591,23 +655,19 @@ static const struct dmi_system_id chuwi_hi12[] = {
 	{}
 };
 
-static const struct acpi_gpio_params hi12_es8316_gpio_spken = { 0, 0, false };
-static const struct acpi_gpio_params hi12_es8316_gpio_hpint = { 1, 0, false };
-
-static const struct acpi_gpio_mapping hi12_es8316_gpios_map[] = {
-	{ "spken-gpios", &hi12_es8316_gpio_spken, 1 },
-	{ "hpint-gpios", &hi12_es8316_gpio_hpint, 1 },
+static const struct acpi_gpio_params es8316_gpio_spken = { 0, 0, false };
+static const struct acpi_gpio_params es8316_gpio_hpint = { 1, 0, false };
+static const struct acpi_gpio_mapping es8316_gpios_map[] = {
+	{ "spken-gpios", &es8316_gpio_spken, 1 },
+	{ "hpint-gpios", &es8316_gpio_hpint, 1 },
 	{ },
 };
 
-static int es8316_i2c_probe(struct i2c_client *i2c_client,
-			    const struct i2c_device_id *id)
+static int es8316_i2c_probe(struct i2c_client *i2c_client)
 {
 	struct es8316_priv *es8316;
 	struct regmap *regmap;
 	
-	struct gpio_desc *gpiod_spken;
-	//struct gpio_desc *gpiod_hpint;
 	int error;
 
 	es8316 = devm_kzalloc(&i2c_client->dev, sizeof(struct es8316_priv),
@@ -621,28 +681,47 @@ static int es8316_i2c_probe(struct i2c_client *i2c_client,
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
 		
-	if (dmi_check_system(chuwi_hi12) && ACPI_HANDLE(&i2c_client->dev)) {
-		dev_dbg(&i2c_client->dev, "Applying gpios quirk\n");
-		error = devm_acpi_dev_add_driver_gpios(&i2c_client->dev, hi12_es8316_gpios_map);
+	if (ACPI_HANDLE(&i2c_client->dev)) {
+		error = devm_acpi_dev_add_driver_gpios(&i2c_client->dev, es8316_gpios_map);
 		if (error)
 			return error;
 	}
 	
- 	gpiod_spken = devm_gpiod_get_optional(&i2c_client->dev, "spken", GPIOD_ASIS);
-	if (IS_ERR(gpiod_spken)) {
-		error = PTR_ERR(gpiod_spken);
-		dev_dbg(&i2c_client->dev, "Failed to get SPK-EN GPIO: %d\n", error);
-		return error;
+ 	/* Requesting ASIS as additional safety measure, see direction checks below
+	 * As of now I have ACPI tables for only 2 devices employing this codec */
+	es8316->gpiod_spken = devm_gpiod_get_optional(&i2c_client->dev, "spken", GPIOD_ASIS);
+	if (IS_ERR(es8316->gpiod_spken)) {
+		error = PTR_ERR(es8316->gpiod_spken);
+		dev_err(&i2c_client->dev, "Failed to get SPK-EN GPIO: %d\n", error);
+		goto err_no_gpio;
 	}
-	if (gpiod_spken) {
-		if (gpiod_export(gpiod_spken, false) < 0) {
-			dev_err(&i2c_client->dev, "Failed to export SPK-EN GPIO!.\n");
-		} else {
-			dev_dbg(&i2c_client->dev, "Exported SPK-EN GPIO to sysfs\n");
+	es8316->gpiod_hpint = devm_gpiod_get_optional(&i2c_client->dev, "hpint", GPIOD_ASIS);
+	if (IS_ERR(es8316->gpiod_hpint)) {
+		error = PTR_ERR(es8316->gpiod_hpint);
+		dev_err(&i2c_client->dev, "Failed to get HP-INT GPIO: %d\n", error);
+		goto err_no_gpio;
+	}
+	if (es8316->gpiod_spken && es8316->gpiod_hpint) {
+		if(gpiod_get_direction(es8316->gpiod_spken) != 0 /*dir_out*/) {
+			dev_err(&i2c_client->dev, "SPK-EN GPIO has invalid direction\n");
+			goto err_no_gpio;
 		}
+		if(gpiod_get_direction(es8316->gpiod_hpint) != 1 /*dir_in*/) {
+			dev_err(&i2c_client->dev, "HP-INT GPIO has invalid direction\n");
+			goto err_no_gpio;
+		}
+ 		es8316->hp_irq = i2c_client->irq;
+		es8316->hpdet_inv_flag = !!dmi_check_system(hpdet_inverted_flag);
+		dev_info(&i2c_client->dev, "Successfully aquired gpios. HPIns flag inverted: %d\n", es8316->hpdet_inv_flag);
+ 		goto finalize;
 	}
-	//TODO: configure chip to generate HP-DET interrupts
-
+	
+err_no_gpio:
+	dev_err(&i2c_client->dev, "HP-Det / spk-ctl gpios not available\n");
+	es8316->gpiod_spken = NULL;
+	es8316->gpiod_hpint = NULL;	
+	
+finalize:
 	return devm_snd_soc_register_component(&i2c_client->dev,
 				      &soc_component_dev_es8316,
 				      &es8316_dai, 1);
