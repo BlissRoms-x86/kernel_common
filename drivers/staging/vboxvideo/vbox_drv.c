@@ -276,5 +276,6 @@ module_init(vbox_init);
 module_exit(vbox_exit);
 
 MODULE_AUTHOR("Oracle Corporation");
+MODULE_AUTHOR("Hans de Goede <hdegoede@redhat.com>");
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL and additional rights");
