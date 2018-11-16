@@ -3144,6 +3144,8 @@ static int cfg80211_rtw_set_power_mgmt(struct wiphy *wiphy,
 {
 	_adapter *padapter = (_adapter *)rtw_netdev_priv(ndev);
 	struct rtw_wdev_priv *rtw_wdev_priv = adapter_wdev_data(padapter);
+	
+	enabled = false;
 
 	DBG_871X(FUNC_NDEV_FMT" enabled:%u, timeout:%d\n", FUNC_NDEV_ARG(ndev),
 		enabled, timeout);
