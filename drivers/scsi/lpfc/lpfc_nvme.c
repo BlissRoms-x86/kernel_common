@@ -2687,7 +2687,7 @@ lpfc_nvme_register_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	struct lpfc_nvme_rport *oldrport;
 	struct nvme_fc_remote_port *remote_port;
 	struct nvme_fc_port_info rpinfo;
-	struct lpfc_nodelist *prev_ndlp;
+	struct lpfc_nodelist *prev_ndlp = NULL;
 
 	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NVME_DISC,
 			 "6006 Register NVME PORT. DID x%06x nlptype x%x\n",
@@ -2718,7 +2718,9 @@ lpfc_nvme_register_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	rpinfo.port_name = wwn_to_u64(ndlp->nlp_portname.u.wwn);
 	rpinfo.node_name = wwn_to_u64(ndlp->nlp_nodename.u.wwn);
 
+	spin_lock_irq(&vport->phba->hbalock);
 	oldrport = lpfc_ndlp_get_nrport(ndlp);
+	spin_unlock_irq(&vport->phba->hbalock);
 	if (!oldrport)
 		lpfc_nlp_get(ndlp);
 
@@ -2736,23 +2738,29 @@ lpfc_nvme_register_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 		spin_unlock_irq(&vport->phba->hbalock);
 		rport = remote_port->private;
 		if (oldrport) {
+			/* New remoteport record does not guarantee valid
+			 * host private memory area.
+			 */
+			prev_ndlp = oldrport->ndlp;
 			if (oldrport == remote_port->private) {
-				/* Same remoteport.  Just reuse. */
+				/* Same remoteport - ndlp should match.
+				 * Just reuse.
+				 */
 				lpfc_printf_vlog(ndlp->vport, KERN_INFO,
 						 LOG_NVME_DISC,
 						 "6014 Rebinding lport to "
 						 "remoteport %p wwpn 0x%llx, "
-						 "Data: x%x x%x %p x%x x%06x\n",
+						 "Data: x%x x%x %p %p x%x x%06x\n",
 						 remote_port,
 						 remote_port->port_name,
 						 remote_port->port_id,
 						 remote_port->port_role,
+						 prev_ndlp,
 						 ndlp,
 						 ndlp->nlp_type,
 						 ndlp->nlp_DID);
 				return 0;
 			}
-			prev_ndlp = rport->ndlp;
 
 			/* Sever the ndlp<->rport association
 			 * before dropping the ndlp ref from
@@ -2786,13 +2794,13 @@ lpfc_nvme_register_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 		lpfc_printf_vlog(vport, KERN_INFO,
 				 LOG_NVME_DISC | LOG_NODE,
 				 "6022 Binding new rport to "
-				 "lport %p Remoteport %p  WWNN 0x%llx, "
+				 "lport %p Remoteport %p rport %p WWNN 0x%llx, "
 				 "Rport WWPN 0x%llx DID "
-				 "x%06x Role x%x, ndlp %p\n",
-				 lport, remote_port,
+				 "x%06x Role x%x, ndlp %p prev_ndlp %p\n",
+				 lport, remote_port, rport,
 				 rpinfo.node_name, rpinfo.port_name,
 				 rpinfo.port_id, rpinfo.port_role,
-				 ndlp);
+				 ndlp, prev_ndlp);
 	} else {
 		lpfc_printf_vlog(vport, KERN_ERR,
 				 LOG_NVME_DISC | LOG_NODE,
@@ -2827,7 +2835,7 @@ lpfc_nvme_unregister_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	struct nvme_fc_local_port *localport;
 	struct lpfc_nvme_lport *lport;
 	struct lpfc_nvme_rport *rport;
-	struct nvme_fc_remote_port *remoteport;
+	struct nvme_fc_remote_port *remoteport = NULL;
 
 	localport = vport->localport;
 
@@ -2841,11 +2849,14 @@ lpfc_nvme_unregister_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	if (!lport)
 		goto input_err;
 
+	spin_lock_irq(&vport->phba->hbalock);
 	rport = lpfc_ndlp_get_nrport(ndlp);
-	if (!rport)
+	if (rport)
+		remoteport = rport->remoteport;
+	spin_unlock_irq(&vport->phba->hbalock);
+	if (!remoteport)
 		goto input_err;
 
-	remoteport = rport->remoteport;
 	lpfc_printf_vlog(vport, KERN_INFO, LOG_NVME_DISC,
 			 "6033 Unreg nvme remoteport %p, portname x%llx, "
 			 "port_id x%06x, portstate x%x port type x%x\n",
@@ -2970,7 +2981,7 @@ lpfc_nvme_wait_for_io_drain(struct lpfc_hba *phba)
 	struct lpfc_sli_ring  *pring;
 	u32 i, wait_cnt = 0;
 
-	if (phba->sli_rev < LPFC_SLI_REV4)
+	if (phba->sli_rev < LPFC_SLI_REV4 || !phba->sli4_hba.nvme_wq)
 		return;
 
 	/* Cycle through all NVME rings and make sure all outstanding
@@ -2978,6 +2989,9 @@ lpfc_nvme_wait_for_io_drain(struct lpfc_hba *phba)
 	 */
 	for (i = 0; i < phba->cfg_nvme_io_channel; i++) {
 		pring = phba->sli4_hba.nvme_wq[i]->pring;
+
+		if (!pring)
+			continue;
 
 		/* Retrieve everything on the txcmplq */
 		while (!list_empty(&pring->txcmplq)) {

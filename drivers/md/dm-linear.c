@@ -102,6 +102,7 @@ int dm_linear_map(struct dm_target *ti, struct bio *bio)
 	return DM_MAPIO_REMAPPED;
 }
 
+#ifdef CONFIG_BLK_DEV_ZONED
 int dm_linear_end_io(struct dm_target *ti, struct bio *bio,
 			 blk_status_t *error)
 {
@@ -211,7 +212,12 @@ static size_t dm_linear_dax_copy_to_iter(struct dm_target *ti, pgoff_t pgoff,
 static struct target_type linear_target = {
 	.name   = "linear",
 	.version = {1, 4, 0},
+#ifdef CONFIG_BLK_DEV_ZONED
+	.end_io = dm_linear_end_io,
 	.features = DM_TARGET_PASSES_INTEGRITY | DM_TARGET_ZONED_HM,
+#else
+	.features = DM_TARGET_PASSES_INTEGRITY,
+#endif
 	.module = THIS_MODULE,
 	.ctr    = dm_linear_ctr,
 	.dtr    = dm_linear_dtr,

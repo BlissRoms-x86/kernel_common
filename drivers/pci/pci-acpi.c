@@ -632,13 +632,11 @@ static bool acpi_pci_need_resume(struct pci_dev *dev)
 	/*
 	 * In some cases (eg. Samsung 305V4A) leaving a bridge in suspend over
 	 * system-wide suspend/resume confuses the platform firmware, so avoid
-	 * doing that, unless the bridge has a driver that should take care of
-	 * the PM handling.  According to Section 16.1.6 of ACPI 6.2, endpoint
+	 * doing that.  According to Section 16.1.6 of ACPI 6.2, endpoint
 	 * devices are expected to be in D3 before invoking the S3 entry path
 	 * from the firmware, so they should not be affected by this issue.
 	 */
-	if (pci_is_bridge(dev) && !dev->driver &&
-	    acpi_target_system_state() != ACPI_STATE_S0)
+	if (pci_is_bridge(dev) && acpi_target_system_state() != ACPI_STATE_S0)
 		return true;
 
 	if (!adev || !acpi_device_power_manageable(adev))
@@ -781,19 +779,33 @@ static void pci_acpi_setup(struct device *dev)
 		return;
 
 	device_set_wakeup_capable(dev, true);
+	/*
+	 * For bridges that can do D3 we enable wake automatically (as
+	 * we do for the power management itself in that case). The
+	 * reason is that the bridge may have additional methods such as
+	 * _DSW that need to be called.
+	 */
+	if (pci_dev->bridge_d3)
+		device_wakeup_enable(dev);
+
 	acpi_pci_wakeup(pci_dev, false);
 }
 
 static void pci_acpi_cleanup(struct device *dev)
 {
 	struct acpi_device *adev = ACPI_COMPANION(dev);
+	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	if (!adev)
 		return;
 
 	pci_acpi_remove_pm_notifier(adev);
-	if (adev->wakeup.flags.valid)
+	if (adev->wakeup.flags.valid) {
+		if (pci_dev->bridge_d3)
+			device_wakeup_disable(dev);
+
 		device_set_wakeup_capable(dev, false);
+	}
 }
 
 static bool pci_acpi_bus_match(struct device *dev)
