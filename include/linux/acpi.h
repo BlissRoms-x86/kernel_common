@@ -1007,6 +1007,8 @@ struct acpi_gpio_mapping {
 
 /* Ignore IoRestriction field */
 #define ACPI_GPIO_QUIRK_NO_IO_RESTRICTION	BIT(0)
+/* First of GpioIo() type */
+#define ACPI_GPIO_QUIRK_FIRST_GPIOIO		BIT(1)
 
 	unsigned int quirks;
 };
