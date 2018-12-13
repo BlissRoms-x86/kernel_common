@@ -65,7 +65,6 @@ acpi-y +=		\
 	exresnte.o	\
 	exresolv.o	\
 	exresop.o	\
-	exserial.o	\
 	exstore.o	\
 	exstoren.o	\
 	exstorob.o	\
