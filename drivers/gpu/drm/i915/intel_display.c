@@ -12501,6 +12501,15 @@ static int calc_watermark_data(struct drm_atomic_state *state)
 	return 0;
 }
 
+static bool fastboot_enabled(struct drm_i915_private *dev_priv)
+{
+	if (i915_modparams.fastboot != -1)
+		return i915_modparams.fastboot;
+
+	/* Enable fastboot by default on Skylake and newer */
+	return INTEL_GEN(dev_priv) >= 9;
+}
+
 static bool can_fastset(struct drm_i915_private *dev_priv,
 			struct intel_crtc_state *old_crtc_state,
 			struct intel_crtc_state *new_crtc_state)
@@ -12510,7 +12519,7 @@ static bool can_fastset(struct drm_i915_private *dev_priv,
 		!(new_crtc_state->base.mode.private_flags & I915_MODE_FLAG_INHERITED);
 
 	/* Without fastboot, we always want to modeset the initial mode. */
-	if (reset_mode && !i915_modparams.fastboot)
+	if (reset_mode && !fastboot_enabled(dev_priv))
 		return false;
 
 	return intel_pipe_config_compare(dev_priv, old_crtc_state,
