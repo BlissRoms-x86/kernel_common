@@ -3289,6 +3289,7 @@ static void intel_update_ddi_dp(struct intel_encoder *encoder,
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 
 	intel_psr_enable(intel_dp, crtc_state);
+	intel_edp_drrs_enable(intel_dp, crtc_state);
 }
 
 static void intel_update_ddi(struct intel_encoder *encoder,
