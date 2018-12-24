@@ -22,6 +22,7 @@
 #define SURFACE_PRO3_BUTTON_HID		"MSHW0028"
 #define SURFACE_PRO4_BUTTON_HID		"MSHW0040"
 #define SURFACE_BUTTON_OBJ_NAME		"VGBI"
+#define SURFACE_METHOD_DSM		"_DSM"
 #define SURFACE_BUTTON_DEVICE_NAME	"Surface Pro 3/4 Buttons"
 
 #define SURFACE_BUTTON_NOTIFY_TABLET_MODE	0xc8
@@ -156,6 +157,14 @@ static int surface_button_add(struct acpi_device *device)
 
 	if (strncmp(acpi_device_bid(device), SURFACE_BUTTON_OBJ_NAME,
 	    strlen(SURFACE_BUTTON_OBJ_NAME)))
+		return -ENODEV;
+
+	/*
+	 * Surface Pro 4 and Surface Book 2 / Surface Pro 2017 use the same device
+	 * ID (MSHW0040) for the power/volume buttons. Make sure this is the right
+	 * device by checking for the _DSM method.
+	 */
+	if (acpi_has_method(device->handle, SURFACE_METHOD_DSM))
 		return -ENODEV;
 
 	button = kzalloc(sizeof(struct surface_button), GFP_KERNEL);
