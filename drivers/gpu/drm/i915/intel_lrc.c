@@ -2467,6 +2467,9 @@ int logical_render_ring_init(struct intel_engine_cs *engine)
 
 	logical_ring_setup(engine);
 
+	engine->irq_keep_mask |= GT_RENDER_PIPECTL_NOTIFY_INTERRUPT
+							<< GEN8_RCS_IRQ_SHIFT;
+
 	if (HAS_L3_DPF(dev_priv))
 		engine->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 

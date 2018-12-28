@@ -1,0 +1,38 @@
+--- drivers/gpu/drm/i915/intel_lrc.c
++++ drivers/gpu/drm/i915/intel_lrc.c
+@@ -162,8 +162,6 @@
+ #define WA_TAIL_DWORDS 2
+ #define WA_TAIL_BYTES (sizeof(u32) * WA_TAIL_DWORDS)
+ 
+-static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
+-					    struct intel_engine_cs *engine);
+ static void execlists_init_reg_state(u32 *reg_state,
+ 				     struct i915_gem_context *ctx,
+ 				     struct intel_engine_cs *engine,
+@@ -1187,7 +1185,7 @@ static int __context_pin(struct i915_gem_context *ctx, struct i915_vma *vma)
+ 	return i915_vma_pin(vma, 0, GEN8_LR_CONTEXT_ALIGN, flags);
+ }
+ 
+-static struct intel_ring *
++struct intel_ring *
+ execlists_context_pin(struct intel_engine_cs *engine,
+ 		      struct i915_gem_context *ctx)
+ {
+@@ -1240,7 +1238,7 @@ execlists_context_pin(struct intel_engine_cs *engine,
+ 	return ERR_PTR(ret);
+ }
+ 
+-static void execlists_context_unpin(struct intel_engine_cs *engine,
++void execlists_context_unpin(struct intel_engine_cs *engine,
+ 				    struct i915_gem_context *ctx)
+ {
+ 	struct intel_context *ce = &ctx->engine[engine->id];
+@@ -2458,7 +2459,7 @@ populate_lr_context(struct i915_gem_context *ctx,
+ 	return 0;
+ }
+ 
+-static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
++int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
+ 					    struct intel_engine_cs *engine)
+ {
+ 	struct drm_i915_gem_object *ctx_obj;

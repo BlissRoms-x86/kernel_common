@@ -1,0 +1,10 @@
+--- drivers/platform/x86/Makefile
++++ drivers/platform/x86/Makefile
+@@ -81,6 +81,7 @@ obj-$(CONFIG_INTEL_PMC_IPC)	+= intel_pmc_ipc.o
+ obj-$(CONFIG_SILEAD_DMI)	+= silead_dmi.o
+ obj-$(CONFIG_SURFACE_PRO3_BUTTON)	+= surfacepro3_button.o
+ obj-$(CONFIG_SURFACE_3_BUTTON)	+= surface3_button.o
++obj-$(CONFIG_SURFACEBOOK2_BUTTON) += surfacebook2_button.o
+ obj-$(CONFIG_ACPI_SURFACE)	+= surface_acpi.o
+ obj-$(CONFIG_ACPI_SURFACE)	+= surface_i2c.o
+ obj-$(CONFIG_ACPI_SURFACE)	+= surface_platform.o

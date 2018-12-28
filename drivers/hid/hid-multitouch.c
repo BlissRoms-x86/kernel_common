@@ -1287,9 +1287,11 @@ static int mt_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	    field->application != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_DG_PEN &&
 	    field->application != HID_DG_TOUCHPAD &&
+		field->application != HID_GD_MOUSE &&
 	    field->application != HID_GD_KEYBOARD &&
 	    field->application != HID_GD_SYSTEM_CONTROL &&
 	    field->application != HID_CP_CONSUMER_CONTROL &&
+		field->logical != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_GD_WIRELESS_RADIO_CTLS &&
 	    field->application != HID_GD_SYSTEM_MULTIAXIS &&
 	    !(field->application == HID_VD_ASUS_CUSTOM_MEDIA_KEYS &&
@@ -1960,6 +1962,58 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_LG,
 		HID_USB_DEVICE(USB_VENDOR_ID_LG,
 			USB_DEVICE_ID_LG_MELFAS_MT) },
+
+	/* Microsoft Touch Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_TOUCH_COVER_2) },
+
+	/* Microsoft Type Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_1) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_4_1) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
+	/* Microsoft Surface Book 2 */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK_2) },
+
+	/* Microsoft Surface Laptop */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY,
+			USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_SURFACE_LAPTOP) },
+
+	/* Microsoft Power Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_POWER_COVER) },
 
 	/* MosArt panels */
 	{ .driver_data = MT_CLS_CONFIDENCE_MINUS_ONE,

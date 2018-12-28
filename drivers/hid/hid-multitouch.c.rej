@@ -1,0 +1,86 @@
+--- drivers/hid/hid-multitouch.c
++++ drivers/hid/hid-multitouch.c
+@@ -151,6 +151,7 @@ struct mt_device {
+ 
+ static void mt_post_parse_default_settings(struct mt_device *td);
+ static void mt_post_parse(struct mt_device *td);
++static int cc_seen = 0;
+ 
+ /* classes of device behavior */
+ #define MT_CLS_DEFAULT				0x0001
+@@ -614,8 +615,12 @@ static int mt_touch_input_mapping(struct
+ 			if (field->index >= field->report->maxfield ||
+ 			    usage->usage_index >= field->report_count)
+ 				return 1;
+-			td->cc_index = field->index;
+-			td->cc_value_index = usage->usage_index;
++
++			if(cc_seen != 1) {
++				td->cc_index = field->index;
++				td->cc_value_index = usage->usage_index;
++				cc_seen++;
++			}
+ 			return 1;
+ 		case HID_DG_AZIMUTH:
+ 			hid_map_usage(hi, usage, bit, max,
+@@ -666,6 +671,16 @@ static int mt_touch_input_mapping(struct
+ 	return 0;
+ }
+ 
++static int mt_touch_input_mapped(struct hid_device *hdev, struct hid_input *hi,
++		struct hid_field *field, struct hid_usage *usage,
++		unsigned long **bit, int *max)
++{
++	if (usage->type == EV_KEY || usage->type == EV_ABS)
++		set_bit(usage->type, hi->input->evbit);
++
++	return -1;
++}
++
+ static int mt_compute_slot(struct mt_device *td, struct input_dev *input)
+ {
+ 	__s32 quirks = td->mtclass.quirks;
+@@ -1129,10 +1146,8 @@ static int mt_input_mapped(struct hid_de
+ 		return 0;
+ 
+ 	if (field->application == HID_DG_TOUCHSCREEN ||
+-	    field->application == HID_DG_TOUCHPAD) {
+-		/* We own these mappings, tell hid-input to ignore them */
+-		return -1;
+-	}
++	    field->application == HID_DG_TOUCHPAD)
++		return mt_touch_input_mapped(hdev, hi, field, usage, bit, max);
+ 
+ 	/* let hid-core decide for the others */
+ 	return 0;
+@@ -1317,6 +1332,7 @@ static int mt_input_configured(struct hi
+ 			suffix = "Pen";
+ 			/* force BTN_STYLUS to allow tablet matching in udev */
+ 			__set_bit(BTN_STYLUS, hi->input->keybit);
++            __set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
+ 		}
+ 	}
+ 
+@@ -1332,12 +1348,13 @@ static int mt_input_configured(struct hi
+ 			/* already handled by hid core */
+ 			break;
+ 		case HID_DG_TOUCHSCREEN:
+-			/* we do not set suffix = "Touchscreen" */
++			suffix = "Touchscreen";
+ 			hi->input->name = hdev->name;
+ 			break;
+ 		case HID_DG_STYLUS:
+ 			/* force BTN_STYLUS to allow tablet matching in udev */
+ 			__set_bit(BTN_STYLUS, hi->input->keybit);
++            __set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
+ 			break;
+ 		case HID_VD_ASUS_CUSTOM_MEDIA_KEYS:
+ 			suffix = "Custom Media Keys";
+@@ -1454,6 +1471,7 @@ static int mt_probe(struct hid_device *h
+ 	td->cc_index = -1;
+ 	td->scantime_index = -1;
+ 	td->mt_report_id = -1;
++	cc_seen = 0;
+ 	hid_set_drvdata(hdev, td);
+ 
+ 	td->fields = devm_kzalloc(&hdev->dev, sizeof(struct mt_fields),

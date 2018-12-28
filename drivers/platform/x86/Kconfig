@@ -1221,6 +1221,20 @@ config DV11P_TABLET
 	---help---
 	  This driver provides power button support and docking events for the Dell Venue 11 Pro tablet.
 
+config SURFACEBOOK2_BUTTON
+	tristate "Power/home/volume buttons driver for Microsoft Surface Book 2/ Surface Pro (2017) tablet"
+	---help---
+	  This driver handles the power and volume buttons on the Microsoft Surface Book 2/ Surface Pro (2017) tablet.
+
+config ACPI_SURFACE
+	tristate "Microsoft Surface Extras"
+	depends on ACPI
+	depends on ACPI_WMI
+	depends on INPUT
+	---help---
+	  This driver adds support for access to certain system events
+	  on Microsoft Surface devices.
+
 config INTEL_PUNIT_IPC
 	tristate "Intel P-Unit IPC Driver"
 	---help---
