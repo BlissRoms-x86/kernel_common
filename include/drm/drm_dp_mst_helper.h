@@ -387,8 +387,6 @@ struct drm_dp_mst_topology_cbs {
 	void (*register_connector)(struct drm_connector *connector);
 	void (*destroy_connector)(struct drm_dp_mst_topology_mgr *mgr,
 				  struct drm_connector *connector);
-	void (*hotplug)(struct drm_dp_mst_topology_mgr *mgr);
-
 };
 
 #define DP_MAX_PAYLOAD (sizeof(unsigned long) * 8)
@@ -409,7 +407,6 @@ struct drm_dp_payload {
 struct drm_dp_mst_topology_state {
 	struct drm_private_state base;
 	int avail_slots;
-	struct drm_atomic_state *state;
 	struct drm_dp_mst_topology_mgr *mgr;
 };
 
@@ -496,11 +493,6 @@ struct drm_dp_mst_topology_mgr {
 	 * @pbn_div: PBN to slots divisor.
 	 */
 	int pbn_div;
-
-	/**
-	 * @state: State information for topology manager
-	 */
-	struct drm_dp_mst_topology_state *state;
 
 	/**
 	 * @funcs: Atomic helper callbacks

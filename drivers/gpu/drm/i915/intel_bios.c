@@ -420,6 +420,13 @@ parse_general_features(struct drm_i915_private *dev_priv,
 		intel_bios_ssc_frequency(dev_priv, general->ssc_freq);
 	dev_priv->vbt.display_clock_mode = general->display_clock_mode;
 	dev_priv->vbt.fdi_rx_polarity_inverted = general->fdi_rx_polarity_inverted;
+	if (bdb->version >= 181) {
+		dev_priv->vbt.orientation = general->rotate_180 ?
+			DRM_MODE_PANEL_ORIENTATION_BOTTOM_UP :
+			DRM_MODE_PANEL_ORIENTATION_NORMAL;
+	} else {
+		dev_priv->vbt.orientation = DRM_MODE_PANEL_ORIENTATION_UNKNOWN;
+	}
 	DRM_DEBUG_KMS("BDB_GENERAL_FEATURES int_tv_support %d int_crt_support %d lvds_use_ssc %d lvds_ssc_freq %d display_clock_mode %d fdi_rx_polarity_inverted %d\n",
 		      dev_priv->vbt.int_tv_support,
 		      dev_priv->vbt.int_crt_support,
@@ -446,7 +453,7 @@ parse_sdvo_device_mapping(struct drm_i915_private *dev_priv, u8 bdb_version)
 	 * Only parse SDVO mappings on gens that could have SDVO. This isn't
 	 * accurate and doesn't have to be, as long as it's not too strict.
 	 */
-	if (!IS_GEN(dev_priv, 3, 7)) {
+	if (!IS_GEN_RANGE(dev_priv, 3, 7)) {
 		DRM_DEBUG_KMS("Skipping SDVO device mapping\n");
 		return;
 	}
@@ -851,6 +858,30 @@ parse_mipi_config(struct drm_i915_private *dev_priv,
 	}
 
 	parse_dsi_backlight_ports(dev_priv, bdb->version, port);
+
+	/* FIXME is the 90 vs. 270 correct? */
+	switch (config->rotation) {
+	case ENABLE_ROTATION_0:
+		/*
+		 * Most (all?) VBTs claim 0 degrees despite having
+		 * an upside down panel, thus we do not trust this.
+		 */
+		dev_priv->vbt.dsi.orientation =
+			DRM_MODE_PANEL_ORIENTATION_UNKNOWN;
+		break;
+	case ENABLE_ROTATION_90:
+		dev_priv->vbt.dsi.orientation =
+			DRM_MODE_PANEL_ORIENTATION_RIGHT_UP;
+		break;
+	case ENABLE_ROTATION_180:
+		dev_priv->vbt.dsi.orientation =
+			DRM_MODE_PANEL_ORIENTATION_BOTTOM_UP;
+		break;
+	case ENABLE_ROTATION_270:
+		dev_priv->vbt.dsi.orientation =
+			DRM_MODE_PANEL_ORIENTATION_LEFT_UP;
+		break;
+	}
 
 	/* We have mandatory mipi config blocks. Initialize as generic panel */
 	dev_priv->vbt.dsi.panel_id = MIPI_DSI_GENERIC_PANEL_ID;
@@ -1355,8 +1386,15 @@ static void parse_ddi_port(struct drm_i915_private *dev_priv, enum port port,
 	info->supports_dp = is_dp;
 	info->supports_edp = is_edp;
 
-	DRM_DEBUG_KMS("Port %c VBT info: DP:%d HDMI:%d DVI:%d EDP:%d CRT:%d\n",
-		      port_name(port), is_dp, is_hdmi, is_dvi, is_edp, is_crt);
+	if (bdb_version >= 195)
+		info->supports_typec_usb = child->dp_usb_type_c;
+
+	if (bdb_version >= 209)
+		info->supports_tbt = child->tbt;
+
+	DRM_DEBUG_KMS("Port %c VBT info: DP:%d HDMI:%d DVI:%d EDP:%d CRT:%d TCUSB:%d TBT:%d\n",
+		      port_name(port), is_dp, is_hdmi, is_dvi, is_edp, is_crt,
+		      info->supports_typec_usb, info->supports_tbt);
 
 	if (is_edp && is_dvi)
 		DRM_DEBUG_KMS("Internal DP port %c is TMDS compatible\n",
@@ -1721,7 +1759,7 @@ void intel_bios_init(struct drm_i915_private *dev_priv)
 	const struct bdb_header *bdb;
 	u8 __iomem *bios = NULL;
 
-	if (INTEL_INFO(dev_priv)->num_pipes == 0) {
+	if (!HAS_DISPLAY(dev_priv)) {
 		DRM_DEBUG_KMS("Skipping VBT init due to disabled display.\n");
 		return;
 	}
@@ -2039,17 +2077,17 @@ bool intel_bios_is_dsi_present(struct drm_i915_private *dev_priv,
 
 		dvo_port = child->dvo_port;
 
-		switch (dvo_port) {
-		case DVO_PORT_MIPIA:
-		case DVO_PORT_MIPIC:
+		if (dvo_port == DVO_PORT_MIPIA ||
+		    (dvo_port == DVO_PORT_MIPIB && IS_ICELAKE(dev_priv)) ||
+		    (dvo_port == DVO_PORT_MIPIC && !IS_ICELAKE(dev_priv))) {
 			if (port)
 				*port = dvo_port - DVO_PORT_MIPIA;
 			return true;
-		case DVO_PORT_MIPIB:
-		case DVO_PORT_MIPID:
+		} else if (dvo_port == DVO_PORT_MIPIB ||
+			   dvo_port == DVO_PORT_MIPIC ||
+			   dvo_port == DVO_PORT_MIPID) {
 			DRM_DEBUG_KMS("VBT has unsupported DSI port %c\n",
 				      port_name(dvo_port - DVO_PORT_MIPIA));
-			break;
 		}
 	}
 
@@ -2158,4 +2196,50 @@ intel_bios_is_lspcon_present(struct drm_i915_private *dev_priv,
 	}
 
 	return false;
+}
+
+enum aux_ch intel_bios_port_aux_ch(struct drm_i915_private *dev_priv,
+				   enum port port)
+{
+	const struct ddi_vbt_port_info *info =
+		&dev_priv->vbt.ddi_port_info[port];
+	enum aux_ch aux_ch;
+
+	if (!info->alternate_aux_channel) {
+		aux_ch = (enum aux_ch)port;
+
+		DRM_DEBUG_KMS("using AUX %c for port %c (platform default)\n",
+			      aux_ch_name(aux_ch), port_name(port));
+		return aux_ch;
+	}
+
+	switch (info->alternate_aux_channel) {
+	case DP_AUX_A:
+		aux_ch = AUX_CH_A;
+		break;
+	case DP_AUX_B:
+		aux_ch = AUX_CH_B;
+		break;
+	case DP_AUX_C:
+		aux_ch = AUX_CH_C;
+		break;
+	case DP_AUX_D:
+		aux_ch = AUX_CH_D;
+		break;
+	case DP_AUX_E:
+		aux_ch = AUX_CH_E;
+		break;
+	case DP_AUX_F:
+		aux_ch = AUX_CH_F;
+		break;
+	default:
+		MISSING_CASE(info->alternate_aux_channel);
+		aux_ch = AUX_CH_A;
+		break;
+	}
+
+	DRM_DEBUG_KMS("using AUX %c for port %c (VBT)\n",
+		      aux_ch_name(aux_ch), port_name(port));
+
+	return aux_ch;
 }

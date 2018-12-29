@@ -18,6 +18,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_flip_work.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_plane_helper.h>
 #ifdef CONFIG_DRM_ANALOGIX_DP
 #include <drm/bridge/analogix_dp.h>
@@ -823,6 +824,7 @@ static const struct drm_plane_helper_funcs plane_helper_funcs = {
 	.atomic_check = vop_plane_atomic_check,
 	.atomic_update = vop_plane_atomic_update,
 	.atomic_disable = vop_plane_atomic_disable,
+	.prepare_fb = drm_gem_fb_prepare_fb,
 };
 
 static const struct drm_plane_funcs vop_plane_funcs = {
@@ -916,6 +918,7 @@ static void vop_crtc_atomic_enable(struct drm_crtc *crtc,
 	pin_pol |= (adjusted_mode->flags & DRM_MODE_FLAG_PVSYNC) ?
 		   BIT(VSYNC_POSITIVE) : 0;
 	VOP_REG_SET(vop, output, pin_pol, pin_pol);
+	VOP_REG_SET(vop, output, mipi_dual_channel_en, 0);
 
 	switch (s->output_type) {
 	case DRM_MODE_CONNECTOR_LVDS:
@@ -933,6 +936,8 @@ static void vop_crtc_atomic_enable(struct drm_crtc *crtc,
 	case DRM_MODE_CONNECTOR_DSI:
 		VOP_REG_SET(vop, output, mipi_pin_pol, pin_pol);
 		VOP_REG_SET(vop, output, mipi_en, 1);
+		VOP_REG_SET(vop, output, mipi_dual_channel_en,
+			    !!(s->output_flags & ROCKCHIP_OUTPUT_DSI_DUAL));
 		break;
 	case DRM_MODE_CONNECTOR_DisplayPort:
 		pin_pol &= ~BIT(DCLK_INVERT);

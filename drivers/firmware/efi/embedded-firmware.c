@@ -10,6 +10,7 @@
 #include <linux/efi.h>
 #include <linux/efi_embedded_fw.h>
 #include <linux/io.h>
+#include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/vmalloc.h>
 

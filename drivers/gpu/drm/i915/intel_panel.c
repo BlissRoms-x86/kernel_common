@@ -111,7 +111,7 @@ intel_pch_panel_fitting(struct intel_crtc *intel_crtc,
 	/* Native modes don't need fitting */
 	if (adjusted_mode->crtc_hdisplay == pipe_config->pipe_src_w &&
 	    adjusted_mode->crtc_vdisplay == pipe_config->pipe_src_h &&
-	    !pipe_config->ycbcr420)
+	    pipe_config->output_format != INTEL_OUTPUT_FORMAT_YCBCR420)
 		goto done;
 
 	switch (fitting_mode) {
@@ -505,7 +505,7 @@ static u32 _vlv_get_backlight(struct drm_i915_private *dev_priv, enum pipe pipe)
 static u32 vlv_get_backlight(struct intel_connector *connector)
 {
 	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
-	enum pipe pipe = intel_get_pipe_from_connector(connector);
+	enum pipe pipe = intel_connector_get_pipe(connector);
 
 	return _vlv_get_backlight(dev_priv, pipe);
 }
@@ -563,7 +563,7 @@ static void i9xx_set_backlight(const struct drm_connector_state *conn_state, u32
 		pci_write_config_byte(dev_priv->drm.pdev, LBPC, lbpc);
 	}
 
-	if (IS_GEN4(dev_priv)) {
+	if (IS_GEN(dev_priv, 4)) {
 		mask = BACKLIGHT_DUTY_CYCLE_MASK;
 	} else {
 		level <<= 1;
@@ -763,7 +763,7 @@ static void pwm_disable_backlight(const struct drm_connector_state *old_conn_sta
 	struct intel_panel *panel = &connector->panel;
 
 	/* Disable the backlight */
-	pwm_config(panel->backlight.pwm, 0, CRC_PMIC_PWM_PERIOD_NS);
+	intel_panel_actually_set_backlight(old_conn_state, 0);
 	usleep_range(2000, 3000);
 	pwm_disable(panel->backlight.pwm);
 }
@@ -929,7 +929,7 @@ static void i9xx_enable_backlight(const struct intel_crtc_state *crtc_state,
 	 * 855gm only, but checking for gen2 is safe, as 855gm is the only gen2
 	 * that has backlight.
 	 */
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		I915_WRITE(BLC_HIST_CTL, BLM_HISTOGRAM_ENABLE);
 }
 
@@ -1557,7 +1557,7 @@ static int i9xx_setup_backlight(struct intel_connector *connector, enum pipe unu
 
 	ctl = I915_READ(BLC_PWM_CTL);
 
-	if (IS_GEN2(dev_priv) || IS_I915GM(dev_priv) || IS_I945GM(dev_priv))
+	if (IS_GEN(dev_priv, 2) || IS_I915GM(dev_priv) || IS_I945GM(dev_priv))
 		panel->backlight.combination_mode = ctl & BLM_LEGACY_MODE;
 
 	if (IS_PINEVIEW(dev_priv))
@@ -1814,11 +1814,8 @@ int intel_panel_setup_backlight(struct drm_connector *connector, enum pipe pipe)
 	return 0;
 }
 
-void intel_panel_destroy_backlight(struct drm_connector *connector)
+static void intel_panel_destroy_backlight(struct intel_panel *panel)
 {
-	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct intel_panel *panel = &intel_connector->panel;
-
 	/* dispose of the pwm */
 	if (panel->backlight.pwm)
 		pwm_put(panel->backlight.pwm);
@@ -1889,7 +1886,7 @@ intel_panel_init_backlight_funcs(struct intel_panel *panel)
 			panel->backlight.get = vlv_get_backlight;
 			panel->backlight.hz_to_pwm = vlv_hz_to_pwm;
 		}
-	} else if (IS_GEN4(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 4)) {
 		panel->backlight.setup = i965_setup_backlight;
 		panel->backlight.enable = i965_enable_backlight;
 		panel->backlight.disable = i965_disable_backlight;
@@ -1922,6 +1919,8 @@ void intel_panel_fini(struct intel_panel *panel)
 {
 	struct intel_connector *intel_connector =
 		container_of(panel, struct intel_connector, panel);
+
+	intel_panel_destroy_backlight(panel);
 
 	if (panel->fixed_mode)
 		drm_mode_destroy(intel_connector->base.dev, panel->fixed_mode);

@@ -354,7 +354,7 @@ int intel_uc_init_hw(struct drm_i915_private *i915)
 
 	/* WaEnableuKernelHeaderValidFix:skl */
 	/* WaEnableGuCBootHashCheckNotSet:skl,bxt,kbl */
-	if (IS_GEN9(i915))
+	if (IS_GEN(i915, 9))
 		attempts = 3;
 	else
 		attempts = 1;
@@ -376,7 +376,7 @@ int intel_uc_init_hw(struct drm_i915_private *i915)
 
 		intel_guc_init_params(guc);
 		ret = intel_guc_fw_upload(guc);
-		if (ret == 0 || ret != -EAGAIN)
+		if (ret == 0 || ret != -ETIMEDOUT)
 			break;
 
 		DRM_DEBUG_DRIVER("GuC fw load failed: %d; will reset and "

@@ -261,6 +261,31 @@ static void __sprint_engine_name(char *name, const struct engine_info *info)
 			 info->instance) >= INTEL_ENGINE_CS_MAX_NAME);
 }
 
+void intel_engine_set_hwsp_writemask(struct intel_engine_cs *engine, u32 mask)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+	i915_reg_t hwstam;
+
+	/*
+	 * Though they added more rings on g4x/ilk, they did not add
+	 * per-engine HWSTAM until gen6.
+	 */
+	if (INTEL_GEN(dev_priv) < 6 && engine->class != RENDER_CLASS)
+		return;
+
+	hwstam = RING_HWSTAM(engine->mmio_base);
+	if (INTEL_GEN(dev_priv) >= 3)
+		I915_WRITE(hwstam, mask);
+	else
+		I915_WRITE16(hwstam, mask);
+}
+
+static void intel_engine_sanitize_mmio(struct intel_engine_cs *engine)
+{
+	/* Mask off all writes into the unknown HWSP */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+}
+
 static int
 intel_engine_setup(struct drm_i915_private *dev_priv,
 		   enum intel_engine_id id)
@@ -273,13 +298,13 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 	BUILD_BUG_ON(MAX_ENGINE_CLASS >= BIT(GEN11_ENGINE_CLASS_WIDTH));
 	BUILD_BUG_ON(MAX_ENGINE_INSTANCE >= BIT(GEN11_ENGINE_INSTANCE_WIDTH));
 
-	if (GEM_WARN_ON(info->class > MAX_ENGINE_CLASS))
+	if (GEM_DEBUG_WARN_ON(info->class > MAX_ENGINE_CLASS))
 		return -EINVAL;
 
-	if (GEM_WARN_ON(info->instance > MAX_ENGINE_INSTANCE))
+	if (GEM_DEBUG_WARN_ON(info->instance > MAX_ENGINE_INSTANCE))
 		return -EINVAL;
 
-	if (GEM_WARN_ON(dev_priv->engine_class[info->class][info->instance]))
+	if (GEM_DEBUG_WARN_ON(dev_priv->engine_class[info->class][info->instance]))
 		return -EINVAL;
 
 	GEM_BUG_ON(dev_priv->engine[id]);
@@ -312,6 +337,9 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&engine->context_status_notifier);
 
+	/* Scrub mmio state on takeover */
+	intel_engine_sanitize_mmio(engine);
+
 	dev_priv->engine_class[info->class][info->instance] = engine;
 	dev_priv->engine[id] = engine;
 	return 0;
@@ -335,7 +363,10 @@ int intel_engines_init_mmio(struct drm_i915_private *dev_priv)
 
 	WARN_ON(ring_mask == 0);
 	WARN_ON(ring_mask &
-		GENMASK(sizeof(mask) * BITS_PER_BYTE - 1, I915_NUM_ENGINES));
+		GENMASK(BITS_PER_TYPE(mask) - 1, I915_NUM_ENGINES));
+
+	if (i915_inject_load_failure())
+		return -ENODEV;
 
 	for (i = 0; i < ARRAY_SIZE(intel_engines); i++) {
 		if (!HAS_ENGINE(dev_priv, i))
@@ -399,7 +430,7 @@ int intel_engines_init(struct drm_i915_private *dev_priv)
 		err = -EINVAL;
 		err_id = id;
 
-		if (GEM_WARN_ON(!init))
+		if (GEM_DEBUG_WARN_ON(!init))
 			goto cleanup;
 
 		err = init(engine);
@@ -435,7 +466,7 @@ void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
 	 * the semaphore value, then when the seqno moves backwards all
 	 * future waits will complete instantly (causing rendering corruption).
 	 */
-	if (IS_GEN6(dev_priv) || IS_GEN7(dev_priv)) {
+	if (IS_GEN_RANGE(dev_priv, 6, 7)) {
 		I915_WRITE(RING_SYNC_0(engine->mmio_base), 0);
 		I915_WRITE(RING_SYNC_1(engine->mmio_base), 0);
 		if (HAS_VEBOX(dev_priv))
@@ -463,7 +494,7 @@ static void intel_engine_init_execlist(struct intel_engine_cs *engine)
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 
 	execlists->port_mask = 1;
-	BUILD_BUG_ON_NOT_POWER_OF_2(execlists_num_ports(execlists));
+	GEM_BUG_ON(!is_power_of_2(execlists_num_ports(execlists)));
 	GEM_BUG_ON(execlists_num_ports(execlists) > EXECLIST_MAX_PORTS);
 
 	execlists->queue_priority = INT_MIN;
@@ -482,7 +513,7 @@ static void intel_engine_init_execlist(struct intel_engine_cs *engine)
 void intel_engine_setup_common(struct intel_engine_cs *engine)
 {
 	i915_timeline_init(engine->i915, &engine->timeline, engine->name);
-	lockdep_set_subclass(&engine->timeline.lock, TIMELINE_ENGINE);
+	i915_timeline_set_subclass(&engine->timeline, TIMELINE_ENGINE);
 
 	intel_engine_init_execlist(engine);
 	intel_engine_init_hangcheck(engine);
@@ -492,6 +523,9 @@ void intel_engine_setup_common(struct intel_engine_cs *engine)
 
 static void cleanup_status_page(struct intel_engine_cs *engine)
 {
+	/* Prevent writes into HWSP after returning the page to the system */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+
 	if (HWS_NEEDS_PHYSICAL(engine->i915)) {
 		void *addr = fetch_and_zero(&engine->status_page.page_addr);
 
@@ -679,7 +713,9 @@ void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 
 	i915_timeline_fini(&engine->timeline);
 
+	intel_wa_list_free(&engine->ctx_wa_list);
 	intel_wa_list_free(&engine->wa_list);
+	intel_wa_list_free(&engine->whitelist);
 }
 
 u64 intel_engine_get_active_head(const struct intel_engine_cs *engine)
@@ -769,7 +805,7 @@ u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv)
 	u32 slice = fls(sseu->slice_mask);
 	u32 subslice = fls(sseu->subslice_mask[slice]);
 
-	if (INTEL_GEN(dev_priv) == 10)
+	if (IS_GEN(dev_priv, 10))
 		mcr_s_ss_select = GEN8_MCR_SLICE(slice) |
 				  GEN8_MCR_SUBSLICE(subslice);
 	else if (INTEL_GEN(dev_priv) >= 11)
@@ -1196,7 +1232,7 @@ static void print_request(struct drm_printer *m,
 
 	x = print_sched_attr(rq->i915, &rq->sched.attr, buf, x, sizeof(buf));
 
-	drm_printf(m, "%s%x%s [%llx:%x]%s @ %dms: %s\n",
+	drm_printf(m, "%s%x%s [%llx:%llx]%s @ %dms: %s\n",
 		   prefix,
 		   rq->global_seqno,
 		   i915_request_completed(rq) ? "!" : "",
@@ -1243,7 +1279,7 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 		&engine->execlists;
 	u64 addr;
 
-	if (engine->id == RCS && IS_GEN(dev_priv, 4, 7))
+	if (engine->id == RCS && IS_GEN_RANGE(dev_priv, 4, 7))
 		drm_printf(m, "\tCCID: 0x%08x\n", I915_READ(CCID));
 	drm_printf(m, "\tRING_START: 0x%08x\n",
 		   I915_READ(RING_START(engine->mmio_base)));
@@ -1494,10 +1530,10 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	count = 0;
 	drm_printf(m, "\t\tQueue priority: %d\n", execlists->queue_priority);
 	for (rb = rb_first_cached(&execlists->queue); rb; rb = rb_next(rb)) {
-		struct i915_priolist *p =
-			rb_entry(rb, typeof(*p), node);
+		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
+		int i;
 
-		list_for_each_entry(rq, &p->requests, sched.link) {
+		priolist_for_each_request(rq, p, i) {
 			if (count++ < MAX_REQUESTS_TO_SHOW - 1)
 				print_request(m, rq, "\t\tQ ");
 			else
@@ -1519,8 +1555,10 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
 		struct intel_wait *w = rb_entry(rb, typeof(*w), node);
 
-		drm_printf(m, "\t%s [%d] waiting for %x\n",
-			   w->tsk->comm, w->tsk->pid, w->seqno);
+		drm_printf(m, "\t%s [%d:%c] waiting for %x\n",
+			   w->tsk->comm, w->tsk->pid,
+			   task_state_to_char(w->tsk),
+			   w->seqno);
 	}
 	spin_unlock(&b->rb_lock);
 	local_irq_restore(flags);

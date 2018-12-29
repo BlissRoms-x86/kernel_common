@@ -2140,7 +2140,7 @@ static int intel_pixel_rate_to_cdclk(struct drm_i915_private *dev_priv,
 {
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		return DIV_ROUND_UP(pixel_rate, 2);
-	else if (IS_GEN9(dev_priv) ||
+	else if (IS_GEN(dev_priv, 9) ||
 		 IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
 		return pixel_rate;
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -2176,7 +2176,7 @@ int intel_crtc_compute_min_cdclk(const struct intel_crtc_state *crtc_state)
 		if (IS_CANNONLAKE(dev_priv) || IS_GEMINILAKE(dev_priv)) {
 			/* Display WA #1145: glk,cnl */
 			min_cdclk = max(316800, min_cdclk);
-		} else if (IS_GEN9(dev_priv) || IS_BROADWELL(dev_priv)) {
+		} else if (IS_GEN(dev_priv, 9) || IS_BROADWELL(dev_priv)) {
 			/* Display WA #1144: skl,bxt */
 			min_cdclk = max(432000, min_cdclk);
 		}
@@ -2537,7 +2537,7 @@ static int intel_compute_max_dotclk(struct drm_i915_private *dev_priv)
 
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		return 2 * max_cdclk_freq;
-	else if (IS_GEN9(dev_priv) ||
+	else if (IS_GEN(dev_priv, 9) ||
 		 IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
 		return max_cdclk_freq;
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -2660,37 +2660,18 @@ static int cnp_rawclk(struct drm_i915_private *dev_priv)
 		fraction = 200;
 	}
 
-	rawclk = CNP_RAWCLK_DIV((divider / 1000) - 1);
-	if (fraction)
-		rawclk |= CNP_RAWCLK_FRAC(DIV_ROUND_CLOSEST(1000,
-							    fraction) - 1);
+	rawclk = CNP_RAWCLK_DIV(divider / 1000);
+	if (fraction) {
+		int numerator = 1;
+
+		rawclk |= CNP_RAWCLK_DEN(DIV_ROUND_CLOSEST(numerator * 1000,
+							   fraction) - 1);
+		if (HAS_PCH_ICP(dev_priv))
+			rawclk |= ICP_RAWCLK_NUM(numerator);
+	}
 
 	I915_WRITE(PCH_RAWCLK_FREQ, rawclk);
 	return divider + fraction;
-}
-
-static int icp_rawclk(struct drm_i915_private *dev_priv)
-{
-	u32 rawclk;
-	int divider, numerator, denominator, frequency;
-
-	if (I915_READ(SFUSE_STRAP) & SFUSE_STRAP_RAW_FREQUENCY) {
-		frequency = 24000;
-		divider = 23;
-		numerator = 0;
-		denominator = 0;
-	} else {
-		frequency = 19200;
-		divider = 18;
-		numerator = 1;
-		denominator = 4;
-	}
-
-	rawclk = CNP_RAWCLK_DIV(divider) | ICP_RAWCLK_NUM(numerator) |
-		 ICP_RAWCLK_DEN(denominator);
-
-	I915_WRITE(PCH_RAWCLK_FREQ, rawclk);
-	return frequency;
 }
 
 static int pch_rawclk(struct drm_i915_private *dev_priv)
@@ -2740,9 +2721,7 @@ static int g4x_hrawclk(struct drm_i915_private *dev_priv)
  */
 void intel_update_rawclk(struct drm_i915_private *dev_priv)
 {
-	if (HAS_PCH_ICP(dev_priv))
-		dev_priv->rawclk_freq = icp_rawclk(dev_priv);
-	else if (HAS_PCH_CNP(dev_priv))
+	if (HAS_PCH_CNP(dev_priv) || HAS_PCH_ICP(dev_priv))
 		dev_priv->rawclk_freq = cnp_rawclk(dev_priv);
 	else if (HAS_PCH_SPLIT(dev_priv))
 		dev_priv->rawclk_freq = pch_rawclk(dev_priv);
@@ -2806,9 +2785,9 @@ void intel_init_cdclk_hooks(struct drm_i915_private *dev_priv)
 		dev_priv->display.get_cdclk = hsw_get_cdclk;
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		dev_priv->display.get_cdclk = vlv_get_cdclk;
-	else if (IS_GEN6(dev_priv) || IS_IVYBRIDGE(dev_priv))
+	else if (IS_GEN(dev_priv, 6) || IS_IVYBRIDGE(dev_priv))
 		dev_priv->display.get_cdclk = fixed_400mhz_get_cdclk;
-	else if (IS_GEN5(dev_priv))
+	else if (IS_GEN(dev_priv, 5))
 		dev_priv->display.get_cdclk = fixed_450mhz_get_cdclk;
 	else if (IS_GM45(dev_priv))
 		dev_priv->display.get_cdclk = gm45_get_cdclk;

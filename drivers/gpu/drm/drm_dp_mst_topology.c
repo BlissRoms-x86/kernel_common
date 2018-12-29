@@ -33,6 +33,7 @@
 #include <drm/drm_fixed.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_crtc_helper.h>
 
 /**
  * DOC: dp mst helper
@@ -1639,7 +1640,7 @@ static void drm_dp_send_link_address(struct drm_dp_mst_topology_mgr *mgr,
 			for (i = 0; i < txmsg->reply.u.link_addr.nports; i++) {
 				drm_dp_add_port(mstb, mgr->dev, &txmsg->reply.u.link_addr.ports[i]);
 			}
-			(*mgr->cbs->hotplug)(mgr);
+			drm_kms_helper_hotplug_event(mgr->dev);
 		}
 	} else {
 		mstb->link_address_sent = false;
@@ -1878,41 +1879,48 @@ int drm_dp_update_payload_part1(struct drm_dp_mst_topology_mgr *mgr)
 
 	mutex_lock(&mgr->payload_lock);
 	for (i = 0; i < mgr->max_payloads; i++) {
+		struct drm_dp_vcpi *vcpi = mgr->proposed_vcpis[i];
+		struct drm_dp_payload *payload = &mgr->payloads[i];
+
 		/* solve the current payloads - compare to the hw ones
 		   - update the hw view */
 		req_payload.start_slot = cur_slots;
-		if (mgr->proposed_vcpis[i]) {
-			port = container_of(mgr->proposed_vcpis[i], struct drm_dp_mst_port, vcpi);
+		if (vcpi) {
+			port = container_of(vcpi, struct drm_dp_mst_port,
+					    vcpi);
 			port = drm_dp_get_validated_port_ref(mgr, port);
 			if (!port) {
 				mutex_unlock(&mgr->payload_lock);
 				return -EINVAL;
 			}
-			req_payload.num_slots = mgr->proposed_vcpis[i]->num_slots;
-			req_payload.vcpi = mgr->proposed_vcpis[i]->vcpi;
+			req_payload.num_slots = vcpi->num_slots;
+			req_payload.vcpi = vcpi->vcpi;
 		} else {
 			port = NULL;
 			req_payload.num_slots = 0;
 		}
 
-		if (mgr->payloads[i].start_slot != req_payload.start_slot) {
-			mgr->payloads[i].start_slot = req_payload.start_slot;
-		}
+		payload->start_slot = req_payload.start_slot;
 		/* work out what is required to happen with this payload */
-		if (mgr->payloads[i].num_slots != req_payload.num_slots) {
+		if (payload->num_slots != req_payload.num_slots) {
 
 			/* need to push an update for this payload */
 			if (req_payload.num_slots) {
-				drm_dp_create_payload_step1(mgr, mgr->proposed_vcpis[i]->vcpi, &req_payload);
-				mgr->payloads[i].num_slots = req_payload.num_slots;
-				mgr->payloads[i].vcpi = req_payload.vcpi;
-			} else if (mgr->payloads[i].num_slots) {
-				mgr->payloads[i].num_slots = 0;
-				drm_dp_destroy_payload_step1(mgr, port, mgr->payloads[i].vcpi, &mgr->payloads[i]);
-				req_payload.payload_state = mgr->payloads[i].payload_state;
-				mgr->payloads[i].start_slot = 0;
+				drm_dp_create_payload_step1(mgr, vcpi->vcpi,
+							    &req_payload);
+				payload->num_slots = req_payload.num_slots;
+				payload->vcpi = req_payload.vcpi;
+
+			} else if (payload->num_slots) {
+				payload->num_slots = 0;
+				drm_dp_destroy_payload_step1(mgr, port,
+							     payload->vcpi,
+							     payload);
+				req_payload.payload_state =
+					payload->payload_state;
+				payload->start_slot = 0;
 			}
-			mgr->payloads[i].payload_state = req_payload.payload_state;
+			payload->payload_state = req_payload.payload_state;
 		}
 		cur_slots += req_payload.num_slots;
 
@@ -1921,22 +1929,26 @@ int drm_dp_update_payload_part1(struct drm_dp_mst_topology_mgr *mgr)
 	}
 
 	for (i = 0; i < mgr->max_payloads; i++) {
-		if (mgr->payloads[i].payload_state == DP_PAYLOAD_DELETE_LOCAL) {
-			DRM_DEBUG_KMS("removing payload %d\n", i);
-			for (j = i; j < mgr->max_payloads - 1; j++) {
-				memcpy(&mgr->payloads[j], &mgr->payloads[j + 1], sizeof(struct drm_dp_payload));
-				mgr->proposed_vcpis[j] = mgr->proposed_vcpis[j + 1];
-				if (mgr->proposed_vcpis[j] && mgr->proposed_vcpis[j]->num_slots) {
-					set_bit(j + 1, &mgr->payload_mask);
-				} else {
-					clear_bit(j + 1, &mgr->payload_mask);
-				}
-			}
-			memset(&mgr->payloads[mgr->max_payloads - 1], 0, sizeof(struct drm_dp_payload));
-			mgr->proposed_vcpis[mgr->max_payloads - 1] = NULL;
-			clear_bit(mgr->max_payloads, &mgr->payload_mask);
+		if (mgr->payloads[i].payload_state != DP_PAYLOAD_DELETE_LOCAL)
+			continue;
 
+		DRM_DEBUG_KMS("removing payload %d\n", i);
+		for (j = i; j < mgr->max_payloads - 1; j++) {
+			mgr->payloads[j] = mgr->payloads[j + 1];
+			mgr->proposed_vcpis[j] = mgr->proposed_vcpis[j + 1];
+
+			if (mgr->proposed_vcpis[j] &&
+			    mgr->proposed_vcpis[j]->num_slots) {
+				set_bit(j + 1, &mgr->payload_mask);
+			} else {
+				clear_bit(j + 1, &mgr->payload_mask);
+			}
 		}
+
+		memset(&mgr->payloads[mgr->max_payloads - 1], 0,
+		       sizeof(struct drm_dp_payload));
+		mgr->proposed_vcpis[mgr->max_payloads - 1] = NULL;
+		clear_bit(mgr->max_payloads, &mgr->payload_mask);
 	}
 	mutex_unlock(&mgr->payload_lock);
 
@@ -2412,7 +2424,7 @@ static int drm_dp_mst_handle_up_req(struct drm_dp_mst_topology_mgr *mgr)
 			drm_dp_update_port(mstb, &msg.u.conn_stat);
 
 			DRM_DEBUG_KMS("Got CSN: pn: %d ldps:%d ddps: %d mcs: %d ip: %d pdt: %d\n", msg.u.conn_stat.port_number, msg.u.conn_stat.legacy_device_plug_status, msg.u.conn_stat.displayport_device_plug_status, msg.u.conn_stat.message_capability_status, msg.u.conn_stat.input_port, msg.u.conn_stat.peer_device_type);
-			(*mgr->cbs->hotplug)(mgr);
+			drm_kms_helper_hotplug_event(mgr->dev);
 
 		} else if (msg.req_type == DP_RESOURCE_STATUS_NOTIFY) {
 			drm_dp_send_up_ack_reply(mgr, mgr->mst_primary, msg.req_type, seqno, false);
@@ -2572,9 +2584,16 @@ struct edid *drm_dp_mst_get_edid(struct drm_connector *connector, struct drm_dp_
 EXPORT_SYMBOL(drm_dp_mst_get_edid);
 
 /**
- * drm_dp_find_vcpi_slots() - find slots for this PBN value
+ * drm_dp_find_vcpi_slots() - Find VCPI slots for this PBN value
  * @mgr: manager to use
  * @pbn: payload bandwidth to convert into slots.
+ *
+ * Calculate the number of VCPI slots that will be required for the given PBN
+ * value. This function is deprecated, and should not be used in atomic
+ * drivers.
+ *
+ * RETURNS:
+ * The total slots required for this port, or error.
  */
 int drm_dp_find_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr,
 			   int pbn)
@@ -3102,7 +3121,7 @@ static void drm_dp_destroy_connector_work(struct work_struct *work)
 		send_hotplug = true;
 	}
 	if (send_hotplug)
-		(*mgr->cbs->hotplug)(mgr);
+		drm_kms_helper_hotplug_event(mgr->dev);
 }
 
 static struct drm_private_state *
@@ -3213,7 +3232,7 @@ int drm_dp_mst_topology_mgr_init(struct drm_dp_mst_topology_mgr *mgr,
 	/* max. time slots - one slot for MTP header */
 	mst_state->avail_slots = 63;
 
-	drm_atomic_private_obj_init(&mgr->base,
+	drm_atomic_private_obj_init(dev, &mgr->base,
 				    &mst_state->base,
 				    &mst_state_funcs);
 
@@ -3227,6 +3246,7 @@ EXPORT_SYMBOL(drm_dp_mst_topology_mgr_init);
  */
 void drm_dp_mst_topology_mgr_destroy(struct drm_dp_mst_topology_mgr *mgr)
 {
+	drm_dp_mst_topology_mgr_set_mst(mgr, false);
 	flush_work(&mgr->work);
 	flush_work(&mgr->destroy_connector_work);
 	mutex_lock(&mgr->payload_lock);
@@ -3242,6 +3262,23 @@ void drm_dp_mst_topology_mgr_destroy(struct drm_dp_mst_topology_mgr *mgr)
 }
 EXPORT_SYMBOL(drm_dp_mst_topology_mgr_destroy);
 
+static bool remote_i2c_read_ok(const struct i2c_msg msgs[], int num)
+{
+	int i;
+
+	if (num - 1 > DP_REMOTE_I2C_READ_MAX_TRANSACTIONS)
+		return false;
+
+	for (i = 0; i < num - 1; i++) {
+		if (msgs[i].flags & I2C_M_RD ||
+		    msgs[i].len > 0xff)
+			return false;
+	}
+
+	return msgs[num - 1].flags & I2C_M_RD &&
+		msgs[num - 1].len <= 0xff;
+}
+
 /* I2C device */
 static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs,
 			       int num)
@@ -3251,7 +3288,6 @@ static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs
 	struct drm_dp_mst_branch *mstb;
 	struct drm_dp_mst_topology_mgr *mgr = port->mgr;
 	unsigned int i;
-	bool reading = false;
 	struct drm_dp_sideband_msg_req_body msg;
 	struct drm_dp_sideband_msg_tx *txmsg = NULL;
 	int ret;
@@ -3260,12 +3296,7 @@ static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs
 	if (!mstb)
 		return -EREMOTEIO;
 
-	/* construct i2c msg */
-	/* see if last msg is a read */
-	if (msgs[num - 1].flags & I2C_M_RD)
-		reading = true;
-
-	if (!reading || (num - 1 > DP_REMOTE_I2C_READ_MAX_TRANSACTIONS)) {
+	if (!remote_i2c_read_ok(msgs, num)) {
 		DRM_DEBUG_KMS("Unsupported I2C transaction for MST device\n");
 		ret = -EIO;
 		goto out;
@@ -3279,6 +3310,7 @@ static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs
 		msg.u.i2c_read.transactions[i].i2c_dev_id = msgs[i].addr;
 		msg.u.i2c_read.transactions[i].num_bytes = msgs[i].len;
 		msg.u.i2c_read.transactions[i].bytes = msgs[i].buf;
+		msg.u.i2c_read.transactions[i].no_stop_bit = !(msgs[i].flags & I2C_M_STOP);
 	}
 	msg.u.i2c_read.read_i2c_device_id = msgs[num - 1].addr;
 	msg.u.i2c_read.num_bytes_read = msgs[num - 1].len;

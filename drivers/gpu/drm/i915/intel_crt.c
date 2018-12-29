@@ -322,7 +322,7 @@ intel_crt_mode_valid(struct drm_connector *connector,
 		 * DAC limit supposedly 355 MHz.
 		 */
 		max_clock = 270000;
-	else if (IS_GEN3(dev_priv) || IS_GEN4(dev_priv))
+	else if (IS_GEN_RANGE(dev_priv, 3, 4))
 		max_clock = 400000;
 	else
 		max_clock = 350000;
@@ -354,6 +354,7 @@ static bool intel_crt_compute_config(struct intel_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLSCAN)
 		return false;
 
+	pipe_config->output_format = INTEL_OUTPUT_FORMAT_RGB;
 	return true;
 }
 
@@ -368,6 +369,7 @@ static bool pch_crt_compute_config(struct intel_encoder *encoder,
 		return false;
 
 	pipe_config->has_pch_encoder = true;
+	pipe_config->output_format = INTEL_OUTPUT_FORMAT_RGB;
 
 	return true;
 }
@@ -389,6 +391,7 @@ static bool hsw_crt_compute_config(struct intel_encoder *encoder,
 		return false;
 
 	pipe_config->has_pch_encoder = true;
+	pipe_config->output_format = INTEL_OUTPUT_FORMAT_RGB;
 
 	/* LPT FDI RX only supports 8bpc. */
 	if (HAS_PCH_LPT(dev_priv)) {
@@ -663,7 +666,7 @@ intel_crt_load_detect(struct intel_crt *crt, uint32_t pipe)
 	/* Set the border color to purple. */
 	I915_WRITE(bclrpat_reg, 0x500050);
 
-	if (!IS_GEN2(dev_priv)) {
+	if (!IS_GEN(dev_priv, 2)) {
 		uint32_t pipeconf = I915_READ(pipeconf_reg);
 		I915_WRITE(pipeconf_reg, pipeconf | PIPECONF_FORCE_BORDER);
 		POSTING_READ(pipeconf_reg);
@@ -849,12 +852,6 @@ out:
 	return status;
 }
 
-static void intel_crt_destroy(struct drm_connector *connector)
-{
-	drm_connector_cleanup(connector);
-	kfree(connector);
-}
-
 static int intel_crt_get_modes(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
@@ -909,7 +906,7 @@ static const struct drm_connector_funcs intel_crt_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.late_register = intel_connector_register,
 	.early_unregister = intel_connector_unregister,
-	.destroy = intel_crt_destroy,
+	.destroy = intel_connector_destroy,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 };
@@ -984,7 +981,7 @@ void intel_crt_init(struct drm_i915_private *dev_priv)
 	else
 		crt->base.crtc_mask = (1 << 0) | (1 << 1) | (1 << 2);
 
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		connector->interlace_allowed = 0;
 	else
 		connector->interlace_allowed = 1;
