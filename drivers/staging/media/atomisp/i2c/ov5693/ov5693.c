@@ -1332,7 +1332,7 @@ static int power_ctrl(struct v4l2_subdev *sd, bool flag)
 
 static int gpio_ctrl(struct v4l2_subdev *sd, bool flag)
 {
-	int ret;
+	int ret = 0;
 	struct ov5693_device *dev = to_ov5693_sensor(sd);
 
 	if (!dev || !dev->platform_data)
@@ -1342,7 +1342,8 @@ static int gpio_ctrl(struct v4l2_subdev *sd, bool flag)
 	if (dev->platform_data->gpio_ctrl)
 		return dev->platform_data->gpio_ctrl(sd, flag);
 
-	ret = dev->platform_data->gpio0_ctrl(sd, flag);
+	if (dev->platform_data->gpio0_ctrl)
+		ret = dev->platform_data->gpio0_ctrl(sd, flag);
 
 	return ret;
 }
@@ -1709,7 +1710,7 @@ static int ov5693_detect(struct i2c_client *client)
 					OV5693_SC_CMMN_CHIP_ID_L, &low);
 	id = ((((u16) high) << 8) | (u16) low);
 
-	if (id != OV5693_ID) {
+	if (id != OV5690_ID && id != OV5693_ID) {
 		dev_err(&client->dev, "sensor ID error 0x%x\n", id);
 		return -ENODEV;
 	}

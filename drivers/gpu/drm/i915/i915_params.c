@@ -35,7 +35,7 @@ struct i915_params i915 __read_mostly = {
 	.enable_rc6 = -1,
 	.enable_dc = -1,
 	.enable_fbc = -1,
-	.enable_execlists = -1,
+	.enable_execlists = 0,
 	.enable_hangcheck = true,
 	.enable_ppgtt = -1,
 	.enable_psr = -1,
@@ -56,8 +56,8 @@ struct i915_params i915 __read_mostly = {
 	.verbose_state_checks = 1,
 	.nuclear_pageflip = 0,
 	.edp_vswing = 0,
-	.enable_guc_loading = 0,
-	.enable_guc_submission = 0,
+	.enable_guc_loading = 1,
+	.enable_guc_submission = 1,
 	.guc_log_level = -1,
 	.guc_firmware_path = NULL,
 	.huc_firmware_path = NULL,
@@ -144,7 +144,7 @@ MODULE_PARM_DESC(enable_ppgtt,
 module_param_named_unsafe(enable_execlists, i915.enable_execlists, int, 0400);
 MODULE_PARM_DESC(enable_execlists,
 	"Override execlists usage. "
-	"(-1=auto [default], 0=disabled, 1=enabled)");
+	"(-1=auto, 0=disabled [default], 1=enabled)");
 
 module_param_named_unsafe(enable_psr, i915.enable_psr, int, 0600);
 MODULE_PARM_DESC(enable_psr, "Enable PSR "
@@ -225,12 +225,12 @@ MODULE_PARM_DESC(edp_vswing,
 module_param_named_unsafe(enable_guc_loading, i915.enable_guc_loading, int, 0400);
 MODULE_PARM_DESC(enable_guc_loading,
 		"Enable GuC firmware loading "
-		"(-1=auto, 0=never [default], 1=if available, 2=required)");
+		"(-1=auto, 0=never, 1=if available [default], 2=required)");
 
 module_param_named_unsafe(enable_guc_submission, i915.enable_guc_submission, int, 0400);
 MODULE_PARM_DESC(enable_guc_submission,
 		"Enable GuC submission "
-		"(-1=auto, 0=never [default], 1=if available, 2=required)");
+		"(-1=auto, 0=never, 1=if available [default], 2=required)");
 
 module_param_named(guc_log_level, i915.guc_log_level, int, 0400);
 MODULE_PARM_DESC(guc_log_level,
