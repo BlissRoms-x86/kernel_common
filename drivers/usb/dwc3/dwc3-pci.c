@@ -16,6 +16,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/platform_device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/gpio/machine.h>
 #include <linux/acpi.h>
 #include <linux/delay.h>
 
@@ -40,6 +41,10 @@
 #define PCI_INTEL_BXT_FUNC_PMU_PWR	4
 #define PCI_INTEL_BXT_STATE_D0		0
 #define PCI_INTEL_BXT_STATE_D3		3
+
+#define GP_RWBAR			1
+#define GP_RWREG1			0xa0
+#define GP_RWREG1_ULPI_REFCLK_DISABLE	(1 << 17)
 
 /**
  * struct dwc3_pci - Driver private structure
@@ -66,6 +71,37 @@ static const struct acpi_gpio_mapping acpi_dwc3_byt_gpios[] = {
 	{ "cs-gpios", &cs_gpios, 1 },
 	{ },
 };
+
+static struct gpiod_lookup_table platform_bytcr_gpios = {
+	.dev_id		= "0000:00:16.0",
+	.table		= {
+		GPIO_LOOKUP("INT33FC:00", 54, "reset", GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("INT33FC:02", 14, "cs", GPIO_ACTIVE_HIGH),
+		{}
+	},
+};
+
+static int dwc3_byt_enable_ulpi_refclock(struct pci_dev *pci)
+{
+	void __iomem	*reg;
+	u32		value;
+
+	reg = pcim_iomap(pci, GP_RWBAR, 0);
+	if (IS_ERR(reg))
+		return PTR_ERR(reg);
+
+	value = readl(reg + GP_RWREG1);
+	if (!(value & GP_RWREG1_ULPI_REFCLK_DISABLE))
+		goto unmap; /* ULPI refclk already enabled */
+
+	value &= ~GP_RWREG1_ULPI_REFCLK_DISABLE;
+	writel(value, reg + GP_RWREG1);
+	/* This comes from the Intel Android x86 tree w/o any explanation */
+	msleep(100);
+unmap:
+	pcim_iounmap(pci, reg);
+	return 0;
+}
 
 static int dwc3_pci_quirks(struct dwc3_pci *dwc)
 {
@@ -122,30 +158,42 @@ static int dwc3_pci_quirks(struct dwc3_pci *dwc)
 		if (pdev->device == PCI_DEVICE_ID_INTEL_BYT) {
 			struct gpio_desc *gpio;
 
+			/* On BYT the FW does not always enable the refclock */
+			ret = dwc3_byt_enable_ulpi_refclock(pdev);
+			if (ret)
+				return ret;
+
 			ret = devm_acpi_dev_add_driver_gpios(&pdev->dev,
 					acpi_dwc3_byt_gpios);
 			if (ret)
 				dev_dbg(&pdev->dev, "failed to add mapping table\n");
 
 			/*
+			 * A lot of BYT devices lack ACPI resource entries for
+			 * the GPIOs, add a fallback mapping to the reference
+			 * design GPIOs which all boards seem to use.
+			 */
+			gpiod_add_lookup_table(&platform_bytcr_gpios);
+
+			/*
 			 * These GPIOs will turn on the USB2 PHY. Note that we have to
 			 * put the gpio descriptors again here because the phy driver
 			 * might want to grab them, too.
 			 */
-			gpio = gpiod_get_optional(&pdev->dev, "cs", GPIOD_OUT_LOW);
+			gpio = devm_gpiod_get_optional(&pdev->dev, "cs",
+						       GPIOD_OUT_LOW);
 			if (IS_ERR(gpio))
 				return PTR_ERR(gpio);
 
 			gpiod_set_value_cansleep(gpio, 1);
-			gpiod_put(gpio);
 
-			gpio = gpiod_get_optional(&pdev->dev, "reset", GPIOD_OUT_LOW);
+			gpio = devm_gpiod_get_optional(&pdev->dev, "reset",
+						       GPIOD_OUT_LOW);
 			if (IS_ERR(gpio))
 				return PTR_ERR(gpio);
 
 			if (gpio) {
 				gpiod_set_value_cansleep(gpio, 1);
-				gpiod_put(gpio);
 				usleep_range(10000, 11000);
 			}
 		}
@@ -257,6 +305,7 @@ static void dwc3_pci_remove(struct pci_dev *pci)
 {
 	struct dwc3_pci		*dwc = pci_get_drvdata(pci);
 
+	gpiod_remove_lookup_table(&platform_bytcr_gpios);
 #ifdef CONFIG_PM
 	cancel_work_sync(&dwc->wakeup_work);
 #endif
