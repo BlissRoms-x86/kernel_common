@@ -88,7 +88,6 @@ struct blkg_policy_data {
 	/* the blkg and policy id this per-policy data belongs to */
 	struct blkcg_gq			*blkg;
 	int				plid;
-	bool				offline;
 };
 
 /*
@@ -293,6 +292,23 @@ static inline struct blkcg_gq *blkg_lookup(struct blkcg *blkcg,
 	if (unlikely(blk_queue_bypass(q)))
 		return NULL;
 	return __blkg_lookup(blkcg, q, false);
+}
+
+/**
+ * blkg_lookup - look up blkg for the specified request queue
+ * @q: request_queue of interest
+ *
+ * Lookup blkg for @q at the root level. See also blkg_lookup().
+ */
+static inline struct blkcg_gq *blkg_root_lookup(struct request_queue *q)
+{
+	struct blkcg_gq *blkg;
+
+	rcu_read_lock();
+	blkg = blkg_lookup(&blkcg_root, q);
+	rcu_read_unlock();
+
+	return blkg;
 }
 
 /**
@@ -737,6 +753,7 @@ struct blkcg_policy {
 #ifdef CONFIG_BLOCK
 
 static inline struct blkcg_gq *blkg_lookup(struct blkcg *blkcg, void *key) { return NULL; }
+static inline struct blkcg_gq *blkg_root_lookup(struct request_queue *q) { return NULL; }
 static inline int blkcg_init_queue(struct request_queue *q) { return 0; }
 static inline void blkcg_drain_queue(struct request_queue *q) { }
 static inline void blkcg_exit_queue(struct request_queue *q) { }

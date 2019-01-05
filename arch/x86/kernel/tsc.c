@@ -60,7 +60,7 @@ struct cyc2ns {
 
 static DEFINE_PER_CPU_ALIGNED(struct cyc2ns, cyc2ns);
 
-void cyc2ns_read_begin(struct cyc2ns_data *data)
+void __always_inline cyc2ns_read_begin(struct cyc2ns_data *data)
 {
 	int seq, idx;
 
@@ -77,7 +77,7 @@ void cyc2ns_read_begin(struct cyc2ns_data *data)
 	} while (unlikely(seq != this_cpu_read(cyc2ns.seq.sequence)));
 }
 
-void cyc2ns_read_end(void)
+void __always_inline cyc2ns_read_end(void)
 {
 	preempt_enable_notrace();
 }
@@ -123,7 +123,7 @@ static void __init cyc2ns_init(int cpu)
 	seqcount_init(&c2n->seq);
 }
 
-static inline unsigned long long cycles_2_ns(unsigned long long cyc)
+static __always_inline unsigned long long cycles_2_ns(unsigned long long cyc)
 {
 	struct cyc2ns_data data;
 	unsigned long long ns;
@@ -1343,7 +1343,7 @@ device_initcall(init_tsc_clocksource);
 
 void __init tsc_early_delay_calibrate(void)
 {
-	unsigned long lpj;
+	u64 lpj;
 
 	if (!boot_cpu_has(X86_FEATURE_TSC))
 		return;
@@ -1355,7 +1355,7 @@ void __init tsc_early_delay_calibrate(void)
 	if (!tsc_khz)
 		return;
 
-	lpj = tsc_khz * 1000;
+	lpj = (u64)tsc_khz * 1000;
 	do_div(lpj, HZ);
 	loops_per_jiffy = lpj;
 }
