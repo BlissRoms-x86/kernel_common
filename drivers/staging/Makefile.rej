@@ -1,0 +1,7 @@
+--- drivers/staging/Makefile
++++ drivers/staging/Makefile
+@@ -54,3 +54,4 @@ obj-$(CONFIG_SOC_MT7621)	+= mt7621-dma/
+ obj-$(CONFIG_SOC_MT7621)	+= mt7621-mmc/
+ obj-$(CONFIG_SOC_MT7621)	+= mt7621-eth/
+ obj-$(CONFIG_SOC_MT7621)	+= mt7621-dts/
++obj-$(CONFIG_VIDEO_OV5693)	+= ov5693/

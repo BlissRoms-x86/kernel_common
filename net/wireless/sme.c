@@ -690,6 +690,11 @@ void __cfg80211_connect_result(struct net_device *dev,
 		return;
 	}
 
+	if (WARN_ON(!wdev->ssid_len)) {
+		cfg80211_put_bss(wdev->wiphy, cr->bss);
+		return;
+	}
+
 	nl80211_send_connect_result(wiphy_to_rdev(wdev->wiphy), dev, cr,
 				    GFP_KERNEL);
 
