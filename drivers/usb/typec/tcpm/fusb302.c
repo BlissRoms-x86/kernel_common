@@ -85,9 +85,6 @@ struct fusb302_chip {
 	struct workqueue_struct *wq;
 	struct delayed_work bc_lvl_handler;
 
-	atomic_t pm_suspend;
-	atomic_t i2c_busy;
-
 	/* lock for sharing chip states */
 	struct mutex lock;
 
@@ -236,40 +233,15 @@ static void fusb302_debugfs_exit(const struct fusb302_chip *chip) { }
 #define FUSB302_RESUME_RETRY 10
 #define FUSB302_RESUME_RETRY_SLEEP 50
 
-static bool fusb302_is_suspended(struct fusb302_chip *chip)
-{
-	int retry_cnt;
-
-	for (retry_cnt = 0; retry_cnt < FUSB302_RESUME_RETRY; retry_cnt++) {
-		if (atomic_read(&chip->pm_suspend)) {
-			dev_err(chip->dev, "i2c: pm suspend, retry %d/%d\n",
-				retry_cnt + 1, FUSB302_RESUME_RETRY);
-			msleep(FUSB302_RESUME_RETRY_SLEEP);
-		} else {
-			return false;
-		}
-	}
-
-	return true;
-}
-
 static int fusb302_i2c_write(struct fusb302_chip *chip,
 			     u8 address, u8 data)
 {
 	int ret = 0;
 
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
-
 	ret = i2c_smbus_write_byte_data(chip->i2c_client, address, data);
 	if (ret < 0)
 		fusb302_log(chip, "cannot write 0x%02x to 0x%02x, ret=%d",
 			    data, address, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -281,19 +253,12 @@ static int fusb302_i2c_block_write(struct fusb302_chip *chip, u8 address,
 
 	if (length <= 0)
 		return ret;
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
 
 	ret = i2c_smbus_write_i2c_block_data(chip->i2c_client, address,
 					     length, data);
 	if (ret < 0)
 		fusb302_log(chip, "cannot block write 0x%02x, len=%d, ret=%d",
 			    address, length, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -303,18 +268,10 @@ static int fusb302_i2c_read(struct fusb302_chip *chip,
 {
 	int ret = 0;
 
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
-
 	ret = i2c_smbus_read_byte_data(chip->i2c_client, address);
 	*data = (u8)ret;
 	if (ret < 0)
 		fusb302_log(chip, "cannot read %02x, ret=%d", address, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -326,28 +283,19 @@ static int fusb302_i2c_block_read(struct fusb302_chip *chip, u8 address,
 
 	if (length <= 0)
 		return ret;
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
 
 	ret = i2c_smbus_read_i2c_block_data(chip->i2c_client, address,
 					    length, data);
 	if (ret < 0) {
 		fusb302_log(chip, "cannot block read 0x%02x, len=%d, ret=%d",
 			    address, length, ret);
-		goto done;
+		return ret;
 	}
 	if (ret != length) {
 		fusb302_log(chip, "only read %d/%d bytes from 0x%02x",
 			    ret, length, address);
 		ret = -EIO;
 	}
-
-done:
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -1793,10 +1741,7 @@ static int fusb302_pm_suspend(struct device *dev)
 {
 	struct fusb302_chip *chip = dev->driver_data;
 
-	if (atomic_read(&chip->i2c_busy))
-		return -EBUSY;
-	atomic_set(&chip->pm_suspend, 1);
-
+	disable_irq(chip->gpio_int_n_irq);
 	return 0;
 }
 
@@ -1804,8 +1749,7 @@ static int fusb302_pm_resume(struct device *dev)
 {
 	struct fusb302_chip *chip = dev->driver_data;
 
-	atomic_set(&chip->pm_suspend, 0);
-
+	enable_irq(chip->gpio_int_n_irq);
 	return 0;
 }
 
