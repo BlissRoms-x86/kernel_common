@@ -173,7 +173,7 @@ int vlv_dsi_pll_compute(struct intel_encoder *encoder,
 void vlv_dsi_pll_enable(struct intel_encoder *encoder,
 			const struct intel_crtc_state *config);
 void vlv_dsi_pll_disable(struct intel_encoder *encoder);
-u32 vlv_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
+u32 vlv_dsi_get_pclk(struct intel_encoder *encoder,
 		     struct intel_crtc_state *config);
 void vlv_dsi_reset_clocks(struct intel_encoder *encoder, enum port port);
 
@@ -183,7 +183,7 @@ int bxt_dsi_pll_compute(struct intel_encoder *encoder,
 void bxt_dsi_pll_enable(struct intel_encoder *encoder,
 			const struct intel_crtc_state *config);
 void bxt_dsi_pll_disable(struct intel_encoder *encoder);
-u32 bxt_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
+u32 bxt_dsi_get_pclk(struct intel_encoder *encoder,
 		     struct intel_crtc_state *config);
 void bxt_dsi_reset_clocks(struct intel_encoder *encoder, enum port port);
 
@@ -193,5 +193,7 @@ int intel_dsi_vbt_get_modes(struct intel_dsi *intel_dsi);
 void intel_dsi_vbt_exec_sequence(struct intel_dsi *intel_dsi,
 				 enum mipi_seq seq_id);
 void intel_dsi_msleep(struct intel_dsi *intel_dsi, int msec);
+void icl_dphy_param_init(struct intel_dsi *intel_dsi);
+void vlv_dphy_param_init(struct intel_dsi *intel_dsi);
 
 #endif /* _INTEL_DSI_H */

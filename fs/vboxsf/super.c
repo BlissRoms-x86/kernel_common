@@ -150,9 +150,6 @@ static int sf_fill_super(struct super_block *sb, void *data, int flags)
 	size_t size;
 	int err;
 
-	if (flags & MS_REMOUNT)
-		return -EINVAL;
-
 	sf_g = kzalloc(sizeof(*sf_g), GFP_KERNEL);
 	if (!sf_g)
 		return -ENOMEM;
