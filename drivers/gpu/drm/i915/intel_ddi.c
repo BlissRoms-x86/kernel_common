@@ -3282,6 +3282,24 @@ static void intel_disable_ddi(struct intel_encoder *encoder,
 		intel_disable_ddi_dp(encoder, old_crtc_state, old_conn_state);
 }
 
+static void intel_update_ddi_dp(struct intel_encoder *encoder,
+				const struct intel_crtc_state *crtc_state,
+				const struct drm_connector_state *conn_state)
+{
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
+
+	intel_psr_enable(intel_dp, crtc_state);
+	intel_edp_drrs_enable(intel_dp, crtc_state);
+}
+
+static void intel_update_ddi(struct intel_encoder *encoder,
+			     const struct intel_crtc_state *crtc_state,
+			     const struct drm_connector_state *conn_state)
+{
+	if (!intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI))
+		intel_update_ddi_dp(encoder, crtc_state, conn_state);
+}
+
 static void bxt_ddi_pre_pll_enable(struct intel_encoder *encoder,
 				   const struct intel_crtc_state *pipe_config,
 				   const struct drm_connector_state *conn_state)
@@ -3810,6 +3828,7 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 	intel_encoder->pre_enable = intel_ddi_pre_enable;
 	intel_encoder->disable = intel_disable_ddi;
 	intel_encoder->post_disable = intel_ddi_post_disable;
+	intel_encoder->update = intel_update_ddi;
 	intel_encoder->get_hw_state = intel_ddi_get_hw_state;
 	intel_encoder->get_config = intel_ddi_get_config;
 	intel_encoder->suspend = intel_dp_encoder_suspend;

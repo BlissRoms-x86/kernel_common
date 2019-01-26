@@ -81,14 +81,21 @@ struct intel_dsi {
 	u16 dcs_backlight_ports;
 	u16 dcs_cabc_ports;
 
+	/* RGB or BGR */
+	bool bgr_enabled;
+
 	u8 pixel_overlap;
 	u32 port_bits;
 	u32 bw_timer;
 	u32 dphy_reg;
+
+	/* data lanes dphy timing */
+	u32 dphy_data_lane_reg;
 	u32 video_frmt_cfg_bits;
 	u16 lp_byte_clk;
 
 	/* timeouts in byte clocks */
+	u16 hs_tx_timeout;
 	u16 lp_rx_timeout;
 	u16 turn_arnd_val;
 	u16 rst_timer_val;
@@ -129,6 +136,20 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 	return container_of(encoder, struct intel_dsi, base.base);
 }
 
+static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
+{
+	return intel_dsi->operation_mode == INTEL_DSI_VIDEO_MODE;
+}
+
+static inline bool is_cmd_mode(struct intel_dsi *intel_dsi)
+{
+	return intel_dsi->operation_mode == INTEL_DSI_COMMAND_MODE;
+}
+
+/* intel_dsi.c */
+int intel_dsi_bitrate(const struct intel_dsi *intel_dsi);
+int intel_dsi_tlpx_ns(const struct intel_dsi *intel_dsi);
+
 /* vlv_dsi.c */
 void vlv_dsi_wait_for_fifo_empty(struct intel_dsi *intel_dsi, enum port port);
 enum mipi_dsi_pixel_format pixel_format_from_register_bits(u32 fmt);
@@ -139,7 +160,7 @@ int vlv_dsi_pll_compute(struct intel_encoder *encoder,
 void vlv_dsi_pll_enable(struct intel_encoder *encoder,
 			const struct intel_crtc_state *config);
 void vlv_dsi_pll_disable(struct intel_encoder *encoder);
-u32 vlv_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
+u32 vlv_dsi_get_pclk(struct intel_encoder *encoder,
 		     struct intel_crtc_state *config);
 void vlv_dsi_reset_clocks(struct intel_encoder *encoder, enum port port);
 
@@ -149,7 +170,7 @@ int bxt_dsi_pll_compute(struct intel_encoder *encoder,
 void bxt_dsi_pll_enable(struct intel_encoder *encoder,
 			const struct intel_crtc_state *config);
 void bxt_dsi_pll_disable(struct intel_encoder *encoder);
-u32 bxt_dsi_get_pclk(struct intel_encoder *encoder, int pipe_bpp,
+u32 bxt_dsi_get_pclk(struct intel_encoder *encoder,
 		     struct intel_crtc_state *config);
 void bxt_dsi_reset_clocks(struct intel_encoder *encoder, enum port port);
 
@@ -158,5 +179,8 @@ bool intel_dsi_vbt_init(struct intel_dsi *intel_dsi, u16 panel_id);
 int intel_dsi_vbt_get_modes(struct intel_dsi *intel_dsi);
 void intel_dsi_vbt_exec_sequence(struct intel_dsi *intel_dsi,
 				 enum mipi_seq seq_id);
+void intel_dsi_msleep(struct intel_dsi *intel_dsi, int msec);
+void icl_dphy_param_init(struct intel_dsi *intel_dsi);
+void vlv_dphy_param_init(struct intel_dsi *intel_dsi);
 
 #endif /* _INTEL_DSI_H */

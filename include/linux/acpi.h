@@ -1007,6 +1007,8 @@ struct acpi_gpio_mapping {
 
 /* Ignore IoRestriction field */
 #define ACPI_GPIO_QUIRK_NO_IO_RESTRICTION	BIT(0)
+/* First of GpioIo() type */
+#define ACPI_GPIO_QUIRK_FIRST_GPIOIO		BIT(1)
 
 	unsigned int quirks;
 };
@@ -1051,6 +1053,17 @@ static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
 static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 {
 	return -ENXIO;
+}
+#endif
+
+#if defined(CONFIG_ACPI) && IS_ENABLED(CONFIG_I2C)
+bool i2c_acpi_get_i2c_resource(struct acpi_resource *ares,
+			       struct acpi_resource_i2c_serialbus **i2c);
+#else
+static inline bool i2c_acpi_get_i2c_resource(struct acpi_resource *ares,
+					     struct acpi_resource_i2c_serialbus **i2c)
+{
+	return false;
 }
 #endif
 

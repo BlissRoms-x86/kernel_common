@@ -5620,6 +5620,26 @@ static void intel_encoders_post_pll_disable(struct drm_crtc *crtc,
 	}
 }
 
+static void intel_encoders_update(struct drm_crtc *crtc,
+				  struct intel_crtc_state *crtc_state,
+				  struct drm_atomic_state *old_state)
+{
+	struct drm_connector_state *conn_state;
+	struct drm_connector *conn;
+	int i;
+
+	for_each_new_connector_in_state(old_state, conn, conn_state, i) {
+		struct intel_encoder *encoder =
+			to_intel_encoder(conn_state->best_encoder);
+
+		if (conn_state->crtc != crtc)
+			continue;
+
+		if (encoder->update)
+			encoder->update(encoder, crtc_state, conn_state);
+	}
+}
+
 static void ironlake_crtc_enable(struct intel_crtc_state *pipe_config,
 				 struct drm_atomic_state *old_state)
 {
@@ -10919,7 +10939,7 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 	}
 
 	if (INTEL_GEN(dev_priv) >= 9) {
-		if (mode_changed)
+		if (mode_changed || pipe_config->update_pipe)
 			ret = skl_update_scaler_crtc(pipe_config);
 
 		if (!ret)
@@ -11314,7 +11334,7 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 	struct intel_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_state *connector_state;
-	int base_bpp, ret = -EINVAL;
+	int base_bpp, ret;
 	int i;
 	bool retry = true;
 
@@ -11339,7 +11359,7 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 	base_bpp = compute_baseline_pipe_bpp(to_intel_crtc(crtc),
 					     pipe_config);
 	if (base_bpp < 0)
-		goto fail;
+		return -EINVAL;
 
 	/*
 	 * Determine the real pipe dimensions. Note that stereo modes can
@@ -11361,7 +11381,7 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 
 		if (!check_single_encoder_cloning(state, to_intel_crtc(crtc), encoder)) {
 			DRM_DEBUG_KMS("rejecting invalid cloning configuration\n");
-			goto fail;
+			return -EINVAL;
 		}
 
 		/*
@@ -11397,7 +11417,7 @@ encoder_retry:
 
 		if (!(encoder->compute_config(encoder, pipe_config, connector_state))) {
 			DRM_DEBUG_KMS("Encoder config failure\n");
-			goto fail;
+			return -EINVAL;
 		}
 	}
 
@@ -11410,14 +11430,12 @@ encoder_retry:
 	ret = intel_crtc_compute_config(to_intel_crtc(crtc), pipe_config);
 	if (ret < 0) {
 		DRM_DEBUG_KMS("CRTC fixup failed\n");
-		goto fail;
+		return ret;
 	}
 
 	if (ret == RETRY) {
-		if (WARN(!retry, "loop in pipe configuration computation\n")) {
-			ret = -EINVAL;
-			goto fail;
-		}
+		if (WARN(!retry, "loop in pipe configuration computation\n"))
+			return -EINVAL;
 
 		DRM_DEBUG_KMS("CRTC bw constrained, retrying\n");
 		retry = false;
@@ -11433,11 +11451,10 @@ encoder_retry:
 	DRM_DEBUG_KMS("hw max bpp: %i, pipe bpp: %i, dithering: %i\n",
 		      base_bpp, pipe_config->pipe_bpp, pipe_config->dither);
 
-fail:
-	return ret;
+	return 0;
 }
 
-static bool intel_fuzzy_clock_check(int clock1, int clock2)
+bool intel_fuzzy_clock_check(int clock1, int clock2)
 {
 	int diff;
 
@@ -12504,6 +12521,31 @@ static int calc_watermark_data(struct drm_atomic_state *state)
 	return 0;
 }
 
+static bool fastboot_enabled(struct drm_i915_private *dev_priv)
+{
+	if (i915_modparams.fastboot != -1)
+		return i915_modparams.fastboot;
+
+	/* Enable fastboot by default on Skylake and newer */
+	return INTEL_GEN(dev_priv) >= 9;
+}
+
+static bool can_fastset(struct drm_i915_private *dev_priv,
+			struct intel_crtc_state *old_crtc_state,
+			struct intel_crtc_state *new_crtc_state)
+{
+	bool reset_mode =
+		(old_crtc_state->base.mode.private_flags & I915_MODE_FLAG_INHERITED) &&
+		!(new_crtc_state->base.mode.private_flags & I915_MODE_FLAG_INHERITED);
+
+	/* Without fastboot, we always want to modeset the initial mode. */
+	if (reset_mode && !fastboot_enabled(dev_priv))
+		return false;
+
+	return intel_pipe_config_compare(dev_priv, old_crtc_state,
+					 new_crtc_state, true);
+}
+
 /**
  * intel_atomic_check - validate state object
  * @dev: drm device
@@ -12534,6 +12576,8 @@ static int intel_atomic_check(struct drm_device *dev,
 	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, crtc_state, i) {
 		struct intel_crtc_state *pipe_config =
 			to_intel_crtc_state(crtc_state);
+		struct intel_crtc_state *old_intel_crtc_state =
+			to_intel_crtc_state(old_crtc_state);
 
 		if (!needs_modeset(crtc_state))
 			continue;
@@ -12550,10 +12594,7 @@ static int intel_atomic_check(struct drm_device *dev,
 			return ret;
 		}
 
-		if (i915_modparams.fastboot &&
-		    intel_pipe_config_compare(dev_priv,
-					to_intel_crtc_state(old_crtc_state),
-					pipe_config, true)) {
+		if (can_fastset(dev_priv, old_intel_crtc_state, pipe_config)) {
 			crtc_state->mode_changed = false;
 			pipe_config->update_pipe = true;
 		}
@@ -12622,6 +12663,9 @@ static void intel_update_crtc(struct drm_crtc *crtc,
 	} else {
 		intel_pre_plane_update(to_intel_crtc_state(old_crtc_state),
 				       pipe_config);
+
+		if (pipe_config->update_pipe)
+			intel_encoders_update(crtc, pipe_config, state);
 	}
 
 	if (new_plane_state)

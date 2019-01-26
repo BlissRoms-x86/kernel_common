@@ -1003,6 +1003,31 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 /* See configdb bunit SB addr map */
 #define BUNIT_REG_BISOC				0x11
 
+/* PUNIT_REG_*SSPM0 */
+#define   _SSPM0_SSC(val)			((val) << 0)
+#define   SSPM0_SSC_MASK			_SSPM0_SSC(0x3)
+#define   SSPM0_SSC_PWR_ON			_SSPM0_SSC(0x0)
+#define   SSPM0_SSC_CLK_GATE			_SSPM0_SSC(0x1)
+#define   SSPM0_SSC_RESET			_SSPM0_SSC(0x2)
+#define   SSPM0_SSC_PWR_GATE			_SSPM0_SSC(0x3)
+#define   _SSPM0_SSS(val)			((val) << 24)
+#define   SSPM0_SSS_MASK			_SSPM0_SSS(0x3)
+#define   SSPM0_SSS_PWR_ON			_SSPM0_SSS(0x0)
+#define   SSPM0_SSS_CLK_GATE			_SSPM0_SSS(0x1)
+#define   SSPM0_SSS_RESET			_SSPM0_SSS(0x2)
+#define   SSPM0_SSS_PWR_GATE			_SSPM0_SSS(0x3)
+
+/* PUNIT_REG_*SSPM1 */
+#define   SSPM1_FREQSTAT_SHIFT			24
+#define   SSPM1_FREQSTAT_MASK			(0x1f << SSPM1_FREQSTAT_SHIFT)
+#define   SSPM1_FREQGUAR_SHIFT			8
+#define   SSPM1_FREQGUAR_MASK			(0x1f << SSPM1_FREQGUAR_SHIFT)
+#define   SSPM1_FREQ_SHIFT			0
+#define   SSPM1_FREQ_MASK			(0x1f << SSPM1_FREQ_SHIFT)
+
+#define PUNIT_REG_VEDSSPM0			0x32
+#define PUNIT_REG_VEDSSPM1			0x33
+
 #define PUNIT_REG_DSPFREQ			0x36
 #define   DSPFREQSTAT_SHIFT_CHV			24
 #define   DSPFREQSTAT_MASK_CHV			(0x1f << DSPFREQSTAT_SHIFT_CHV)
@@ -1027,6 +1052,9 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   DP_SSS_CLK_GATE(pipe)			_DP_SSS(0x1, (pipe))
 #define   DP_SSS_RESET(pipe)			_DP_SSS(0x2, (pipe))
 #define   DP_SSS_PWR_GATE(pipe)			_DP_SSS(0x3, (pipe))
+
+#define PUNIT_REG_ISPSSPM0			0x39
+#define PUNIT_REG_ISPSSPM1			0x3a
 
 /*
  * i915_power_well_id:
@@ -10294,6 +10322,64 @@ enum skl_power_gate {
 #define ICL_DSI_T_INIT_MASTER(port)	_MMIO_PORT(port,	\
 						   _ICL_DSI_T_INIT_MASTER_0,\
 						   _ICL_DSI_T_INIT_MASTER_1)
+
+#define _DPHY_CLK_TIMING_PARAM_0	0x162180
+#define _DPHY_CLK_TIMING_PARAM_1	0x6c180
+#define DPHY_CLK_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DPHY_CLK_TIMING_PARAM_0,\
+						   _DPHY_CLK_TIMING_PARAM_1)
+#define _DSI_CLK_TIMING_PARAM_0		0x6b080
+#define _DSI_CLK_TIMING_PARAM_1		0x6b880
+#define DSI_CLK_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DSI_CLK_TIMING_PARAM_0,\
+						   _DSI_CLK_TIMING_PARAM_1)
+#define  CLK_PREPARE_OVERRIDE		(1 << 31)
+#define  CLK_PREPARE(x)		((x) << 28)
+#define  CLK_PREPARE_MASK		(0x7 << 28)
+#define  CLK_PREPARE_SHIFT		28
+#define  CLK_ZERO_OVERRIDE		(1 << 27)
+#define  CLK_ZERO(x)			((x) << 20)
+#define  CLK_ZERO_MASK			(0xf << 20)
+#define  CLK_ZERO_SHIFT		20
+#define  CLK_PRE_OVERRIDE		(1 << 19)
+#define  CLK_PRE(x)			((x) << 16)
+#define  CLK_PRE_MASK			(0x3 << 16)
+#define  CLK_PRE_SHIFT			16
+#define  CLK_POST_OVERRIDE		(1 << 15)
+#define  CLK_POST(x)			((x) << 8)
+#define  CLK_POST_MASK			(0x7 << 8)
+#define  CLK_POST_SHIFT		8
+#define  CLK_TRAIL_OVERRIDE		(1 << 7)
+#define  CLK_TRAIL(x)			((x) << 0)
+#define  CLK_TRAIL_MASK		(0xf << 0)
+#define  CLK_TRAIL_SHIFT		0
+
+#define _DPHY_DATA_TIMING_PARAM_0	0x162184
+#define _DPHY_DATA_TIMING_PARAM_1	0x6c184
+#define DPHY_DATA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DPHY_DATA_TIMING_PARAM_0,\
+						   _DPHY_DATA_TIMING_PARAM_1)
+#define _DSI_DATA_TIMING_PARAM_0	0x6B084
+#define _DSI_DATA_TIMING_PARAM_1	0x6B884
+#define DSI_DATA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DSI_DATA_TIMING_PARAM_0,\
+						   _DSI_DATA_TIMING_PARAM_1)
+#define  HS_PREPARE_OVERRIDE		(1 << 31)
+#define  HS_PREPARE(x)			((x) << 24)
+#define  HS_PREPARE_MASK		(0x7 << 24)
+#define  HS_PREPARE_SHIFT		24
+#define  HS_ZERO_OVERRIDE		(1 << 23)
+#define  HS_ZERO(x)			((x) << 16)
+#define  HS_ZERO_MASK			(0xf << 16)
+#define  HS_ZERO_SHIFT			16
+#define  HS_TRAIL_OVERRIDE		(1 << 15)
+#define  HS_TRAIL(x)			((x) << 8)
+#define  HS_TRAIL_MASK			(0x7 << 8)
+#define  HS_TRAIL_SHIFT		8
+#define  HS_EXIT_OVERRIDE		(1 << 7)
+#define  HS_EXIT(x)			((x) << 0)
+#define  HS_EXIT_MASK			(0x7 << 0)
+#define  HS_EXIT_SHIFT			0
 
 /* bits 31:0 */
 #define _MIPIA_DBI_BW_CTRL		(dev_priv->mipi_mmio_base + 0xb084)
