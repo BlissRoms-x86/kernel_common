@@ -357,8 +357,6 @@ void acpi_gpiochip_free_interrupts(struct gpio_chip *chip)
 	mutex_unlock(&acpi_gpio_deferred_req_irqs_lock);
 
 	list_for_each_entry_safe_reverse(event, ep, &acpi_gpio->events, node) {
-		struct gpio_desc *desc;
-
 		if (event->irq_requested) {
 			if (event->irq_is_wake)
 				disable_irq_wake(event->irq);
@@ -366,11 +364,8 @@ void acpi_gpiochip_free_interrupts(struct gpio_chip *chip)
 			free_irq(event->irq, event);
 		}
 
-		desc = event->desc;
-		if (WARN_ON(IS_ERR(desc)))
-			continue;
 		gpiochip_unlock_as_irq(chip, event->pin);
-		gpiochip_free_own_desc(desc);
+		gpiochip_free_own_desc(event->desc);
 		list_del(&event->node);
 		kfree(event);
 	}
@@ -474,6 +469,9 @@ acpi_gpio_to_gpiod_flags(const struct acpi_resource_gpio *agpio)
 static int
 __acpi_gpio_update_gpiod_flags(enum gpiod_flags *flags, enum gpiod_flags update)
 {
+	const enum gpiod_flags mask =
+		GPIOD_FLAGS_BIT_DIR_SET | GPIOD_FLAGS_BIT_DIR_OUT |
+		GPIOD_FLAGS_BIT_DIR_VAL;
 	int ret = 0;
 
 	/*
@@ -494,7 +492,7 @@ __acpi_gpio_update_gpiod_flags(enum gpiod_flags *flags, enum gpiod_flags update)
 		if (((*flags & GPIOD_FLAGS_BIT_DIR_SET) && (diff & GPIOD_FLAGS_BIT_DIR_OUT)) ||
 		    ((*flags & GPIOD_FLAGS_BIT_DIR_OUT) && (diff & GPIOD_FLAGS_BIT_DIR_VAL)))
 			ret = -EINVAL;
-		*flags = update;
+		*flags = (*flags & ~mask) | (update & mask);
 	}
 	return ret;
 }
@@ -535,17 +533,24 @@ static int acpi_populate_gpio_lookup(struct acpi_resource *ares, void *data)
 	if (ares->type != ACPI_RESOURCE_TYPE_GPIO)
 		return 1;
 
-	if (lookup->n++ == lookup->index && !lookup->desc) {
+	if (!lookup->desc) {
 		const struct acpi_resource_gpio *agpio = &ares->data.gpio;
-		int pin_index = lookup->pin_index;
+		bool gpioint = agpio->connection_type == ACPI_RESOURCE_GPIO_TYPE_INT;
+		int pin_index;
 
+		if (lookup->info.quirks & ACPI_GPIO_QUIRK_ONLY_GPIOIO && gpioint)
+			lookup->index++;
+
+		if (lookup->n++ != lookup->index)
+			return 1;
+
+		pin_index = lookup->pin_index;
 		if (pin_index >= agpio->pin_table_length)
 			return 1;
 
 		lookup->desc = acpi_get_gpiod(agpio->resource_source.string_ptr,
 					      agpio->pin_table[pin_index]);
-		lookup->info.gpioint =
-			agpio->connection_type == ACPI_RESOURCE_GPIO_TYPE_INT;
+		lookup->info.gpioint = gpioint;
 
 		/*
 		 * Polarity and triggering are only specified for GpioInt

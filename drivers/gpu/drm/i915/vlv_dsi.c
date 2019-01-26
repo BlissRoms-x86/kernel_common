@@ -290,6 +290,11 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 	/* DSI uses short packets for sync events, so clear mode flags for DSI */
 	adjusted_mode->flags = 0;
 
+	if (intel_dsi->pixel_format == MIPI_DSI_FMT_RGB888)
+		pipe_config->pipe_bpp = 24;
+	else
+		pipe_config->pipe_bpp = 18;
+
 	if (IS_GEN9_LP(dev_priv)) {
 		/* Enable Frame time stamp based scanline reporting */
 		adjusted_mode->private_flags |=
@@ -309,6 +314,10 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 		if (ret)
 			return false;
 	}
+
+	adjusted_mode->crtc_clock =
+		DIV_ROUND_UP(adjusted_mode->crtc_clock *
+					 intel_dsi->burst_mode_ratio, 100);
 
 	pipe_config->clock_set = true;
 
@@ -674,6 +683,10 @@ static void intel_dsi_port_enable(struct intel_encoder *encoder,
 					LANE_CONFIGURATION_DUAL_LINK_B :
 					LANE_CONFIGURATION_DUAL_LINK_A;
 		}
+
+		if (intel_dsi->pixel_format != MIPI_DSI_FMT_RGB888)
+			temp |= DITHERING_ENABLE;
+
 		/* assert ip_tg_enable signal */
 		I915_WRITE(port_ctrl, temp | DPI_ENABLE);
 		POSTING_READ(port_ctrl);
@@ -1058,10 +1071,8 @@ static void bxt_dsi_get_pipe_config(struct intel_encoder *encoder,
 	}
 
 	fmt = I915_READ(MIPI_DSI_FUNC_PRG(port)) & VID_MODE_FORMAT_MASK;
-	pipe_config->pipe_bpp =
-			mipi_dsi_pixel_format_to_bpp(
-				pixel_format_from_register_bits(fmt));
-	bpp = pipe_config->pipe_bpp;
+	bpp = mipi_dsi_pixel_format_to_bpp(
+			pixel_format_from_register_bits(fmt));
 
 	/* Enable Frame time stamo based scanline reporting */
 	adjusted_mode->private_flags |=
@@ -1199,11 +1210,9 @@ static void intel_dsi_get_config(struct intel_encoder *encoder,
 
 	if (IS_GEN9_LP(dev_priv)) {
 		bxt_dsi_get_pipe_config(encoder, pipe_config);
-		pclk = bxt_dsi_get_pclk(encoder, pipe_config->pipe_bpp,
-					pipe_config);
+		pclk = bxt_dsi_get_pclk(encoder, pipe_config);
 	} else {
-		pclk = vlv_dsi_get_pclk(encoder, pipe_config->pipe_bpp,
-					pipe_config);
+		pclk = vlv_dsi_get_pclk(encoder, pipe_config);
 	}
 
 	if (pclk) {
@@ -1650,7 +1659,7 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 	struct drm_encoder *encoder;
 	struct intel_connector *intel_connector;
 	struct drm_connector *connector;
-	struct drm_display_mode *scan, *fixed_mode = NULL;
+	struct drm_display_mode *scan, *current_mode, *fixed_mode = NULL;
 	enum port port;
 
 	DRM_DEBUG_KMS("\n");
@@ -1689,6 +1698,7 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 	intel_encoder->post_disable = intel_dsi_post_disable;
 	intel_encoder->get_hw_state = intel_dsi_get_hw_state;
 	intel_encoder->get_config = intel_dsi_get_config;
+	intel_encoder->update_pipe = intel_panel_update_backlight;
 
 	intel_connector->get_hw_state = intel_connector_get_hw_state;
 
@@ -1733,6 +1743,20 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 		goto err;
 	}
 
+	/* Use clock read-back from current hw-state for fastboot */
+	current_mode = intel_encoder_current_mode(intel_encoder);
+	if (current_mode) {
+		DRM_DEBUG_KMS("Calculated pclk %d GOP %d\n",
+			      intel_dsi->pclk, current_mode->clock);
+		if (intel_fuzzy_clock_check(intel_dsi->pclk,
+					    current_mode->clock))
+			intel_dsi->pclk = current_mode->clock;
+
+		kfree(current_mode);
+	}
+
+	vlv_dphy_param_init(intel_dsi);
+
 	/*
 	 * In case of BYT with CRC PMIC, we need to use GPIO for
 	 * Panel control.
@@ -1771,7 +1795,7 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 
 	if (!fixed_mode) {
 		DRM_DEBUG_KMS("no fixed mode\n");
-		goto err;
+		goto err_cleanup_connector;
 	}
 
 	connector->display_info.width_mm = fixed_mode->width_mm;
@@ -1784,6 +1808,8 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 
 	return;
 
+err_cleanup_connector:
+	drm_connector_cleanup(&intel_connector->base);
 err:
 	drm_encoder_cleanup(&intel_encoder->base);
 	kfree(intel_dsi);

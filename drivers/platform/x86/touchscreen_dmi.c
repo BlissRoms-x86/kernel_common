@@ -259,6 +259,21 @@ static const struct ts_dmi_data jumper_ezpad_6_pro_data = {
 	.properties	= jumper_ezpad_6_pro_props,
 };
 
+static const struct property_entry jumper_ezpad_6_pro_b_props[] = {
+        PROPERTY_ENTRY_U32("touchscreen-size-x", 1980),
+        PROPERTY_ENTRY_U32("touchscreen-size-y", 1500),
+        PROPERTY_ENTRY_STRING("firmware-name", "gsl3692-jumper-ezpad-6-pro-b.fw"),
+        PROPERTY_ENTRY_BOOL("touchscreen-inverted-y"),
+        PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+        PROPERTY_ENTRY_BOOL("silead,home-button"),
+        { }
+};
+
+static const struct ts_dmi_data jumper_ezpad_6_pro_b_data = {
+        .acpi_name      = "MSSL1680:00",
+        .properties     = jumper_ezpad_6_pro_b_props,
+};
+
 static const struct property_entry jumper_ezpad_mini3_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-min-x", 23),
 	PROPERTY_ENTRY_U32("touchscreen-min-y", 16),
@@ -302,10 +317,20 @@ static const struct property_entry onda_v80_plus_v3_props[] = {
 			      "gsl3676-onda-v80-plus-v3.fw"),
 	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
 	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	PROPERTY_ENTRY_BOOL("efi-embedded-firmware"),
 	{ }
 };
 
 static const struct ts_dmi_data onda_v80_plus_v3_data = {
+	.embedded_fw = {
+		.name	= "silead/gsl3676-onda-v80-plus-v3.fw",
+		.prefix = { 0xf0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00 },
+		.length	= 37224,
+		.sha256	= { 0x8f, 0xbd, 0x8f, 0x0c, 0x6b, 0xba, 0x5b, 0xf5,
+			    0xa3, 0xc7, 0xa3, 0xc0, 0x4f, 0xcd, 0xdf, 0x32,
+			    0xcc, 0xe4, 0x70, 0xd6, 0x46, 0x9c, 0xd7, 0xa7,
+			    0x4b, 0x82, 0x3f, 0xab, 0xc7, 0x90, 0xea, 0x23 },
+	},
 	.acpi_name	= "MSSL1680:00",
 	.properties	= onda_v80_plus_v3_props,
 };
@@ -420,6 +445,24 @@ static const struct property_entry pov_mobii_wintab_p800w_v21_props[] = {
 static const struct ts_dmi_data pov_mobii_wintab_p800w_v21_data = {
 	.acpi_name	= "MSSL1680:00",
 	.properties	= pov_mobii_wintab_p800w_v21_props,
+};
+
+static const struct property_entry pov_mobii_wintab_p1006w_v10_props[] = {
+	PROPERTY_ENTRY_U32("touchscreen-min-x", 1),
+	PROPERTY_ENTRY_U32("touchscreen-min-y", 3),
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1984),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1520),
+	PROPERTY_ENTRY_BOOL("touchscreen-inverted-y"),
+	PROPERTY_ENTRY_STRING("firmware-name",
+			      "gsl3692-pov-mobii-wintab-p1006w-v10.fw"),
+	PROPERTY_ENTRY_U32("silead,max-fingers", 10),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct ts_dmi_data pov_mobii_wintab_p1006w_v10_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= pov_mobii_wintab_p1006w_v10_props,
 };
 
 static const struct property_entry teclast_x3_plus_props[] = {
@@ -668,6 +711,17 @@ const struct dmi_system_id touchscreen_dmi_table[] = {
 		},
 	},
 	{
+                /* Jumper EZpad 6 Pro b*/
+                .driver_data = (void *)&jumper_ezpad_6_pro_b_data,
+                .matches = {
+                        DMI_MATCH(DMI_SYS_VENDOR, "Jumper"),
+                        DMI_MATCH(DMI_PRODUCT_NAME, "EZpad"),
+                        DMI_MATCH(DMI_BIOS_VERSION, "5.12"),
+                        /* Above matches are too generic, add bios-date match */
+                        DMI_MATCH(DMI_BIOS_DATE, "04/24/2018"),
+                },
+        },
+	{
 		/* Jumper EZpad mini3 */
 		.driver_data = (void *)&jumper_ezpad_mini3_data,
 		.matches = {
@@ -766,6 +820,17 @@ const struct dmi_system_id touchscreen_dmi_table[] = {
 			DMI_MATCH(DMI_BIOS_VERSION, "3BAIR1013"),
 			/* Above matches are too generic, add bios-date match */
 			DMI_MATCH(DMI_BIOS_DATE, "08/22/2014"),
+		},
+	},
+	{
+		/* Point of View mobii wintab p1006w (v1.0) */
+		.driver_data = (void *)&pov_mobii_wintab_p1006w_v10_data,
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Insyde"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "BayTrail"),
+			/* Note 105b is Foxcon's USB/PCI vendor id */
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "105B"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "0E57"),
 		},
 	},
 	{

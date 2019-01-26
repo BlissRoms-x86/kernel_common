@@ -85,9 +85,6 @@ struct fusb302_chip {
 	struct workqueue_struct *wq;
 	struct delayed_work bc_lvl_handler;
 
-	atomic_t pm_suspend;
-	atomic_t i2c_busy;
-
 	/* lock for sharing chip states */
 	struct mutex lock;
 
@@ -99,7 +96,6 @@ struct fusb302_chip {
 	bool intr_comp_chng;
 
 	/* port status */
-	bool pull_up;
 	bool vconn_on;
 	bool vbus_on;
 	bool charge_on;
@@ -237,40 +233,15 @@ static void fusb302_debugfs_exit(const struct fusb302_chip *chip) { }
 #define FUSB302_RESUME_RETRY 10
 #define FUSB302_RESUME_RETRY_SLEEP 50
 
-static bool fusb302_is_suspended(struct fusb302_chip *chip)
-{
-	int retry_cnt;
-
-	for (retry_cnt = 0; retry_cnt < FUSB302_RESUME_RETRY; retry_cnt++) {
-		if (atomic_read(&chip->pm_suspend)) {
-			dev_err(chip->dev, "i2c: pm suspend, retry %d/%d\n",
-				retry_cnt + 1, FUSB302_RESUME_RETRY);
-			msleep(FUSB302_RESUME_RETRY_SLEEP);
-		} else {
-			return false;
-		}
-	}
-
-	return true;
-}
-
 static int fusb302_i2c_write(struct fusb302_chip *chip,
 			     u8 address, u8 data)
 {
 	int ret = 0;
 
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
-
 	ret = i2c_smbus_write_byte_data(chip->i2c_client, address, data);
 	if (ret < 0)
 		fusb302_log(chip, "cannot write 0x%02x to 0x%02x, ret=%d",
 			    data, address, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -282,19 +253,12 @@ static int fusb302_i2c_block_write(struct fusb302_chip *chip, u8 address,
 
 	if (length <= 0)
 		return ret;
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
 
 	ret = i2c_smbus_write_i2c_block_data(chip->i2c_client, address,
 					     length, data);
 	if (ret < 0)
 		fusb302_log(chip, "cannot block write 0x%02x, len=%d, ret=%d",
 			    address, length, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -304,18 +268,10 @@ static int fusb302_i2c_read(struct fusb302_chip *chip,
 {
 	int ret = 0;
 
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
-
 	ret = i2c_smbus_read_byte_data(chip->i2c_client, address);
 	*data = (u8)ret;
 	if (ret < 0)
 		fusb302_log(chip, "cannot read %02x, ret=%d", address, ret);
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -327,28 +283,19 @@ static int fusb302_i2c_block_read(struct fusb302_chip *chip, u8 address,
 
 	if (length <= 0)
 		return ret;
-	atomic_set(&chip->i2c_busy, 1);
-
-	if (fusb302_is_suspended(chip)) {
-		atomic_set(&chip->i2c_busy, 0);
-		return -ETIMEDOUT;
-	}
 
 	ret = i2c_smbus_read_i2c_block_data(chip->i2c_client, address,
 					    length, data);
 	if (ret < 0) {
 		fusb302_log(chip, "cannot block read 0x%02x, len=%d, ret=%d",
 			    address, length, ret);
-		goto done;
+		return ret;
 	}
 	if (ret != length) {
 		fusb302_log(chip, "only read %d/%d bytes from 0x%02x",
 			    ret, length, address);
 		ret = -EIO;
 	}
-
-done:
-	atomic_set(&chip->i2c_busy, 0);
 
 	return ret;
 }
@@ -519,32 +466,6 @@ static int tcpm_get_current_limit(struct tcpc_dev *dev)
 	return current_limit;
 }
 
-static int fusb302_set_cc_pull(struct fusb302_chip *chip,
-			       bool pull_up, bool pull_down)
-{
-	int ret = 0;
-	u8 data = 0x00;
-	u8 mask = FUSB_REG_SWITCHES0_CC1_PU_EN |
-		  FUSB_REG_SWITCHES0_CC2_PU_EN |
-		  FUSB_REG_SWITCHES0_CC1_PD_EN |
-		  FUSB_REG_SWITCHES0_CC2_PD_EN;
-
-	if (pull_up)
-		data |= (chip->cc_polarity == TYPEC_POLARITY_CC1) ?
-			FUSB_REG_SWITCHES0_CC1_PU_EN :
-			FUSB_REG_SWITCHES0_CC2_PU_EN;
-	if (pull_down)
-		data |= FUSB_REG_SWITCHES0_CC1_PD_EN |
-			FUSB_REG_SWITCHES0_CC2_PD_EN;
-	ret = fusb302_i2c_mask_write(chip, FUSB_REG_SWITCHES0,
-				     mask, data);
-	if (ret < 0)
-		return ret;
-	chip->pull_up = pull_up;
-
-	return ret;
-}
-
 static int fusb302_set_src_current(struct fusb302_chip *chip,
 				   enum src_current_status status)
 {
@@ -634,6 +555,8 @@ static int fusb302_set_toggling(struct fusb302_chip *chip,
 			return ret;
 		chip->intr_togdone = false;
 	} else {
+		/* Datasheet says vconn MUST be off when toggling */
+		WARN_ON(chip->vconn_on);
 		/* unmask TOGDONE interrupt */
 		ret = fusb302_i2c_clear_bits(chip, FUSB_REG_MASKA,
 					     FUSB_REG_MASKA_TOGDONE);
@@ -676,26 +599,31 @@ static int tcpm_set_cc(struct tcpc_dev *dev, enum typec_cc_status cc)
 {
 	struct fusb302_chip *chip = container_of(dev, struct fusb302_chip,
 						 tcpc_dev);
+	u8 switches0_mask = FUSB_REG_SWITCHES0_CC1_PU_EN |
+			    FUSB_REG_SWITCHES0_CC2_PU_EN |
+			    FUSB_REG_SWITCHES0_CC1_PD_EN |
+			    FUSB_REG_SWITCHES0_CC2_PD_EN;
+	u8 switches0_data = 0x00;
 	int ret = 0;
-	bool pull_up, pull_down;
-	u8 rd_mda;
 	enum toggling_mode mode;
 
 	mutex_lock(&chip->lock);
 	switch (cc) {
 	case TYPEC_CC_OPEN:
-		pull_up = false;
-		pull_down = false;
+		mode = TOGGLING_MODE_OFF;
 		break;
 	case TYPEC_CC_RD:
-		pull_up = false;
-		pull_down = true;
+		switches0_data |= FUSB_REG_SWITCHES0_CC1_PD_EN |
+				  FUSB_REG_SWITCHES0_CC2_PD_EN;
+		mode = TOGGLING_MODE_SNK;
 		break;
 	case TYPEC_CC_RP_DEF:
 	case TYPEC_CC_RP_1_5:
 	case TYPEC_CC_RP_3_0:
-		pull_up = true;
-		pull_down = false;
+		switches0_data |= (chip->cc_polarity == TYPEC_POLARITY_CC1) ?
+				  FUSB_REG_SWITCHES0_CC1_PU_EN :
+				  FUSB_REG_SWITCHES0_CC2_PU_EN;
+		mode = TOGGLING_MODE_SRC;
 		break;
 	default:
 		fusb302_log(chip, "unsupported cc value %s",
@@ -703,91 +631,31 @@ static int tcpm_set_cc(struct tcpc_dev *dev, enum typec_cc_status cc)
 		ret = -EINVAL;
 		goto done;
 	}
-	ret = fusb302_set_toggling(chip, TOGGLING_MODE_OFF);
+
+	fusb302_log(chip, "cc := %s", typec_cc_status_name[cc]);
+
+	ret = fusb302_i2c_mask_write(chip, FUSB_REG_SWITCHES0,
+				     switches0_mask, switches0_data);
 	if (ret < 0) {
-		fusb302_log(chip, "cannot stop toggling, ret=%d", ret);
-		goto done;
-	}
-	ret = fusb302_set_cc_pull(chip, pull_up, pull_down);
-	if (ret < 0) {
-		fusb302_log(chip,
-			    "cannot set cc pulling up %s, down %s, ret = %d",
-			    pull_up ? "True" : "False",
-			    pull_down ? "True" : "False",
-			    ret);
+		fusb302_log(chip, "cannot set pull-up/-down, ret = %d", ret);
 		goto done;
 	}
 	/* reset the cc status */
 	chip->cc1 = TYPEC_CC_OPEN;
 	chip->cc2 = TYPEC_CC_OPEN;
+
 	/* adjust current for SRC */
-	if (pull_up) {
-		ret = fusb302_set_src_current(chip, cc_src_current[cc]);
-		if (ret < 0) {
-			fusb302_log(chip, "cannot set src current %s, ret=%d",
-				    typec_cc_status_name[cc], ret);
-			goto done;
-		}
-	}
-	/* enable/disable interrupts, BC_LVL for SNK and COMP_CHNG for SRC */
-	if (pull_up) {
-		rd_mda = rd_mda_value[cc_src_current[cc]];
-		ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, rd_mda);
-		if (ret < 0) {
-			fusb302_log(chip,
-				    "cannot set SRC measure value, ret=%d",
-				    ret);
-			goto done;
-		}
-		ret = fusb302_i2c_mask_write(chip, FUSB_REG_MASK,
-					     FUSB_REG_MASK_BC_LVL |
-					     FUSB_REG_MASK_COMP_CHNG,
-					     FUSB_REG_MASK_COMP_CHNG);
-		if (ret < 0) {
-			fusb302_log(chip, "cannot set SRC interrupt, ret=%d",
-				    ret);
-			goto done;
-		}
-		chip->intr_bc_lvl = false;
-		chip->intr_comp_chng = true;
-	}
-	if (pull_down) {
-		ret = fusb302_i2c_mask_write(chip, FUSB_REG_MASK,
-					     FUSB_REG_MASK_BC_LVL |
-					     FUSB_REG_MASK_COMP_CHNG,
-					     FUSB_REG_MASK_BC_LVL);
-		if (ret < 0) {
-			fusb302_log(chip, "cannot set SRC interrupt, ret=%d",
-				    ret);
-			goto done;
-		}
-		chip->intr_bc_lvl = true;
-		chip->intr_comp_chng = false;
-	}
-	fusb302_log(chip, "cc := %s", typec_cc_status_name[cc]);
-
-	/* Enable detection for fixed SNK or SRC only roles */
-	switch (cc) {
-	case TYPEC_CC_RD:
-		mode = TOGGLING_MODE_SNK;
-		break;
-	case TYPEC_CC_RP_DEF:
-	case TYPEC_CC_RP_1_5:
-	case TYPEC_CC_RP_3_0:
-		mode = TOGGLING_MODE_SRC;
-		break;
-	default:
-		mode = TOGGLING_MODE_OFF;
-		break;
+	ret = fusb302_set_src_current(chip, cc_src_current[cc]);
+	if (ret < 0) {
+		fusb302_log(chip, "cannot set src current %s, ret=%d",
+			    typec_cc_status_name[cc], ret);
+		goto done;
 	}
 
-	if (mode != TOGGLING_MODE_OFF) {
-		ret = fusb302_set_toggling(chip, mode);
-		if (ret < 0)
-			fusb302_log(chip,
-				    "cannot set fixed role toggling mode, ret=%d",
-				    ret);
-	}
+	ret = fusb302_set_toggling(chip, mode);
+	if (ret < 0)
+		fusb302_log(chip, "cannot set toggling mode, ret=%d", ret);
+
 done:
 	mutex_unlock(&chip->lock);
 
@@ -1195,6 +1063,11 @@ static const u32 src_pdo[] = {
 	PDO_FIXED(5000, 400, PDO_FIXED_FLAGS),
 };
 
+static const struct typec_altmode_desc alt_modes[] = {
+	{ .svid = 0xff01, .mode = 1,  .vdo = 0x080086 },
+	{}
+};
+
 static const struct tcpc_config fusb302_tcpc_config = {
 	.src_pdo = src_pdo,
 	.nr_src_pdo = ARRAY_SIZE(src_pdo),
@@ -1202,7 +1075,7 @@ static const struct tcpc_config fusb302_tcpc_config = {
 	.type = TYPEC_PORT_DRP,
 	.data = TYPEC_PORT_DRD,
 	.default_role = TYPEC_SINK,
-	.alt_modes = NULL,
+	.alt_modes = alt_modes,
 };
 
 static void init_tcpc_dev(struct tcpc_dev *fusb302_tcpc_dev)
@@ -1226,38 +1099,36 @@ static const char * const cc_polarity_name[] = {
 	[TYPEC_POLARITY_CC2]	= "Polarity_CC2",
 };
 
-static int fusb302_set_cc_polarity(struct fusb302_chip *chip,
-				   enum typec_cc_polarity cc_polarity)
+static int fusb302_set_cc_polarity_and_pull(struct fusb302_chip *chip,
+					    enum typec_cc_polarity cc_polarity,
+					    bool pull_up, bool pull_down)
 {
 	int ret = 0;
-	u8 switches0_mask = FUSB_REG_SWITCHES0_CC1_PU_EN |
-			    FUSB_REG_SWITCHES0_CC2_PU_EN |
-			    FUSB_REG_SWITCHES0_VCONN_CC1 |
-			    FUSB_REG_SWITCHES0_VCONN_CC2 |
-			    FUSB_REG_SWITCHES0_MEAS_CC1 |
-			    FUSB_REG_SWITCHES0_MEAS_CC2;
 	u8 switches0_data = 0x00;
 	u8 switches1_mask = FUSB_REG_SWITCHES1_TXCC1_EN |
 			    FUSB_REG_SWITCHES1_TXCC2_EN;
 	u8 switches1_data = 0x00;
 
+	if (pull_down)
+		switches0_data |= FUSB_REG_SWITCHES0_CC1_PD_EN |
+				  FUSB_REG_SWITCHES0_CC2_PD_EN;
+
 	if (cc_polarity == TYPEC_POLARITY_CC1) {
 		switches0_data = FUSB_REG_SWITCHES0_MEAS_CC1;
 		if (chip->vconn_on)
 			switches0_data |= FUSB_REG_SWITCHES0_VCONN_CC2;
-		if (chip->pull_up)
+		if (pull_up)
 			switches0_data |= FUSB_REG_SWITCHES0_CC1_PU_EN;
 		switches1_data = FUSB_REG_SWITCHES1_TXCC1_EN;
 	} else {
 		switches0_data = FUSB_REG_SWITCHES0_MEAS_CC2;
 		if (chip->vconn_on)
 			switches0_data |= FUSB_REG_SWITCHES0_VCONN_CC1;
-		if (chip->pull_up)
+		if (pull_up)
 			switches0_data |= FUSB_REG_SWITCHES0_CC2_PU_EN;
 		switches1_data = FUSB_REG_SWITCHES1_TXCC2_EN;
 	}
-	ret = fusb302_i2c_mask_write(chip, FUSB_REG_SWITCHES0,
-				     switches0_mask, switches0_data);
+	ret = fusb302_i2c_write(chip, FUSB_REG_SWITCHES0, switches0_data);
 	if (ret < 0)
 		return ret;
 	ret = fusb302_i2c_mask_write(chip, FUSB_REG_SWITCHES1,
@@ -1278,16 +1149,10 @@ static int fusb302_handle_togdone_snk(struct fusb302_chip *chip,
 	enum typec_cc_polarity cc_polarity;
 	enum typec_cc_status cc_status_active, cc1, cc2;
 
-	/* set pull_up, pull_down */
-	ret = fusb302_set_cc_pull(chip, false, true);
-	if (ret < 0) {
-		fusb302_log(chip, "cannot set cc to pull down, ret=%d", ret);
-		return ret;
-	}
-	/* set polarity */
+	/* set polarity and pull_up, pull_down */
 	cc_polarity = (togdone_result == FUSB_REG_STATUS1A_TOGSS_SNK1) ?
 		      TYPEC_POLARITY_CC1 : TYPEC_POLARITY_CC2;
-	ret = fusb302_set_cc_polarity(chip, cc_polarity);
+	ret = fusb302_set_cc_polarity_and_pull(chip, cc_polarity, false, true);
 	if (ret < 0) {
 		fusb302_log(chip, "cannot set cc polarity %s, ret=%d",
 			    cc_polarity_name[cc_polarity], ret);
@@ -1337,6 +1202,65 @@ static int fusb302_handle_togdone_snk(struct fusb302_chip *chip,
 	return ret;
 }
 
+/* On error returns < 0, otherwise a typec_cc_status value */
+static int fusb302_get_src_cc_status(struct fusb302_chip *chip,
+				     enum typec_cc_polarity cc_polarity,
+				     enum typec_cc_status *cc)
+{
+	u8 ra_mda = ra_mda_value[chip->src_current_status];
+	u8 rd_mda = rd_mda_value[chip->src_current_status];
+	u8 switches0_data, status0;
+	int ret;
+
+	/* Step 1: Set switches so that we measure the right CC pin */
+	switches0_data = (cc_polarity == TYPEC_POLARITY_CC1) ?
+		FUSB_REG_SWITCHES0_CC1_PU_EN | FUSB_REG_SWITCHES0_MEAS_CC1 :
+		FUSB_REG_SWITCHES0_CC2_PU_EN | FUSB_REG_SWITCHES0_MEAS_CC2;
+	ret = fusb302_i2c_write(chip, FUSB_REG_SWITCHES0, switches0_data);
+	if (ret < 0)
+		return ret;
+
+	fusb302_i2c_read(chip, FUSB_REG_SWITCHES0, &status0);
+	fusb302_log(chip, "get_src_cc_status switches: 0x%0x", status0);
+
+	/*
+	 * Step 2: Set compararator input voltage to differentiate between Open
+	 * and Rd, fusb302_set_cc_polarity() has set the correct measure block.
+	 */
+	ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, rd_mda);
+	if (ret < 0)
+		return ret;
+
+	usleep_range(5000, 10000);
+	ret = fusb302_i2c_read(chip, FUSB_REG_STATUS0, &status0);
+	if (ret < 0)
+		return ret;
+
+	fusb302_log(chip, "get_src_cc_status rd_mda status0: 0x%0x", status0);
+	if (status0 & FUSB_REG_STATUS0_COMP) {
+		*cc = TYPEC_CC_OPEN;
+		return 0;
+	}
+
+	/* Step 3: Set compararator input to differentiate between Rd and Ra. */
+	ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, ra_mda);
+	if (ret < 0)
+		return ret;
+
+	usleep_range(5000, 10000);
+	ret = fusb302_i2c_read(chip, FUSB_REG_STATUS0, &status0);
+	if (ret < 0)
+		return ret;
+
+	fusb302_log(chip, "get_src_cc_status ra_mda status0: 0x%0x", status0);
+	if (status0 & FUSB_REG_STATUS0_COMP)
+		*cc = TYPEC_CC_RD;
+	else
+		*cc = TYPEC_CC_RA;
+
+	return 0;
+}
+
 static int fusb302_handle_togdone_src(struct fusb302_chip *chip,
 				      u8 togdone_result)
 {
@@ -1347,76 +1271,60 @@ static int fusb302_handle_togdone_src(struct fusb302_chip *chip,
 	 * - set I_COMP interrupt on
 	 */
 	int ret = 0;
-	u8 status0;
-	u8 ra_mda = ra_mda_value[chip->src_current_status];
 	u8 rd_mda = rd_mda_value[chip->src_current_status];
-	bool ra_comp, rd_comp;
 	enum typec_cc_polarity cc_polarity;
-	enum typec_cc_status cc_status_active, cc1, cc2;
+	enum typec_cc_status cc1, cc2;
 
-	/* set pull_up, pull_down */
-	ret = fusb302_set_cc_pull(chip, true, false);
+	/*
+	 * The toggle-engine will stop in a src state if it sees either Ra or
+	 * Rd. Determine the status for both CC pins, starting with the one
+	 * where toggling stopped, as that is where the switches point now.
+	 */
+	if (togdone_result == FUSB_REG_STATUS1A_TOGSS_SRC1)
+		ret = fusb302_get_src_cc_status(chip, TYPEC_POLARITY_CC1, &cc1);
+	else
+		ret = fusb302_get_src_cc_status(chip, TYPEC_POLARITY_CC2, &cc2);
+	if (ret < 0)
+		return ret;
+	/* we must turn off toggling before we can measure the other pin */
+	ret = fusb302_set_toggling(chip, TOGGLING_MODE_OFF);
 	if (ret < 0) {
-		fusb302_log(chip, "cannot set cc to pull up, ret=%d", ret);
+		fusb302_log(chip, "cannot set toggling mode off, ret=%d", ret);
 		return ret;
 	}
-	/* set polarity */
-	cc_polarity = (togdone_result == FUSB_REG_STATUS1A_TOGSS_SRC1) ?
-		      TYPEC_POLARITY_CC1 : TYPEC_POLARITY_CC2;
-	ret = fusb302_set_cc_polarity(chip, cc_polarity);
+	/* get the status of the other pin */
+	if (togdone_result == FUSB_REG_STATUS1A_TOGSS_SRC1)
+		ret = fusb302_get_src_cc_status(chip, TYPEC_POLARITY_CC2, &cc2);
+	else
+		ret = fusb302_get_src_cc_status(chip, TYPEC_POLARITY_CC1, &cc1);
+	if (ret < 0)
+		return ret;
+
+	/* determine polarity based on the status of both pins */
+	if (cc1 == TYPEC_CC_RD &&
+			(cc2 == TYPEC_CC_OPEN || cc2 == TYPEC_CC_RA)) {
+		cc_polarity = TYPEC_POLARITY_CC1;
+	} else if (cc2 == TYPEC_CC_RD &&
+		    (cc1 == TYPEC_CC_OPEN || cc1 == TYPEC_CC_RA)) {
+		cc_polarity = TYPEC_POLARITY_CC2;
+	} else {
+		fusb302_log(chip, "unexpected CC status cc1=%s, cc2=%s, restarting toggling",
+			    typec_cc_status_name[cc1],
+			    typec_cc_status_name[cc2]);
+		return fusb302_set_toggling(chip, chip->toggling_mode);
+	}
+	/* set polarity and pull_up, pull_down */
+	ret = fusb302_set_cc_polarity_and_pull(chip, cc_polarity, true, false);
 	if (ret < 0) {
 		fusb302_log(chip, "cannot set cc polarity %s, ret=%d",
 			    cc_polarity_name[cc_polarity], ret);
 		return ret;
 	}
-	/* fusb302_set_cc_polarity() has set the correct measure block */
-	ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, rd_mda);
-	if (ret < 0)
-		return ret;
-	usleep_range(50, 100);
-	ret = fusb302_i2c_read(chip, FUSB_REG_STATUS0, &status0);
-	if (ret < 0)
-		return ret;
-	rd_comp = !!(status0 & FUSB_REG_STATUS0_COMP);
-	if (!rd_comp) {
-		ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, ra_mda);
-		if (ret < 0)
-			return ret;
-		usleep_range(50, 100);
-		ret = fusb302_i2c_read(chip, FUSB_REG_STATUS0, &status0);
-		if (ret < 0)
-			return ret;
-		ra_comp = !!(status0 & FUSB_REG_STATUS0_COMP);
-	}
-	if (rd_comp)
-		cc_status_active = TYPEC_CC_OPEN;
-	else if (ra_comp)
-		cc_status_active = TYPEC_CC_RD;
-	else
-		/* Ra is not supported, report as Open */
-		cc_status_active = TYPEC_CC_OPEN;
-	/* restart toggling if the cc status on the active line is OPEN */
-	if (cc_status_active == TYPEC_CC_OPEN) {
-		fusb302_log(chip, "restart toggling as CC_OPEN detected");
-		ret = fusb302_set_toggling(chip, chip->toggling_mode);
-		return ret;
-	}
 	/* update tcpm with the new cc value */
-	cc1 = (cc_polarity == TYPEC_POLARITY_CC1) ?
-	      cc_status_active : TYPEC_CC_OPEN;
-	cc2 = (cc_polarity == TYPEC_POLARITY_CC2) ?
-	      cc_status_active : TYPEC_CC_OPEN;
 	if ((chip->cc1 != cc1) || (chip->cc2 != cc2)) {
 		chip->cc1 = cc1;
 		chip->cc2 = cc2;
 		tcpm_cc_change(chip->tcpm_port);
-	}
-	/* turn off toggling */
-	ret = fusb302_set_toggling(chip, TOGGLING_MODE_OFF);
-	if (ret < 0) {
-		fusb302_log(chip,
-			    "cannot set toggling mode off, ret=%d", ret);
-		return ret;
 	}
 	/* set MDAC to Rd threshold, and unmask I_COMP for unplug detection */
 	ret = fusb302_i2c_write(chip, FUSB_REG_MEASURE, rd_mda);
@@ -1427,7 +1335,7 @@ static int fusb302_handle_togdone_src(struct fusb302_chip *chip,
 				     FUSB_REG_MASK_COMP_CHNG);
 	if (ret < 0) {
 		fusb302_log(chip,
-			    "cannot unmask bc_lcl interrupt, ret=%d", ret);
+			    "cannot unmask comp_chng interrupt, ret=%d", ret);
 		return ret;
 	}
 	chip->intr_comp_chng = true;
@@ -1602,11 +1510,9 @@ static irqreturn_t fusb302_irq_intn(int irq, void *dev_id)
 		fusb302_log(chip, "IRQ: COMP_CHNG, comp=%s",
 			    comp_result ? "true" : "false");
 		if (comp_result) {
-			/* cc level > Rd_threashold, detach */
-			if (chip->cc_polarity == TYPEC_POLARITY_CC1)
-				chip->cc1 = TYPEC_CC_OPEN;
-			else
-				chip->cc2 = TYPEC_CC_OPEN;
+			/* cc level > Rd_threshold, detach */
+			chip->cc1 = TYPEC_CC_OPEN;
+			chip->cc2 = TYPEC_CC_OPEN;
 			tcpm_cc_change(chip->tcpm_port);
 		}
 	}
@@ -1835,10 +1741,7 @@ static int fusb302_pm_suspend(struct device *dev)
 {
 	struct fusb302_chip *chip = dev->driver_data;
 
-	if (atomic_read(&chip->i2c_busy))
-		return -EBUSY;
-	atomic_set(&chip->pm_suspend, 1);
-
+	disable_irq(chip->gpio_int_n_irq);
 	return 0;
 }
 
@@ -1846,8 +1749,7 @@ static int fusb302_pm_resume(struct device *dev)
 {
 	struct fusb302_chip *chip = dev->driver_data;
 
-	atomic_set(&chip->pm_suspend, 0);
-
+	enable_irq(chip->gpio_int_n_irq);
 	return 0;
 }
 
