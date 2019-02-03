@@ -46,7 +46,7 @@ struct drm_printer;
 	param(int, disable_power_well, -1) \
 	param(int, enable_ips, 1) \
 	param(int, invert_brightness, 0) \
-	param(int, enable_guc, 1) \
+	param(int, enable_guc, 0) \
 	param(int, guc_log_level, -1) \
 	param(char *, guc_firmware_path, NULL) \
 	param(char *, huc_firmware_path, NULL) \
@@ -68,8 +68,7 @@ struct drm_printer;
 	param(bool, nuclear_pageflip, false) \
 	param(bool, enable_dp_mst, true) \
 	param(bool, enable_dpcd_backlight, false) \
-	param(bool, enable_gvt, false) \
-	param(int, enable_ipts, 1)
+	param(bool, enable_gvt, false)
 
 #define MEMBER(T, member, ...) T member;
 struct i915_params {
