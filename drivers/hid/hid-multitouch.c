@@ -199,6 +199,7 @@ static int cc_seen = 0;
 #define MT_CLS_EGALAX				0x0103
 #define MT_CLS_EGALAX_SERIAL			0x0104
 #define MT_CLS_TOPSEED				0x0105
+#define MT_CLS_UIWORKS				0x0105
 #define MT_CLS_PANASONIC			0x0106
 #define MT_CLS_FLATFROG				0x0107
 #define MT_CLS_GENERALTOUCH_TWOFINGERS		0x0108
@@ -304,6 +305,9 @@ static const struct mt_class mt_classes[] = {
 			MT_QUIRK_ALWAYS_VALID,
 		.sn_move = 4096,
 		.sn_pressure = 32,
+	},
+	{ .name = MT_CLS_UIWORKS,
+		.quirks =  MT_QUIRK_ALWAYS_VALID,
 	},
 	{ .name = MT_CLS_TOPSEED,
 		.quirks = MT_QUIRK_ALWAYS_VALID,
@@ -1901,6 +1905,9 @@ static const struct hid_device_id mt_devices[] = {
 			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72D0) },
 	{ .driver_data = MT_CLS_EGALAX,
 		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
+			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72E9) },
+	{ .driver_data = MT_CLS_EGALAX,
+		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
 			USB_DEVICE_ID_DWAV_EGALAX_MULTITOUCH_72FA) },
 	{ .driver_data = MT_CLS_EGALAX,
 		MT_USB_DEVICE(USB_VENDOR_ID_DWAV,
@@ -2099,6 +2106,16 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_NSMU,
 		MT_USB_DEVICE(USB_VENDOR_ID_TOUCH_INTL,
 			USB_DEVICE_ID_TOUCH_INTL_MULTI_TOUCH) },
+
+	/* Uiworks */
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1600) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1601) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1602) },
+	{ .driver_data = MT_CLS_UIWORKS,
+		HID_USB_DEVICE(0x23FF, 0x1603) },
 
 	/* Unitec panels */
 	{ .driver_data = MT_CLS_NSMU,
