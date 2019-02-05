@@ -1736,6 +1736,7 @@ CONFIG_ALTERA_STAPL=m
 # CONFIG_INTEL_MEI_ME is not set
 # CONFIG_INTEL_MEI_TXE is not set
 CONFIG_VMWARE_VMCI=m
+CONFIG_INTEL_IPTS=m
 
 #
 # Intel MIC & related support
