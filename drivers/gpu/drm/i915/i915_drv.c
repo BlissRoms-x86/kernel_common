@@ -53,6 +53,7 @@
 #include "i915_vgpu.h"
 #include "intel_drv.h"
 #include "intel_uc.h"
+#include "intel_ipts.h"
 
 static struct drm_driver driver;
 
@@ -695,6 +696,9 @@ static int i915_load_modeset_init(struct drm_device *dev)
 
 	/* Only enable hotplug handling once the fbdev is fully set up. */
 	intel_hpd_init(dev_priv);
+
+	if (INTEL_GEN(dev_priv) >= 9 && i915_modparams.enable_guc && i915_modparams.enable_ipts)
+        intel_ipts_init(dev);
 
 	return 0;
 
@@ -1432,6 +1436,9 @@ void i915_driver_unload(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 
+	if (INTEL_GEN(dev_priv) >= 9 && i915_modparams.enable_guc && i915_modparams.enable_ipts)
+		intel_ipts_cleanup(dev);
+
 	i915_driver_unregister(dev_priv);
 
 	if (i915_gem_suspend(dev_priv))
@@ -1568,6 +1575,9 @@ static int i915_drm_suspend(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 	pci_power_t opregion_target_state;
+
+	if (INTEL_GEN(dev_priv) >= 9 && i915_modparams.enable_guc && i915_modparams.enable_ipts)
+		intel_ipts_suspend(dev);
 
 	disable_rpm_wakeref_asserts(dev_priv);
 
@@ -1767,6 +1777,9 @@ static int i915_drm_resume(struct drm_device *dev)
 	intel_opregion_notify_adapter(dev_priv, PCI_D0);
 
 	enable_rpm_wakeref_asserts(dev_priv);
+
+	if (INTEL_GEN(dev_priv) >= 9 && i915_modparams.enable_guc && i915_modparams.enable_ipts)
+        intel_ipts_resume(dev);
 
 	return 0;
 }

@@ -573,6 +573,62 @@ config THINKPAD_ACPI_HOTKEY_POLL
 	  If you are not sure, say Y here.  The driver enables polling only if
 	  it is strictly necessary to do so.
 
+config SURFACE_ACPI
+	depends on ACPI
+	tristate "Microsoft Surface ACPI/Platform Drivers"
+	---help---
+	  ACPI and platform drivers for Microsoft Surface devices.
+
+config SURFACE_ACPI_SSH
+	bool "Surface Serial Hub Driver"
+	depends on SURFACE_ACPI
+	depends on X86_INTEL_LPSS
+	depends on SERIAL_8250_DW
+	depends on SERIAL_8250_DMA
+	depends on SERIAL_DEV_CTRL_TTYPORT
+	select CRC_CCITT
+	default y
+	---help---
+	  Surface Serial Hub driver for 5th generation (or later) Microsoft
+	  Surface devices.
+
+	  This is the base driver for the embedded serial controller found on
+	  5th generation (and later) Microsoft Surface devices (e.g. Book 2,
+	  Laptop, Laptop 2, Pro 2017, Pro 6, ...). This driver itself only
+	  provides access to the embedded controller and subsequent drivers are
+	  required for the respective functionalities.
+
+	  If you have a 5th generation (or later) Microsoft Surface device, say
+	  Y or M here.
+
+config SURFACE_ACPI_SAN
+	bool "Surface ACPI Notify Driver"
+	depends on SURFACE_ACPI_SSH
+	default y
+	---help---
+	  Surface ACPI Notify driver for 5th generation (or later) Microsoft
+	  Surface devices.
+
+	  This driver enables basic ACPI events and requests, such as battery
+	  status requests/events, thermal events, lid status, and possibly more,
+	  which would otherwise not work on these devices.
+
+	  If you are not sure, say Y here.
+
+config SURFACE_ACPI_VHF
+	bool "Surface Virtual HID Framework Driver"
+	depends on SURFACE_ACPI_SSH
+	depends on HID
+	default y
+	---help---
+	  Surface Virtual HID Framework driver for 5th generation (or later)
+	  Microsoft Surface devices.
+
+	  This driver provides support for the Microsoft Virtual HID framework,
+	  which is required for the Surface Laptop (1 and newer) keyboard.
+
+	  If you are not sure, say Y here.
+
 config SENSORS_HDAPS
 	tristate "Thinkpad Hard Drive Active Protection System (hdaps)"
 	depends on INPUT
@@ -1157,6 +1213,13 @@ config SURFACE_3_BUTTON
 	depends on ACPI && KEYBOARD_GPIO && I2C
 	---help---
 	  This driver handles the power/home/volume buttons on the Microsoft Surface 3 tablet.
+
+config SURFACE_3_POWER_OPREGION
+	tristate "Surface 3 battery platform operation region support"
+	depends on ACPI && I2C
+	help
+	  Select this option to enable support for ACPI operation
+	  region of the Surface 3 battery platform driver.
 
 config INTEL_PUNIT_IPC
 	tristate "Intel P-Unit IPC Driver"

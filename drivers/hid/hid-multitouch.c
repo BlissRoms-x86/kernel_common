@@ -173,6 +173,7 @@ struct mt_device {
 static void mt_post_parse_default_settings(struct mt_device *td,
 					   struct mt_application *app);
 static void mt_post_parse(struct mt_device *td, struct mt_application *app);
+static int cc_seen = 0;
 
 /* classes of device behavior */
 #define MT_CLS_DEFAULT				0x0001
@@ -792,8 +793,11 @@ static int mt_touch_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 			app->scantime_logical_max = field->logical_maximum;
 			return 1;
 		case HID_DG_CONTACTCOUNT:
-			app->have_contact_count = true;
-			app->raw_cc = &field->value[usage->usage_index];
+			if(cc_seen != 1) {
+				app->have_contact_count = true;
+				app->raw_cc = &field->value[usage->usage_index];
+				cc_seen++;
+			}
 			return 1;
 		case HID_DG_AZIMUTH:
 			/*
@@ -1283,9 +1287,11 @@ static int mt_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	    field->application != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_DG_PEN &&
 	    field->application != HID_DG_TOUCHPAD &&
+		field->application != HID_GD_MOUSE &&
 	    field->application != HID_GD_KEYBOARD &&
 	    field->application != HID_GD_SYSTEM_CONTROL &&
 	    field->application != HID_CP_CONSUMER_CONTROL &&
+		field->logical != HID_DG_TOUCHSCREEN &&
 	    field->application != HID_GD_WIRELESS_RADIO_CTLS &&
 	    field->application != HID_GD_SYSTEM_MULTIAXIS &&
 	    !(field->application == HID_VD_ASUS_CUSTOM_MEDIA_KEYS &&
@@ -1329,6 +1335,14 @@ static int mt_input_mapped(struct hid_device *hdev, struct hid_input *hi,
 {
 	struct mt_device *td = hid_get_drvdata(hdev);
 	struct mt_report_data *rdata;
+
+	if (field->application == HID_DG_TOUCHSCREEN ||
+			field->application == HID_DG_TOUCHPAD) {
+		if (usage->type == EV_KEY || usage->type == EV_ABS)
+			set_bit(usage->type, hi->input->evbit);
+
+		return -1;
+	}
 
 	rdata = mt_find_report_data(td, field->report);
 	if (rdata && rdata->is_mt_collection) {
@@ -1555,12 +1569,13 @@ static int mt_input_configured(struct hid_device *hdev, struct hid_input *hi)
 			/* already handled by hid core */
 			break;
 		case HID_DG_TOUCHSCREEN:
-			/* we do not set suffix = "Touchscreen" */
+			suffix = "Touchscreen";
 			hi->input->name = hdev->name;
 			break;
 		case HID_DG_STYLUS:
 			/* force BTN_STYLUS to allow tablet matching in udev */
 			__set_bit(BTN_STYLUS, hi->input->keybit);
+			__set_bit(INPUT_PROP_DIRECT, hi->input->propbit);
 			break;
 		case HID_VD_ASUS_CUSTOM_MEDIA_KEYS:
 			suffix = "Custom Media Keys";
@@ -1677,6 +1692,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	td->hdev = hdev;
 	td->mtclass = *mtclass;
 	td->inputmode_value = MT_INPUTMODE_TOUCHSCREEN;
+	cc_seen = 0;
 	hid_set_drvdata(hdev, td);
 
 	INIT_LIST_HEAD(&td->applications);
@@ -1961,6 +1977,63 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_LG,
 		HID_USB_DEVICE(USB_VENDOR_ID_LG,
 			USB_DEVICE_ID_LG_MELFAS_MT) },
+
+	/* Microsoft Touch Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_TOUCH_COVER_2) },
+
+	/* Microsoft Type Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_1) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_2) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_3_JP) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_4) },
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_TYPE_COVER_PRO_4_1) },
+
+	/* Microsoft Surface Book */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK) },
+
+	/* Microsoft Surface Book 2 */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_BOOK_2) },
+
+	/* Microsoft Surface Go */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_SURFACE_GO) },
+
+	/* Microsoft Surface Laptop */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY,
+			USB_VENDOR_ID_MICROSOFT,
+			USB_DEVICE_ID_MS_SURFACE_VHF) },
+
+	/* Microsoft Power Cover */
+	{ .driver_data = MT_CLS_EXPORT_ALL_INPUTS,
+		MT_USB_DEVICE(USB_VENDOR_ID_MICROSOFT,
+		USB_DEVICE_ID_MS_POWER_COVER) },
 
 	/* MosArt panels */
 	{ .driver_data = MT_CLS_CONFIDENCE_MINUS_ONE,
