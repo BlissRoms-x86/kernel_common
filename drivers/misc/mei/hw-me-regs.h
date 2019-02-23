@@ -119,6 +119,7 @@
 
 #define MEI_DEV_ID_SPT        0x9D3A  /* Sunrise Point */
 #define MEI_DEV_ID_SPT_2      0x9D3B  /* Sunrise Point 2 */
+#define MEI_DEV_ID_SPT_4      0x9D3E  /* Sunrise Point 4 */
 #define MEI_DEV_ID_SPT_H      0xA13A  /* Sunrise Point H */
 #define MEI_DEV_ID_SPT_H_2    0xA13B  /* Sunrise Point H 2 */
 
@@ -126,6 +127,8 @@
 
 #define MEI_DEV_ID_BXT_M      0x1A9A  /* Broxton M */
 #define MEI_DEV_ID_APL_I      0x5A9A  /* Apollo Lake I */
+
+#define MEI_DEV_ID_DNV_IE     0x19E5  /* Denverton IE */
 
 #define MEI_DEV_ID_GLK        0x319A  /* Gemini Lake */
 
@@ -136,6 +139,8 @@
 #define MEI_DEV_ID_CNP_LP_4   0x9DE4  /* Cannon Point LP 4 (iTouch) */
 #define MEI_DEV_ID_CNP_H      0xA360  /* Cannon Point H */
 #define MEI_DEV_ID_CNP_H_4    0xA364  /* Cannon Point H 4 (iTouch) */
+
+#define MEI_DEV_ID_ICP_LP     0x34E0  /* Ice Lake Point LP */
 
 /*
  * MEI HW Section
