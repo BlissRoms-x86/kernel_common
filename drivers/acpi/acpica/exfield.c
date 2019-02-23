@@ -150,7 +150,10 @@ acpi_ex_read_data_from_field(struct acpi_walk_state *walk_state,
 
 	if (buffer_length > acpi_gbl_integer_byte_width) {
 
-		/* Field is too large for an Integer, create a Buffer instead */
+		/*
+		 * Field is either too large for an Integer, or a actually of type
+		 * buffer, so create a Buffer.
+		 */
 
 		buffer_desc = acpi_ut_create_buffer_object(buffer_length);
 		if (!buffer_desc) {
