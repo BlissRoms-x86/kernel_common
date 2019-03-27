@@ -178,6 +178,20 @@ static const unsigned long goodix_irq_flags[] = {
 	IRQ_TYPE_LEVEL_HIGH,
 };
 
+
+static const struct dmi_system_id y_inverted[] = {
+#if defined(CONFIG_DMI) && defined(CONFIG_X86)
+	{
+		.ident = "Microtech e-tab Pro",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Microtech"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "e-tab Pro")
+		}
+	},
+#endif
+	{}
+};
+
 static const struct dmi_system_id nine_bytes_report[] = {
 #if defined(CONFIG_DMI) && defined(CONFIG_X86)
 	{
@@ -1074,6 +1088,11 @@ static int goodix_configure_dev(struct goodix_ts_data *ts)
 				  ABS_MT_POSITION_X, ts->prop.max_x);
 		input_abs_set_max(ts->input_dev,
 				  ABS_MT_POSITION_Y, ts->prop.max_y);
+	}
+
+	if (dmi_check_system(y_inverted)) {
+		ts->prop.invert_y = true;
+		dev_err(&ts->client->dev, "Applying 'invert y axis' quirk\n");
 	}
 
 	if (dmi_check_system(nine_bytes_report)) {
