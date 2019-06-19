@@ -372,10 +372,11 @@ wakeup:
 			return;
 		}
 
-		if (event == 0xcf)
+		if (event == 0xcf) {
 			input_report_key(priv->input_dev, KEY_POWER, 0);
 			input_sync(priv->input_dev);
 			return;
+		}
 	}
 
 	/* 0xC0 is for HID events, other values are for 5 button array */
