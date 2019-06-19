@@ -543,10 +543,12 @@ static int uart_put_char(struct tty_struct *tty, unsigned char c)
 	int ret = 0;
 
 	circ = &state->xmit;
-	if (!circ->buf)
-		return 0;
-
 	port = uart_port_lock(state, flags);
+	if (!circ->buf) {
+		uart_port_unlock(port, flags);
+		return 0;
+	}
+
 	if (port && uart_circ_chars_free(circ) != 0) {
 		circ->buf[circ->head] = c;
 		circ->head = (circ->head + 1) & (UART_XMIT_SIZE - 1);
@@ -579,11 +581,13 @@ static int uart_write(struct tty_struct *tty,
 		return -EL3HLT;
 	}
 
-	circ = &state->xmit;
-	if (!circ->buf)
-		return 0;
-
 	port = uart_port_lock(state, flags);
+	circ = &state->xmit;
+	if (!circ->buf) {
+		uart_port_unlock(port, flags);
+		return 0;
+	}
+
 	while (port) {
 		c = CIRC_SPACE_TO_END(circ->head, circ->tail, UART_XMIT_SIZE);
 		if (count < c)
@@ -715,6 +719,9 @@ static void uart_unthrottle(struct tty_struct *tty)
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port;
 	upstat_t mask = 0;
+
+	if (!state)
+		return;
 
 	port = uart_port_ref(state);
 	if (!port)
@@ -1707,11 +1714,8 @@ static void uart_dtr_rts(struct tty_port *port, int onoff)
  */
 static int uart_open(struct tty_struct *tty, struct file *filp)
 {
-	struct uart_driver *drv = tty->driver->driver_state;
-	int retval, line = tty->index;
-	struct uart_state *state = drv->state + line;
-
-	tty->driver_data = state;
+	struct uart_state *state = tty->driver_data;
+	int retval;
 
 	retval = tty_port_open(&state->port, tty, filp);
 	if (retval > 0)
@@ -2402,9 +2406,6 @@ static void uart_poll_put_char(struct tty_driver *driver, int line, char ch)
 	struct uart_state *state = drv->state + line;
 	struct uart_port *port;
 
-	if (!state)
-		return;
-
 	port = uart_port_ref(state);
 	if (!port)
 		return;
@@ -2416,7 +2417,18 @@ static void uart_poll_put_char(struct tty_driver *driver, int line, char ch)
 }
 #endif
 
+static int uart_install(struct tty_driver *driver, struct tty_struct *tty)
+{
+	struct uart_driver *drv = driver->driver_state;
+	struct uart_state *state = drv->state + tty->index;
+
+	tty->driver_data = state;
+
+	return tty_standard_install(driver, tty);
+}
+
 static const struct tty_operations uart_ops = {
+	.install	= uart_install,
 	.open		= uart_open,
 	.close		= uart_close,
 	.write		= uart_write,
