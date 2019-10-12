@@ -149,7 +149,7 @@ static int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
 		return err;
 	}
 
-	err = request_firmware(&clm, clm_name, bus->dev);
+	err = firmware_request_nowarn(&clm, clm_name, bus->dev);
 	if (err) {
 		brcmf_info("no clm_blob available (err=%d), device may have limited channels available\n",
 			   err);
@@ -257,12 +257,8 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 		brcmf_chip_name(bus->chip, bus->chiprev,
 				ri->chipname, sizeof(ri->chipname));
 
-	/* Do any CLM downloading */
-	err = brcmf_c_process_clm_blob(ifp);
-	if (err < 0) {
-		brcmf_err("download CLM blob file failed, %d\n", err);
-		goto done;
-	}
+	/* Do any optional CLM downloading */
+	brcmf_c_process_clm_blob(ifp);
 
 	/* query for 'ver' to get version info from firmware */
 	memset(buf, 0, sizeof(buf));
