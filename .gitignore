@@ -118,3 +118,15 @@ all.config
 
 # fetched Android config fragments
 kernel/configs/android-*.cfg
+
+configs 
+ 
+# 
+# Build directory 
+# 
+/build/ 
+ 
+# 
+# Tests directory  
+# 
+/tests/ 
