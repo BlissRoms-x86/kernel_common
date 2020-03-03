@@ -251,17 +251,43 @@ static void intel_hpd_irq_storm_reenable_work(struct work_struct *work)
 	intel_runtime_pm_put(dev_priv);
 }
 
+#define MAX_SHORT_PULSE_MS	100
+#define PORT_CHECK_LOOP_COUNT	3
+
 bool intel_encoder_hotplug(struct intel_encoder *encoder,
 			   struct intel_connector *connector)
 {
 	struct drm_device *dev = connector->base.dev;
-	enum drm_connector_status old_status;
+	enum drm_connector_status old_status, new_status;
+	enum hpd_pin pin = encoder->hpd_pin;
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	u32 count = 0;
 
 	WARN_ON(!mutex_is_locked(&dev->mode_config.mutex));
 	old_status = connector->base.status;
 
-	connector->base.status =
-		drm_helper_probe_detect(&connector->base, NULL, false);
+	/*
+	 * Set HDMI connection status based on hot-plug live states and
+	 * display probe results.
+	 */
+	if ((encoder->type == INTEL_OUTPUT_HDMI ||
+	     encoder->type == INTEL_OUTPUT_DDI) &&
+	    dev_priv->hotplug.stats[pin].state == HPD_ENABLED) {
+		do {
+			new_status = connector_status_disconnected;
+			msleep(MAX_SHORT_PULSE_MS);
+
+			if (intel_digital_port_connected(encoder))
+				new_status = drm_helper_probe_detect(&connector->base,
+								     NULL, false);
+			if (new_status == connector_status_connected)
+				break;
+		} while (++count <= PORT_CHECK_LOOP_COUNT);
+		connector->base.status = new_status;
+	} else {
+		connector->base.status =
+			drm_helper_probe_detect(&connector->base, NULL, false);
+	}
 
 	if (old_status == connector->base.status)
 		return false;
