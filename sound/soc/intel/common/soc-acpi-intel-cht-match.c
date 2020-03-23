@@ -35,6 +35,8 @@ static const struct dmi_system_id cht_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Surface 3"),
 		},
+	},
+	{
 		.callback = cht_surface_quirk_cb,
 		.matches = {
 			DMI_MATCH(DMI_BIOS_VENDOR, "American Megatrends Inc."),
@@ -130,6 +132,15 @@ struct snd_soc_acpi_mach  snd_soc_acpi_intel_cherrytrail_machines[] = {
 		.board = "cht-bsw",
 		.sof_fw_filename = "intel/sof-cht.ri",
 		.sof_tplg_filename = "intel/sof-cht-nau8824.tplg",
+		.asoc_plat_name = "sst-mfld-platform",
+	},
+	{
+		.id = "14F10720",
+		.drv_name = "cht-cx2072x",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.sof_fw_filename = "intel/reef-cht.ri",
+		.sof_tplg_filename = "intel/reef-cht-cx2072cx.tplg",
 		.asoc_plat_name = "sst-mfld-platform",
 	},
 	{
