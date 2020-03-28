@@ -36,11 +36,19 @@
 #include "intel_drv.h"
 
 #define CRC_PMIC_PWM_PERIOD_NS	21333
+#define LPSS_PWM_PERIOD_NS	10240
 
 /* CRC PMIC based PWM Information */
 struct intel_pwm_info crc_pwm_info = {
 	.period_ns = CRC_PMIC_PWM_PERIOD_NS,
 	.name = "pwm_backlight",
+	.dev = NULL,
+};
+
+/* LPSS based PWM Information */
+struct intel_pwm_info lpss_pwm_info = {
+	.period_ns = LPSS_PWM_PERIOD_NS,
+	.name = "pwm_lpss",
 	.dev = NULL,
 };
 
@@ -1746,9 +1754,15 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 			       enum pipe pipe)
 {
 	struct drm_device *dev = connector->base.dev;
+	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
 	struct intel_panel *panel = &connector->panel;
-	struct intel_pwm_info *pwm = &crc_pwm_info;
+	struct intel_pwm_info *pwm;
 	int retval;
+
+	if (dev_priv->vbt.dsi.config->pwm_blc == PPS_BLC_PMIC)
+		pwm = &crc_pwm_info;
+	else /* PPS_BLC_SOC */
+		pwm = &lpss_pwm_info;
 
 	/* Get the PWM chip for backlight control */
 	pwm->dev = pwm_get(dev->dev, pwm->name);
