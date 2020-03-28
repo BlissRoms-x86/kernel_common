@@ -280,6 +280,12 @@ struct intel_encoder {
 	const struct drm_connector *audio_connector;
 };
 
+struct intel_pwm_info {
+	struct pwm_device *dev;
+	unsigned int period_ns;
+	char *name;
+};
+
 struct intel_panel {
 	struct drm_display_mode *fixed_mode;
 	struct drm_display_mode *downclock_mode;
@@ -298,7 +304,7 @@ struct intel_panel {
 		/* PWM chip */
 		bool util_pin_active_low;	/* bxt+ */
 		u8 controller;		/* bxt+ only */
-		struct pwm_device *pwm;
+		struct intel_pwm_info *pwm;
 
 		struct backlight_device *device;
 

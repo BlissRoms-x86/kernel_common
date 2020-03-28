@@ -37,6 +37,13 @@
 
 #define CRC_PMIC_PWM_PERIOD_NS	21333
 
+/* CRC PMIC based PWM Information */
+struct intel_pwm_info crc_pwm_info = {
+	.period_ns = CRC_PMIC_PWM_PERIOD_NS,
+	.name = "pwm_backlight",
+	.dev = NULL,
+};
+
 void
 intel_fixed_panel_mode(const struct drm_display_mode *fixed_mode,
 		       struct drm_display_mode *adjusted_mode)
@@ -597,9 +604,10 @@ static void bxt_set_backlight(const struct drm_connector_state *conn_state, u32 
 static void pwm_set_backlight(const struct drm_connector_state *conn_state, u32 level)
 {
 	struct intel_panel *panel = &to_intel_connector(conn_state->connector)->panel;
-	int duty_ns = DIV_ROUND_UP(level * CRC_PMIC_PWM_PERIOD_NS, panel->backlight.max);
+	struct intel_pwm_info *pwm = panel->backlight.pwm;
+	int duty_ns = DIV_ROUND_UP(level * pwm->period_ns, 100);
 
-	pwm_config(panel->backlight.pwm, duty_ns, CRC_PMIC_PWM_PERIOD_NS);
+	pwm_config(pwm->dev, duty_ns, pwm->period_ns);
 }
 
 static void
@@ -761,11 +769,12 @@ static void pwm_disable_backlight(const struct drm_connector_state *old_conn_sta
 {
 	struct intel_connector *connector = to_intel_connector(old_conn_state->connector);
 	struct intel_panel *panel = &connector->panel;
+	struct intel_pwm_info *pwm = panel->backlight.pwm;
 
 	/* Disable the backlight */
-	pwm_config(panel->backlight.pwm, 0, CRC_PMIC_PWM_PERIOD_NS);
+	pwm_config(pwm->dev, 0, pwm->period_ns);
 	usleep_range(2000, 3000);
-	pwm_disable(panel->backlight.pwm);
+	pwm_disable(pwm->dev);
 }
 
 void intel_panel_disable_backlight(const struct drm_connector_state *old_conn_state)
@@ -1083,7 +1092,7 @@ static void pwm_enable_backlight(const struct intel_crtc_state *crtc_state,
 	struct intel_connector *connector = to_intel_connector(conn_state->connector);
 	struct intel_panel *panel = &connector->panel;
 
-	pwm_enable(panel->backlight.pwm);
+	pwm_enable(panel->backlight.pwm->dev);
 	intel_panel_actually_set_backlight(conn_state, panel->backlight.level);
 }
 
@@ -1738,12 +1747,13 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 {
 	struct drm_device *dev = connector->base.dev;
 	struct intel_panel *panel = &connector->panel;
+	struct intel_pwm_info *pwm = &crc_pwm_info;
 	int retval;
 
 	/* Get the PWM chip for backlight control */
-	panel->backlight.pwm = pwm_get(dev->dev, "pwm_backlight");
-	if (IS_ERR(panel->backlight.pwm)) {
-		DRM_ERROR("Failed to own the pwm chip\n");
+	pwm->dev = pwm_get(dev->dev, pwm->name);
+	if (IS_ERR(pwm->dev)) {
+		DRM_ERROR("Failed to own the pwm chip: %s\n", pwm->name);
 		panel->backlight.pwm = NULL;
 		return -ENODEV;
 	}
@@ -1752,13 +1762,12 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 	 * FIXME: pwm_apply_args() should be removed when switching to
 	 * the atomic PWM API.
 	 */
-	pwm_apply_args(panel->backlight.pwm);
+	//pwm_apply_args(panel->backlight.pwm);
 
-	retval = pwm_config(panel->backlight.pwm, CRC_PMIC_PWM_PERIOD_NS,
-			    CRC_PMIC_PWM_PERIOD_NS);
+	retval = pwm_config(pwm->dev, pwm->period_ns, pwm->period_ns);
 	if (retval < 0) {
-		DRM_ERROR("Failed to configure the pwm chip\n");
-		pwm_put(panel->backlight.pwm);
+		DRM_ERROR("Failed to configure the pwm chip: %s\n", pwm->name);
+		pwm_put(pwm->dev);
 		panel->backlight.pwm = NULL;
 		return retval;
 	}
@@ -1766,9 +1775,10 @@ static int pwm_setup_backlight(struct intel_connector *connector,
 	panel->backlight.min = 0;
 	panel->backlight.max = 0xFF;
 	panel->backlight.level = DIV_ROUND_UP(
-				 pwm_get_duty_cycle(panel->backlight.pwm) * panel->backlight.max,
-				 CRC_PMIC_PWM_PERIOD_NS);
+				 pwm_get_duty_cycle(pwm->dev) * 100, pwm->period_ns);
 	panel->backlight.enabled = panel->backlight.level != 0;
+
+	panel->backlight.pwm = pwm;
 
 	return 0;
 }
@@ -1821,7 +1831,7 @@ void intel_panel_destroy_backlight(struct drm_connector *connector)
 
 	/* dispose of the pwm */
 	if (panel->backlight.pwm)
-		pwm_put(panel->backlight.pwm);
+		pwm_put(panel->backlight.pwm->dev);
 
 	panel->backlight.present = false;
 }
