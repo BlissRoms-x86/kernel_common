@@ -1127,27 +1127,31 @@ find_reg(const struct intel_engine_cs *engine, u32 addr)
 /* Returns a vmap'd pointer to dst_obj, which the caller must unmap */
 static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 		       struct drm_i915_gem_object *src_obj,
-		       u32 offset, u32 length)
+		       u32 offset, u32 length,
+		       bool *needs_clflush_after)
 {
-	bool needs_clflush;
+	unsigned int src_needs_clflush;
+	unsigned int dst_needs_clflush;
 	void *dst, *src;
 	int ret;
 
+	ret = i915_gem_object_prepare_write(dst_obj, &dst_needs_clflush);
+	if (ret)
+		return ERR_PTR(ret);
+
 	dst = i915_gem_object_pin_map(dst_obj, I915_MAP_FORCE_WB);
+	i915_gem_object_finish_access(dst_obj);
 	if (IS_ERR(dst))
 		return dst;
 
-	ret = i915_gem_object_pin_pages(src_obj);
+	ret = i915_gem_object_prepare_read(src_obj, &src_needs_clflush);
 	if (ret) {
 		i915_gem_object_unpin_map(dst_obj);
 		return ERR_PTR(ret);
 	}
 
-	needs_clflush =
-		!(src_obj->cache_coherent & I915_BO_CACHE_COHERENT_FOR_READ);
-
 	src = ERR_PTR(-ENODEV);
-	if (needs_clflush && i915_has_memcpy_from_wc()) {
+	if (src_needs_clflush && i915_has_memcpy_from_wc()) {
 		src = i915_gem_object_pin_map(src_obj, I915_MAP_WC);
 		if (!IS_ERR(src)) {
 			i915_unaligned_memcpy_from_wc(dst,
@@ -1168,7 +1172,7 @@ static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 		 * We don't care about copying too much here as we only
 		 * validate up to the end of the batch.
 		 */
-		if (!(dst_obj->cache_coherent & I915_BO_CACHE_COHERENT_FOR_READ))
+		if (dst_needs_clflush & CLFLUSH_BEFORE)
 			length = round_up(length,
 					  boot_cpu_data.x86_clflush_size);
 
@@ -1178,7 +1182,7 @@ static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 			int len = min_t(int, length, PAGE_SIZE - x);
 
 			src = kmap_atomic(i915_gem_object_get_page(src_obj, n));
-			if (needs_clflush)
+			if (src_needs_clflush)
 				drm_clflush_virt_range(src + x, len);
 			memcpy(ptr, src + x, len);
 			kunmap_atomic(src);
@@ -1189,9 +1193,11 @@ static u32 *copy_batch(struct drm_i915_gem_object *dst_obj,
 		}
 	}
 
-	i915_gem_object_unpin_pages(src_obj);
+	i915_gem_object_finish_access(src_obj);
 
 	/* dst_obj is returned with vmap pinned */
+	*needs_clflush_after = dst_needs_clflush & CLFLUSH_AFTER;
+
 	return dst;
 }
 
@@ -1356,7 +1362,8 @@ static int check_bbstart(u32 *cmd, u32 offset, u32 length,
 	return 0;
 }
 
-static unsigned long *alloc_whitelist(u32 batch_length)
+static unsigned long *
+alloc_whitelist(struct drm_i915_private *i915, u32 batch_length)
 {
 	unsigned long *jmp;
 
@@ -1365,6 +1372,9 @@ static unsigned long *alloc_whitelist(u32 batch_length)
 	 * i.e. we need at most an 8KiB bitmap allocation which should be
 	 * reasonably cheap due to kmalloc caches.
 	 */
+
+	if (CMDPARSER_USES_GGTT(i915))
+		return NULL;
 
 	/* Prefer to report transient allocation failure rather than hit oom */
 	jmp = bitmap_zalloc(DIV_ROUND_UP(batch_length, sizeof(u32)),
@@ -1377,11 +1387,6 @@ static unsigned long *alloc_whitelist(u32 batch_length)
 
 #define LENGTH_BIAS 2
 
-static bool shadow_needs_clflush(struct drm_i915_gem_object *obj)
-{
-	return !(obj->cache_coherent & I915_BO_CACHE_COHERENT_FOR_WRITE);
-}
-
 /**
  * intel_engine_cmd_parser() - parse a batch buffer for privilege violations
  * @engine: the engine on which the batch is to execute
@@ -1389,7 +1394,6 @@ static bool shadow_needs_clflush(struct drm_i915_gem_object *obj)
  * @batch_offset: byte offset in the batch at which execution starts
  * @batch_length: length of the commands in batch_obj
  * @shadow: validated copy of the batch buffer in question
- * @trampoline: whether to emit a conditional trampoline at the end of the batch
  *
  * Parses the specified batch buffer looking for privilege violations as
  * described in the overview.
@@ -1397,16 +1401,17 @@ static bool shadow_needs_clflush(struct drm_i915_gem_object *obj)
  * Return: non-zero if the parser finds violations or otherwise fails; -EACCES
  * if the batch appears legal but should use hardware parsing
  */
+
 int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 			    struct i915_vma *batch,
 			    u32 batch_offset,
 			    u32 batch_length,
-			    struct i915_vma *shadow,
-			    bool trampoline)
+			    struct i915_vma *shadow)
 {
 	u32 *cmd, *batch_end, offset = 0;
 	struct drm_i915_cmd_descriptor default_desc = noop_desc;
 	const struct drm_i915_cmd_descriptor *desc = &default_desc;
+	bool needs_clflush_after = false;
 	unsigned long *jump_whitelist;
 	u64 batch_addr, shadow_addr;
 	int ret = 0;
@@ -1417,16 +1422,16 @@ int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 				     batch->size));
 	GEM_BUG_ON(!batch_length);
 
-	cmd = copy_batch(shadow->obj, batch->obj, batch_offset, batch_length);
+	cmd = copy_batch(shadow->obj, batch->obj,
+			 batch_offset, batch_length,
+			 &needs_clflush_after);
 	if (IS_ERR(cmd)) {
 		DRM_DEBUG("CMD: Failed to copy batch\n");
 		return PTR_ERR(cmd);
 	}
 
-	jump_whitelist = NULL;
-	if (!trampoline)
-		/* Defer failure until attempted use */
-		jump_whitelist = alloc_whitelist(batch_length);
+	/* Defer failure until attempted use */
+	jump_whitelist = alloc_whitelist(engine->i915, batch_length);
 
 	shadow_addr = gen8_canonical_addr(shadow->node.start);
 	batch_addr = gen8_canonical_addr(batch->node.start + batch_offset);
@@ -1488,48 +1493,7 @@ int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 		}
 	} while (1);
 
-	if (trampoline) {
-		/*
-		 * With the trampoline, the shadow is executed twice.
-		 *
-		 *   1 - starting at offset 0, in privileged mode
-		 *   2 - starting at offset batch_len, as non-privileged
-		 *
-		 * Only if the batch is valid and safe to execute, do we
-		 * allow the first privileged execution to proceed. If not,
-		 * we terminate the first batch and use the second batchbuffer
-		 * entry to chain to the original unsafe non-privileged batch,
-		 * leaving it to the HW to validate.
-		 */
-		*batch_end = MI_BATCH_BUFFER_END;
-
-		if (ret) {
-			/* Batch unsafe to execute with privileges, cancel! */
-			cmd = page_mask_bits(shadow->obj->mm.mapping);
-			*cmd = MI_BATCH_BUFFER_END;
-
-			/* If batch is unsafe but valid, jump to the original */
-			if (ret == -EACCES) {
-				unsigned int flags;
-
-				flags = MI_BATCH_NON_SECURE_I965;
-				if (IS_HASWELL(engine->i915))
-					flags = MI_BATCH_NON_SECURE_HSW;
-
-				GEM_BUG_ON(!IS_GEN_RANGE(engine->i915, 6, 7));
-				__gen6_emit_bb_start(batch_end,
-						     batch_addr,
-						     flags);
-
-				ret = 0; /* allow execution */
-			}
-		}
-
-		if (shadow_needs_clflush(shadow->obj))
-			drm_clflush_virt_range(batch_end, 8);
-	}
-
-	if (shadow_needs_clflush(shadow->obj)) {
+	if (needs_clflush_after) {
 		void *ptr = page_mask_bits(shadow->obj->mm.mapping);
 
 		drm_clflush_virt_range(ptr, (void *)(cmd + 1) - ptr);

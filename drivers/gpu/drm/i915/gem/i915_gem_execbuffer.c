@@ -25,7 +25,6 @@
 #include "i915_gem_clflush.h"
 #include "i915_gem_context.h"
 #include "i915_gem_ioctls.h"
-#include "i915_sw_fence_work.h"
 #include "i915_trace.h"
 
 enum {
@@ -229,7 +228,6 @@ struct i915_execbuffer {
 
 	struct i915_request *request; /** our request to build */
 	struct i915_vma *batch; /** identity of the batch obj/vma */
-	struct i915_vma *trampoline; /** trampoline used for chaining */
 
 	/** actual size of execobj[] as we may extend it for the cmdparser */
 	unsigned int buffer_count;
@@ -1222,6 +1220,10 @@ static u32 *reloc_gpu(struct i915_execbuffer *eb,
 	if (unlikely(!cache->rq)) {
 		int err;
 
+		/* If we need to copy for the cmdparser, we will stall anyway */
+		if (eb_use_cmdparser(eb))
+			return ERR_PTR(-EWOULDBLOCK);
+
 		if (!intel_engine_can_store_dword(eb->engine))
 			return ERR_PTR(-ENODEV);
 
@@ -1942,12 +1944,30 @@ static int i915_reset_gen7_sol_offsets(struct i915_request *rq)
 }
 
 static struct i915_vma *
-shadow_batch_pin(struct drm_i915_gem_object *obj,
-		 struct i915_address_space *vm,
-		 unsigned int flags)
+shadow_batch_pin(struct i915_execbuffer *eb, struct drm_i915_gem_object *obj)
 {
+	struct i915_address_space *vm;
 	struct i915_vma *vma;
+	u64 flags;
 	int err;
+
+	/*
+	 * PPGTT backed shadow buffers must be mapped RO, to prevent
+	 * post-scan tampering
+	 */
+	if (CMDPARSER_USES_GGTT(eb->i915)) {
+		vm = &eb->engine->gt->ggtt->vm;
+		flags = PIN_GLOBAL;
+	} else {
+		vm = eb->context->vm;
+		if (!vm->has_read_only) {
+			DRM_DEBUG("Cannot prevent post-scan tampering without RO capable vm\n");
+			return ERR_PTR(-EINVAL);
+		}
+
+		i915_gem_object_set_readonly(obj);
+		flags = PIN_USER;
+	}
 
 	vma = i915_vma_instance(obj, vm, NULL);
 	if (IS_ERR(vma))
@@ -1960,193 +1980,62 @@ shadow_batch_pin(struct drm_i915_gem_object *obj,
 	return vma;
 }
 
-struct eb_parse_work {
-	struct dma_fence_work base;
-	struct intel_engine_cs *engine;
-	struct i915_vma *batch;
-	struct i915_vma *shadow;
-	struct i915_vma *trampoline;
-	unsigned int batch_offset;
-	unsigned int batch_length;
-};
-
-static int __eb_parse(struct dma_fence_work *work)
-{
-	struct eb_parse_work *pw = container_of(work, typeof(*pw), base);
-
-	return intel_engine_cmd_parser(pw->engine,
-				       pw->batch,
-				       pw->batch_offset,
-				       pw->batch_length,
-				       pw->shadow,
-				       pw->trampoline);
-}
-
-static void __eb_parse_release(struct dma_fence_work *work)
-{
-	struct eb_parse_work *pw = container_of(work, typeof(*pw), base);
-
-	if (pw->trampoline)
-		i915_active_release(&pw->trampoline->active);
-	i915_active_release(&pw->shadow->active);
-	i915_active_release(&pw->batch->active);
-}
-
-static const struct dma_fence_work_ops eb_parse_ops = {
-	.name = "eb_parse",
-	.work = __eb_parse,
-	.release = __eb_parse_release,
-};
-
-static int eb_parse_pipeline(struct i915_execbuffer *eb,
-			     struct i915_vma *shadow,
-			     struct i915_vma *trampoline)
-{
-	struct eb_parse_work *pw;
-	int err;
-
-	pw = kzalloc(sizeof(*pw), GFP_KERNEL);
-	if (!pw)
-		return -ENOMEM;
-
-	err = i915_active_acquire(&eb->batch->active);
-	if (err)
-		goto err_free;
-
-	err = i915_active_acquire(&shadow->active);
-	if (err)
-		goto err_batch;
-
-	if (trampoline) {
-		err = i915_active_acquire(&trampoline->active);
-		if (err)
-			goto err_shadow;
-	}
-
-	dma_fence_work_init(&pw->base, &eb_parse_ops);
-
-	pw->engine = eb->engine;
-	pw->batch = eb->batch;
-	pw->batch_offset = eb->batch_start_offset;
-	pw->batch_length = eb->batch_len;
-	pw->shadow = shadow;
-	pw->trampoline = trampoline;
-
-	err = dma_resv_lock_interruptible(pw->batch->resv, NULL);
-	if (err)
-		goto err_trampoline;
-
-	err = dma_resv_reserve_shared(pw->batch->resv, 1);
-	if (err)
-		goto err_batch_unlock;
-
-	/* Wait for all writes (and relocs) into the batch to complete */
-	err = i915_sw_fence_await_reservation(&pw->base.chain,
-					      pw->batch->resv, NULL, false,
-					      0, I915_FENCE_GFP);
-	if (err < 0)
-		goto err_batch_unlock;
-
-	/* Keep the batch alive and unwritten as we parse */
-	dma_resv_add_shared_fence(pw->batch->resv, &pw->base.dma);
-
-	dma_resv_unlock(pw->batch->resv);
-
-	/* Force execution to wait for completion of the parser */
-	dma_resv_lock(shadow->resv, NULL);
-	dma_resv_add_excl_fence(shadow->resv, &pw->base.dma);
-	dma_resv_unlock(shadow->resv);
-
-	dma_fence_work_commit(&pw->base);
-	return 0;
-
-err_batch_unlock:
-	dma_resv_unlock(pw->batch->resv);
-err_trampoline:
-	if (trampoline)
-		i915_active_release(&trampoline->active);
-err_shadow:
-	i915_active_release(&shadow->active);
-err_batch:
-	i915_active_release(&eb->batch->active);
-err_free:
-	kfree(pw);
-	return err;
-}
-
 static int eb_parse(struct i915_execbuffer *eb)
 {
 	struct intel_engine_pool_node *pool;
-	struct i915_vma *shadow, *trampoline;
-	unsigned int len;
+	struct i915_vma *vma;
 	int err;
 
 	if (!eb_use_cmdparser(eb))
 		return 0;
 
-	len = eb->batch_len;
-	if (!CMDPARSER_USES_GGTT(eb->i915)) {
-		/*
-		 * ppGTT backed shadow buffers must be mapped RO, to prevent
-		 * post-scan tampering
-		 */
-		if (!eb->context->vm->has_read_only) {
-			DRM_DEBUG("Cannot prevent post-scan tampering without RO capable vm\n");
-			return -EINVAL;
-		}
-	} else {
-		len += I915_CMD_PARSER_TRAMPOLINE_SIZE;
-	}
-
-	pool = intel_engine_get_pool(eb->engine, len);
+	pool = intel_engine_get_pool(eb->engine, eb->batch_len);
 	if (IS_ERR(pool))
 		return PTR_ERR(pool);
 
-	shadow = shadow_batch_pin(pool->obj, eb->context->vm, PIN_USER);
-	if (IS_ERR(shadow)) {
-		err = PTR_ERR(shadow);
+	vma = shadow_batch_pin(eb, pool->obj);
+	if (IS_ERR(vma)) {
+		err = PTR_ERR(vma);
 		goto err;
 	}
-	i915_gem_object_set_readonly(shadow->obj);
 
-	trampoline = NULL;
-	if (CMDPARSER_USES_GGTT(eb->i915)) {
-		trampoline = shadow;
+	err = intel_engine_cmd_parser(eb->engine,
+				      eb->batch,
+				      eb->batch_start_offset,
+				      eb->batch_len,
+				      vma);
+	if (err) {
+		/*
+		 * Unsafe GGTT-backed buffers can still be submitted safely
+		 * as non-secure.
+		 * For PPGTT backing however, we have no choice but to forcibly
+		 * reject unsafe buffers
+		 */
+		if (i915_vma_is_ggtt(vma) && err == -EACCES)
+			err = 0;
 
-		shadow = shadow_batch_pin(pool->obj,
-					  &eb->engine->gt->ggtt->vm,
-					  PIN_GLOBAL);
-		if (IS_ERR(shadow)) {
-			err = PTR_ERR(shadow);
-			shadow = trampoline;
-			goto err_shadow;
-		}
-
-		eb->batch_flags |= I915_DISPATCH_SECURE;
+		goto err_unpin;
 	}
 
-	err = eb_parse_pipeline(eb, shadow, trampoline);
-	if (err)
-		goto err_trampoline;
-
-	eb->vma[eb->buffer_count] = i915_vma_get(shadow);
+	eb->vma[eb->buffer_count] = i915_vma_get(vma);
 	eb->flags[eb->buffer_count] =
 		__EXEC_OBJECT_HAS_PIN | __EXEC_OBJECT_HAS_REF;
-	shadow->exec_flags = &eb->flags[eb->buffer_count];
+	vma->exec_flags = &eb->flags[eb->buffer_count];
 	eb->buffer_count++;
 
-	eb->trampoline = trampoline;
 	eb->batch_start_offset = 0;
-	eb->batch = shadow;
+	eb->batch = vma;
 
-	shadow->private = pool;
+	if (i915_vma_is_ggtt(vma))
+		eb->batch_flags |= I915_DISPATCH_SECURE;
+
+	/* eb->batch_len unchanged */
+
+	vma->private = pool;
 	return 0;
 
-err_trampoline:
-	if (trampoline)
-		i915_vma_unpin(trampoline);
-err_shadow:
-	i915_vma_unpin(shadow);
+err_unpin:
+	i915_vma_unpin(vma);
 err:
 	intel_engine_pool_put(pool);
 	return err;
@@ -2197,16 +2086,6 @@ static int eb_submit(struct i915_execbuffer *eb)
 					eb->batch_flags);
 	if (err)
 		return err;
-
-	if (eb->trampoline) {
-		GEM_BUG_ON(eb->batch_start_offset);
-		err = eb->engine->emit_bb_start(eb->request,
-						eb->trampoline->node.start +
-						eb->batch_len,
-						0, 0);
-		if (err)
-			return err;
-	}
 
 	if (intel_context_nopreempt(eb->context))
 		__set_bit(I915_FENCE_FLAG_NOPREEMPT, &eb->request->fence.flags);
@@ -2592,7 +2471,6 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	eb.buffer_count = args->buffer_count;
 	eb.batch_start_offset = args->batch_start_offset;
 	eb.batch_len = args->batch_len;
-	eb.trampoline = NULL;
 
 	eb.batch_flags = 0;
 	if (args->flags & I915_EXEC_SECURE) {
@@ -2792,8 +2670,6 @@ err_batch_unpin:
 err_vma:
 	if (eb.exec)
 		eb_release_vmas(&eb);
-	if (eb.trampoline)
-		i915_vma_unpin(eb.trampoline);
 	mutex_unlock(&dev->struct_mutex);
 err_engine:
 	eb_unpin_engine(&eb);

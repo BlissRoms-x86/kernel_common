@@ -3044,6 +3044,7 @@
 #define mmDMIF_HW_DEBUG 0x02F8
 #define mmDMIF_PG0_DPG_PIPE_ARBITRATION_CONTROL1 0x1B30
 #define mmDMIF_PG0_DPG_PIPE_ARBITRATION_CONTROL2 0x1B31
+#define mmDMIF_PG0_DPG_PIPE_ARBITRATION_CONTROL3 0x1B32
 #define mmDMIF_PG0_DPG_PIPE_DPM_CONTROL 0x1B34
 #define mmDMIF_PG0_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x1B36
 #define mmDMIF_PG0_DPG_PIPE_STUTTER_CONTROL 0x1B35
@@ -3053,6 +3054,7 @@
 #define mmDMIF_PG0_DPG_TEST_DEBUG_INDEX 0x1B38
 #define mmDMIF_PG1_DPG_PIPE_ARBITRATION_CONTROL1 0x1E30
 #define mmDMIF_PG1_DPG_PIPE_ARBITRATION_CONTROL2 0x1E31
+#define mmDMIF_PG1_DPG_PIPE_ARBITRATION_CONTROL3 0x1E32
 #define mmDMIF_PG1_DPG_PIPE_DPM_CONTROL 0x1E34
 #define mmDMIF_PG1_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x1E36
 #define mmDMIF_PG1_DPG_PIPE_STUTTER_CONTROL 0x1E35
@@ -3062,6 +3064,7 @@
 #define mmDMIF_PG1_DPG_TEST_DEBUG_INDEX 0x1E38
 #define mmDMIF_PG2_DPG_PIPE_ARBITRATION_CONTROL1 0x4130
 #define mmDMIF_PG2_DPG_PIPE_ARBITRATION_CONTROL2 0x4131
+#define mmDMIF_PG2_DPG_PIPE_ARBITRATION_CONTROL3 0x4132
 #define mmDMIF_PG2_DPG_PIPE_DPM_CONTROL 0x4134
 #define mmDMIF_PG2_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x4136
 #define mmDMIF_PG2_DPG_PIPE_STUTTER_CONTROL 0x4135
@@ -3071,6 +3074,7 @@
 #define mmDMIF_PG2_DPG_TEST_DEBUG_INDEX 0x4138
 #define mmDMIF_PG3_DPG_PIPE_ARBITRATION_CONTROL1 0x4430
 #define mmDMIF_PG3_DPG_PIPE_ARBITRATION_CONTROL2 0x4431
+#define mmDMIF_PG3_DPG_PIPE_ARBITRATION_CONTROL3 0x4432
 #define mmDMIF_PG3_DPG_PIPE_DPM_CONTROL 0x4434
 #define mmDMIF_PG3_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x4436
 #define mmDMIF_PG3_DPG_PIPE_STUTTER_CONTROL 0x4435
@@ -3080,6 +3084,7 @@
 #define mmDMIF_PG3_DPG_TEST_DEBUG_INDEX 0x4438
 #define mmDMIF_PG4_DPG_PIPE_ARBITRATION_CONTROL1 0x4730
 #define mmDMIF_PG4_DPG_PIPE_ARBITRATION_CONTROL2 0x4731
+#define mmDMIF_PG4_DPG_PIPE_ARBITRATION_CONTROL3 0x4732
 #define mmDMIF_PG4_DPG_PIPE_DPM_CONTROL 0x4734
 #define mmDMIF_PG4_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x4736
 #define mmDMIF_PG4_DPG_PIPE_STUTTER_CONTROL 0x4735
@@ -3089,6 +3094,7 @@
 #define mmDMIF_PG4_DPG_TEST_DEBUG_INDEX 0x4738
 #define mmDMIF_PG5_DPG_PIPE_ARBITRATION_CONTROL1 0x4A30
 #define mmDMIF_PG5_DPG_PIPE_ARBITRATION_CONTROL2 0x4A31
+#define mmDMIF_PG5_DPG_PIPE_ARBITRATION_CONTROL3 0x4A32
 #define mmDMIF_PG5_DPG_PIPE_DPM_CONTROL 0x4A34
 #define mmDMIF_PG5_DPG_PIPE_NB_PSTATE_CHANGE_CONTROL 0x4A36
 #define mmDMIF_PG5_DPG_PIPE_STUTTER_CONTROL 0x4A35
@@ -3879,6 +3885,7 @@
 #define mmKEY_RANGE_GREEN 0x1A56
 #define mmKEY_RANGE_RED 0x1A55
 #define mmLB0_DC_MVP_LB_CONTROL 0x1ADB
+#define mmLB0_INT_MASK 0x1AD0
 #define mmLB0_LB_DEBUG 0x1AFC
 #define mmLB0_LB_DEBUG2 0x1AC9
 #define mmLB0_LB_NO_OUTSTANDING_REQ_STATUS 0x1AC8
@@ -3888,7 +3895,9 @@
 #define mmLB0_MVP_AFR_FLIP_FIFO_CNTL 0x1AD9
 #define mmLB0_MVP_AFR_FLIP_MODE 0x1AD8
 #define mmLB0_MVP_FLIP_LINE_NUM_INSERT 0x1ADA
+#define mmLB0_VBLANK_STATUS 0x1AEF
 #define mmLB1_DC_MVP_LB_CONTROL 0x1DDB
+#define mmLB1_INT_MASK 0x1DD0
 #define mmLB1_LB_DEBUG 0x1DFC
 #define mmLB1_LB_DEBUG2 0x1DC9
 #define mmLB1_LB_NO_OUTSTANDING_REQ_STATUS 0x1DC8
@@ -3898,7 +3907,9 @@
 #define mmLB1_MVP_AFR_FLIP_FIFO_CNTL 0x1DD9
 #define mmLB1_MVP_AFR_FLIP_MODE 0x1DD8
 #define mmLB1_MVP_FLIP_LINE_NUM_INSERT 0x1DDA
+#define mmLB1_VBLANK_STATUS 0x1DEF
 #define mmLB2_DC_MVP_LB_CONTROL 0x40DB
+#define mmLB2_INT_MASK 0x40D0
 #define mmLB2_LB_DEBUG 0x40FC
 #define mmLB2_LB_DEBUG2 0x40C9
 #define mmLB2_LB_NO_OUTSTANDING_REQ_STATUS 0x40C8
@@ -3908,7 +3919,9 @@
 #define mmLB2_MVP_AFR_FLIP_FIFO_CNTL 0x40D9
 #define mmLB2_MVP_AFR_FLIP_MODE 0x40D8
 #define mmLB2_MVP_FLIP_LINE_NUM_INSERT 0x40DA
+#define mmLB2_VBLANK_STATUS 0x40EF
 #define mmLB3_DC_MVP_LB_CONTROL 0x43DB
+#define mmLB3_INT_MASK 0x43D0
 #define mmLB3_LB_DEBUG 0x43FC
 #define mmLB3_LB_DEBUG2 0x43C9
 #define mmLB3_LB_NO_OUTSTANDING_REQ_STATUS 0x43C8
@@ -3918,7 +3931,9 @@
 #define mmLB3_MVP_AFR_FLIP_FIFO_CNTL 0x43D9
 #define mmLB3_MVP_AFR_FLIP_MODE 0x43D8
 #define mmLB3_MVP_FLIP_LINE_NUM_INSERT 0x43DA
+#define mmLB3_VBLANK_STATUS 0x43EF
 #define mmLB4_DC_MVP_LB_CONTROL 0x46DB
+#define mmLB4_INT_MASK 0x46D0
 #define mmLB4_LB_DEBUG 0x46FC
 #define mmLB4_LB_DEBUG2 0x46C9
 #define mmLB4_LB_NO_OUTSTANDING_REQ_STATUS 0x46C8
@@ -3928,7 +3943,9 @@
 #define mmLB4_MVP_AFR_FLIP_FIFO_CNTL 0x46D9
 #define mmLB4_MVP_AFR_FLIP_MODE 0x46D8
 #define mmLB4_MVP_FLIP_LINE_NUM_INSERT 0x46DA
+#define mmLB4_VBLANK_STATUS 0x46EF
 #define mmLB5_DC_MVP_LB_CONTROL 0x49DB
+#define mmLB5_INT_MASK 0x49D0
 #define mmLB5_LB_DEBUG 0x49FC
 #define mmLB5_LB_DEBUG2 0x49C9
 #define mmLB5_LB_NO_OUTSTANDING_REQ_STATUS 0x49C8
@@ -3938,12 +3955,15 @@
 #define mmLB5_MVP_AFR_FLIP_FIFO_CNTL 0x49D9
 #define mmLB5_MVP_AFR_FLIP_MODE 0x49D8
 #define mmLB5_MVP_FLIP_LINE_NUM_INSERT 0x49DA
+#define mmLB5_VBLANK_STATUS 0x49EF
 #define mmLB_DEBUG 0x1AFC
 #define mmLB_DEBUG2 0x1AC9
+#define mmLB_INT_MASK 0x1AD0
 #define mmLB_NO_OUTSTANDING_REQ_STATUS 0x1AC8
 #define mmLB_SYNC_RESET_SEL 0x1ACA
 #define mmLB_TEST_DEBUG_DATA 0x1AFF
 #define mmLB_TEST_DEBUG_INDEX 0x1AFE
+#define mmLB_VBLANK_STATUS 0x1AEF
 #define mmLIGHT_SLEEP_CNTL 0x0132
 #define mmLOW_POWER_TILING_CONTROL 0x0325
 #define mmLVDS_DATA_CNTL 0x1C8C
@@ -4444,14 +4464,51 @@
 
 /* Registers that spilled out of sid.h */
 #define mmDATA_FORMAT                              0x1AC0
+#define mmLB0_DATA_FORMAT                          0x1AC0
+#define mmLB1_DATA_FORMAT                          0x1DC0
+#define mmLB2_DATA_FORMAT                          0x40C0
+#define mmLB3_DATA_FORMAT                          0x43C0
+#define mmLB4_DATA_FORMAT                          0x46C0
+#define mmLB5_DATA_FORMAT                          0x49C0
 #define mmDESKTOP_HEIGHT                           0x1AC1
+#define mmLB0_DESKTOP_HEIGHT                       0x1AC1
+#define mmLB1_DESKTOP_HEIGHT                       0x1DC1
+#define mmLB2_DESKTOP_HEIGHT                       0x40C1
+#define mmLB3_DESKTOP_HEIGHT                       0x43C1
+#define mmLB4_DESKTOP_HEIGHT                       0x46C1
+#define mmLB5_DESKTOP_HEIGHT                       0x49C1
 #define mmDC_LB_MEMORY_SPLIT                       0x1AC3
+#define mmLB0_DC_LB_MEMORY_SPLIT                   0x1AC3
+#define mmLB1_DC_LB_MEMORY_SPLIT                   0x1DC3
+#define mmLB2_DC_LB_MEMORY_SPLIT                   0x40C3
+#define mmLB3_DC_LB_MEMORY_SPLIT                   0x43C3
+#define mmLB4_DC_LB_MEMORY_SPLIT                   0x46C3
+#define mmLB5_DC_LB_MEMORY_SPLIT                   0x49C3
+#define mmDC_LB_MEM_SIZE                           0x1AC4
+#define mmLB0_DC_LB_MEM_SIZE                       0x1AC4
+#define mmLB1_DC_LB_MEM_SIZE                       0x1DC4
+#define mmLB2_DC_LB_MEM_SIZE                       0x40C4
+#define mmLB3_DC_LB_MEM_SIZE                       0x43C4
+#define mmLB4_DC_LB_MEM_SIZE                       0x46C4
+#define mmLB5_DC_LB_MEM_SIZE                       0x49C4
 #define mmPRIORITY_A_CNT                           0x1AC6
 #define mmPRIORITY_B_CNT                           0x1AC7
 #define mmDPG_PIPE_ARBITRATION_CONTROL3            0x1B32
 #define mmINT_MASK                                 0x1AD0
 #define mmVLINE_STATUS                             0x1AEE
+#define mmLB0_VLINE_STATUS                         0x1AEE
+#define mmLB1_VLINE_STATUS                         0x1DEE
+#define mmLB2_VLINE_STATUS                         0x40EE
+#define mmLB3_VLINE_STATUS                         0x43EE
+#define mmLB4_VLINE_STATUS                         0x46EE
+#define mmLB5_VLINE_STATUS                         0x49EE
 #define mmVBLANK_STATUS                            0x1AEF
+#define mmLB0_VBLANK_STATUS                        0x1AEF
+#define mmLB1_VBLANK_STATUS                        0x1DEF
+#define mmLB2_VBLANK_STATUS                        0x40EF
+#define mmLB3_VBLANK_STATUS                        0x43EF
+#define mmLB4_VBLANK_STATUS                        0x46EF
+#define mmLB5_VBLANK_STATUS                        0x49EF
 
 
 #endif
