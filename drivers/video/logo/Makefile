@@ -13,6 +13,8 @@ obj-$(CONFIG_LOGO_SUN_CLUT224)		+= logo_sun_clut224.o
 obj-$(CONFIG_LOGO_SUPERH_MONO)		+= logo_superh_mono.o
 obj-$(CONFIG_LOGO_SUPERH_VGA16)		+= logo_superh_vga16.o
 obj-$(CONFIG_LOGO_SUPERH_CLUT224)	+= logo_superh_clut224.o
+obj-$(CONFIG_LOGO_SUPREMEGAMERS_CLUT224)		+= logo_supremegamers_clut224.o
+obj-$(CONFIG_LOGO_TERI_CLUT224)		+= logo_teri_clut224.o
 
 obj-$(CONFIG_SPU_BASE)			+= logo_spe_clut224.o
 
