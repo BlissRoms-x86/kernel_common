@@ -15,6 +15,8 @@
 
 #include "i2c-core.h"
 
+#define SMBUS_ALERT_RESPONSE_ADDRESS		0x0c
+
 struct i2c_acpi_handler_data {
 	struct acpi_connection_info info;
 	struct i2c_adapter *adapter;
@@ -491,6 +493,8 @@ struct i2c_client *i2c_acpi_new_device(struct device *dev, int index,
 	acpi_dev_free_resource_list(&resource_list);
 
 	if (!info->addr)
+		return ERR_PTR(-ENOENT);
+	if (info->addr == SMBUS_ALERT_RESPONSE_ADDRESS)
 		return ERR_PTR(-EADDRNOTAVAIL);
 
 	adapter = i2c_acpi_find_adapter_by_handle(lookup.adapter_handle);
