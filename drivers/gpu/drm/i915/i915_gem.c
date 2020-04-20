@@ -1104,6 +1104,14 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	intel_uc_fetch_firmwares(&dev_priv->gt.uc);
 	intel_wopcm_init(&dev_priv->wopcm);
 
+	/* This is just a security blanket to placate dragons.
+	 * On some systems, we very sporadically observe that the first TLBs
+	 * used by the CS may be stale, despite us poking the TLB reset. If
+	 * we hold the forcewake during initialisation these problems
+	 * just magically go away.
+	 */
+	intel_uncore_forcewake_get(&dev_priv->uncore, FORCEWAKE_ALL);
+
 	ret = i915_init_ggtt(dev_priv);
 	if (ret) {
 		GEM_BUG_ON(ret == -EIO);
@@ -1125,6 +1133,8 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto err_unlock;
 
+	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
+
 	return 0;
 
 	/*
@@ -1135,6 +1145,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	 */
 err_unlock:
 	i915_gem_drain_workqueue(dev_priv);
+	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
 
 	if (ret != -EIO) {
 		intel_uc_cleanup_firmwares(&dev_priv->gt.uc);
