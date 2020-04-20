@@ -176,12 +176,25 @@ static const struct i2c_inst_data int3515_data[]  = {
 };
 
 /*
+ * CPLM3218 devices have 1 or 2 I2C resources, in the 2 resource variant the
+ * first I2C resource containst the SMbus Alert Response Address, for which
+ * i2c_acpi_new_device will return -EADDRNOTAVAIL, which we ignore. So in both
+ * cases we end up instantiating only 1 i2c-client for the actual sensor.
+ */
+static const struct i2c_inst_data cplm3218_data[]  = {
+        { "cm32181" },
+        { "cm32181" },
+        {}
+};
+
+/*
  * Note new device-ids must also be added to i2c_multi_instantiate_ids in
  * drivers/acpi/scan.c: acpi_device_enumeration_by_parent().
  */
 static const struct acpi_device_id i2c_multi_inst_acpi_ids[] = {
 	{ "BSG1160", (unsigned long)bsg1160_data },
 	{ "BSG2150", (unsigned long)bsg2150_data },
+	{ "CPLM3218", (unsigned long)cplm3218_data },
 	{ "INT3515", (unsigned long)int3515_data },
 	{ }
 };
