@@ -206,6 +206,8 @@ struct inode_search {
 	unsigned long ino;
 
 	struct dentry *backing_dentry;
+
+	size_t size;
 };
 
 enum parse_parameter {
@@ -364,7 +366,7 @@ static int inode_set(struct inode *inode, void *opaque)
 
 		fsstack_copy_attr_all(inode, backing_inode);
 		if (S_ISREG(inode->i_mode)) {
-			u64 size = read_size_attr(backing_dentry);
+			u64 size = search->size;
 
 			inode->i_size = size;
 			inode->i_blocks = get_blocks_count_for_size(size);
@@ -440,7 +442,8 @@ static struct inode *fetch_regular_inode(struct super_block *sb,
 	struct inode *backing_inode = d_inode(backing_dentry);
 	struct inode_search search = {
 		.ino = backing_inode->i_ino,
-		.backing_dentry = backing_dentry
+		.backing_dentry = backing_dentry,
+		.size = read_size_attr(backing_dentry),
 	};
 	struct inode *inode = iget5_locked(sb, search.ino, inode_test,
 				inode_set, &search);
@@ -812,7 +815,7 @@ static int read_single_page(struct file *f, struct page *page)
 		tmp.data = (u8 *)__get_free_pages(GFP_NOFS, get_order(tmp.len));
 		bytes_to_read = min_t(loff_t, size - offset, PAGE_SIZE);
 		read_result = incfs_read_data_file_block(
-			range(page_start, bytes_to_read), df, block_index,
+			range(page_start, bytes_to_read), f, block_index,
 			timeout_ms, tmp);
 
 		free_pages((unsigned long)tmp.data, get_order(tmp.len));
@@ -2174,7 +2177,7 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	sb->s_op = &incfs_super_ops;
 	sb->s_d_op = &incfs_dentry_ops;
 	sb->s_flags |= S_NOATIME;
-	sb->s_magic = INCFS_MAGIC_NUMBER;
+	sb->s_magic = (long)INCFS_MAGIC_NUMBER;
 	sb->s_time_gran = 1;
 	sb->s_blocksize = INCFS_DATA_FILE_BLOCK_SIZE;
 	sb->s_blocksize_bits = blksize_bits(sb->s_blocksize);
