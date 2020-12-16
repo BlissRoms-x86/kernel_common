@@ -429,7 +429,7 @@ is not associated with a file:
  [stack]                    the stack of the main process
  [vdso]                     the "virtual dynamic shared object",
                             the kernel system call handler
-[anon:<name>]               an anonymous mapping that has been
+ [anon:<name>]              an anonymous mapping that has been
                             named by userspace
  =======                    ====================================
 
@@ -464,6 +464,7 @@ Memory Area, or VMA) there is a series of lines such as the following::
     Locked:                0 kB
     THPeligible:           0
     VmFlags: rd ex mr mw me dw
+    Name: name from userspace
 
 The first of these lines shows the same information as is displayed for the
 mapping in /proc/PID/maps.  Following lines show the size of the mapping
@@ -555,6 +556,9 @@ be present in all further kernel releases. Things get changed, the flags may
 be vanished or the reverse -- new added. Interpretation of their meaning
 might change in future as well. So each consumer of these flags has to
 follow each specific kernel version for the exact semantic.
+
+The "Name" field will only be present on a mapping that has been named by
+userspace, and will show the name passed in by userspace.
 
 This file is only present if the CONFIG_MMU kernel configuration option is
 enabled.

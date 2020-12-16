@@ -44,6 +44,8 @@
 #include <linux/percpu.h>
 #include <linux/thread_info.h>
 #include <linux/prctl.h>
+#include <trace/hooks/fpsimd.h>
+#include <trace/hooks/mpam.h>
 
 #include <asm/alternative.h>
 #include <asm/arch_gicv3.h>
@@ -69,8 +71,6 @@ EXPORT_SYMBOL(__stack_chk_guard);
  */
 void (*pm_power_off)(void);
 EXPORT_SYMBOL_GPL(pm_power_off);
-
-void (*arm_pm_restart)(enum reboot_mode reboot_mode, const char *cmd);
 
 static void noinstr __cpu_do_idle(void)
 {
@@ -199,10 +199,7 @@ void machine_restart(char *cmd)
 		efi_reboot(reboot_mode, NULL);
 
 	/* Now call the architecture specific reboot code. */
-	if (arm_pm_restart)
-		arm_pm_restart(reboot_mode, cmd);
-	else
-		do_kernel_restart(cmd);
+	do_kernel_restart(cmd);
 
 	/*
 	 * Whoops - the architecture was unable to reboot.
@@ -509,6 +506,15 @@ static void entry_task_switch(struct task_struct *next)
 	__this_cpu_write(__entry_task, next);
 }
 
+static void aarch32_thread_switch(struct task_struct *next)
+{
+	struct thread_info *ti = task_thread_info(next);
+
+	if (IS_ENABLED(CONFIG_ASYMMETRIC_AARCH32) && is_compat_thread(ti) &&
+	    !cpumask_test_cpu(smp_processor_id(), &aarch32_el0_mask))
+		set_ti_thread_flag(ti, TIF_CHECK_32BIT_AFFINITY);
+}
+
 /*
  * ARM erratum 1418040 handling, affecting the 32bit view of CNTVCT.
  * Assuming the virtual counter is enabled at the beginning of times:
@@ -557,6 +563,12 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 	uao_thread_switch(next);
 	ssbs_thread_switch(next);
 	erratum_1418040_thread_switch(prev, next);
+	aarch32_thread_switch(next);
+	/*
+	 *  vendor hook is needed before the dsb(),
+	 *  because MPAM is related to cache maintenance.
+	 */
+	trace_android_vh_mpam_set(prev, next);
 
 	/*
 	 * Complete any pending TLB or cache maintenance on this CPU in case
@@ -572,6 +584,8 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 	 * registers.
 	 */
 	mte_thread_switch(next);
+
+	trace_android_vh_is_fpsimd_save(prev, next);
 
 	/* the actual thread switch */
 	last = cpu_switch_to(prev, next);
@@ -627,6 +641,13 @@ void arch_setup_new_exec(void)
 		arch_prctl_spec_ctrl_set(current, PR_SPEC_STORE_BYPASS,
 					 PR_SPEC_ENABLE);
 	}
+
+	/*
+	 * If exec'ing a 32-bit task, force the asymmetric 32-bit feature
+	 * check as the task may not go through a switch_to() call.
+	 */
+	if (IS_ENABLED(CONFIG_ASYMMETRIC_AARCH32) && is_compat_task())
+		set_thread_flag(TIF_CHECK_32BIT_AFFINITY);
 }
 
 #ifdef CONFIG_ARM64_TAGGED_ADDR_ABI

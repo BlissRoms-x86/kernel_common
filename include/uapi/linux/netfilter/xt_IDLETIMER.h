@@ -39,6 +39,11 @@
 #define NL_EVENT_TYPE_INACTIVE 0
 #define NL_EVENT_TYPE_ACTIVE 1
 
+#define NLMSG_MAX_SIZE 64
+
+#define NL_EVENT_TYPE_INACTIVE 0
+#define NL_EVENT_TYPE_ACTIVE 1
+
 struct idletimer_tg_info {
 	__u32 timeout;
 

@@ -62,6 +62,11 @@ static inline void blk_ksm_hw_exit(struct blk_keyslot_manager *ksm)
 		pm_runtime_put_sync(ksm->dev);
 }
 
+static inline bool blk_ksm_is_passthrough(struct blk_keyslot_manager *ksm)
+{
+	return ksm->num_slots == 0;
+}
+
 /**
  * blk_ksm_init() - Initialize a keyslot manager
  * @ksm: The keyslot_manager to initialize.
@@ -205,6 +210,10 @@ blk_status_t blk_ksm_get_slot_for_key(struct blk_keyslot_manager *ksm,
 	int err;
 
 	*slot_ptr = NULL;
+
+	if (blk_ksm_is_passthrough(ksm))
+		return BLK_STS_OK;
+
 	down_read(&ksm->lock);
 	slot = blk_ksm_find_and_grab_keyslot(ksm, key);
 	up_read(&ksm->lock);
@@ -302,6 +311,13 @@ bool blk_ksm_crypto_cfg_supported(struct blk_keyslot_manager *ksm,
 		return false;
 	if (ksm->max_dun_bytes_supported < cfg->dun_bytes)
 		return false;
+	if (cfg->is_hw_wrapped) {
+		if (!(ksm->features & BLK_CRYPTO_FEATURE_WRAPPED_KEYS))
+			return false;
+	} else {
+		if (!(ksm->features & BLK_CRYPTO_FEATURE_STANDARD_KEYS))
+			return false;
+	}
 	return true;
 }
 
@@ -324,6 +340,16 @@ int blk_ksm_evict_key(struct blk_keyslot_manager *ksm,
 {
 	struct blk_ksm_keyslot *slot;
 	int err = 0;
+
+	if (blk_ksm_is_passthrough(ksm)) {
+		if (ksm->ksm_ll_ops.keyslot_evict) {
+			blk_ksm_hw_enter(ksm);
+			err = ksm->ksm_ll_ops.keyslot_evict(ksm, key, -1);
+			blk_ksm_hw_exit(ksm);
+			return err;
+		}
+		return 0;
+	}
 
 	blk_ksm_hw_enter(ksm);
 	slot = blk_ksm_find_keyslot(ksm, key);
@@ -359,6 +385,9 @@ out_unlock:
 void blk_ksm_reprogram_all_keys(struct blk_keyslot_manager *ksm)
 {
 	unsigned int slot;
+
+	if (WARN_ON(blk_ksm_is_passthrough(ksm)))
+		return;
 
 	/* This is for device initialization, so don't resume the device */
 	down_write(&ksm->lock);
@@ -401,3 +430,96 @@ void blk_ksm_unregister(struct request_queue *q)
 {
 	q->ksm = NULL;
 }
+EXPORT_SYMBOL_GPL(blk_ksm_unregister);
+
+/**
+ * blk_ksm_derive_raw_secret() - Derive software secret from wrapped key
+ * @ksm: The keyslot manager
+ * @wrapped_key: The wrapped key
+ * @wrapped_key_size: Size of the wrapped key in bytes
+ * @secret: (output) the software secret
+ * @secret_size: (output) the number of secret bytes to derive
+ *
+ * Given a hardware-wrapped key, ask the hardware to derive a secret which
+ * software can use for cryptographic tasks other than inline encryption.  The
+ * derived secret is guaranteed to be cryptographically isolated from the key
+ * with which any inline encryption with this wrapped key would actually be
+ * done.  I.e., both will be derived from the unwrapped key.
+ *
+ * Return: 0 on success, -EOPNOTSUPP if hardware-wrapped keys are unsupported,
+ *	   or another -errno code.
+ */
+int blk_ksm_derive_raw_secret(struct blk_keyslot_manager *ksm,
+			      const u8 *wrapped_key,
+			      unsigned int wrapped_key_size,
+			      u8 *secret, unsigned int secret_size)
+{
+	int err;
+
+	if (ksm->ksm_ll_ops.derive_raw_secret) {
+		blk_ksm_hw_enter(ksm);
+		err = ksm->ksm_ll_ops.derive_raw_secret(ksm, wrapped_key,
+							wrapped_key_size,
+							secret, secret_size);
+		blk_ksm_hw_exit(ksm);
+	} else {
+		err = -EOPNOTSUPP;
+	}
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(blk_ksm_derive_raw_secret);
+
+/**
+ * blk_ksm_intersect_modes() - restrict supported modes by child device
+ * @parent: The keyslot manager for parent device
+ * @child: The keyslot manager for child device, or NULL
+ *
+ * Clear any crypto mode support bits in @parent that aren't set in @child.
+ * If @child is NULL, then all parent bits are cleared.
+ *
+ * Only use this when setting up the keyslot manager for a layered device,
+ * before it's been exposed yet.
+ */
+void blk_ksm_intersect_modes(struct blk_keyslot_manager *parent,
+			     const struct blk_keyslot_manager *child)
+{
+	if (child) {
+		unsigned int i;
+
+		parent->max_dun_bytes_supported =
+			min(parent->max_dun_bytes_supported,
+			    child->max_dun_bytes_supported);
+		parent->features &= child->features;
+		for (i = 0; i < ARRAY_SIZE(child->crypto_modes_supported);
+		     i++) {
+			parent->crypto_modes_supported[i] &=
+				child->crypto_modes_supported[i];
+		}
+	} else {
+		parent->max_dun_bytes_supported = 0;
+		parent->features = 0;
+		memset(parent->crypto_modes_supported, 0,
+		       sizeof(parent->crypto_modes_supported));
+	}
+}
+EXPORT_SYMBOL_GPL(blk_ksm_intersect_modes);
+
+/**
+ * blk_ksm_init_passthrough() - Init a passthrough keyslot manager
+ * @ksm: The keyslot manager to init
+ *
+ * Initialize a passthrough keyslot manager.
+ * Called by e.g. storage drivers to set up a keyslot manager in their
+ * request_queue, when the storage driver wants to manage its keys by itself.
+ * This is useful for inline encryption hardware that don't have a small fixed
+ * number of keyslots, and for layered devices.
+ *
+ * See blk_ksm_init() for more details about the parameters.
+ */
+void blk_ksm_init_passthrough(struct blk_keyslot_manager *ksm)
+{
+	memset(ksm, 0, sizeof(*ksm));
+	init_rwsem(&ksm->lock);
+}
+EXPORT_SYMBOL_GPL(blk_ksm_init_passthrough);

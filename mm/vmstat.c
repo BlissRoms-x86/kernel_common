@@ -1159,9 +1159,7 @@ const char * const vmstat_text[] = {
 	"nr_mlock",
 	"nr_page_table_pages",
 	"nr_bounce",
-#if IS_ENABLED(CONFIG_ZSMALLOC)
 	"nr_zspages",
-#endif
 	"nr_free_cma",
 
 	/* enum numa_stat_item counters */

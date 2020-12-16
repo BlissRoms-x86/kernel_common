@@ -196,6 +196,10 @@ static ssize_t idletimer_tg_show(struct device *dev,
 	if (time_after(expires, now) || ktimespec.tv_sec > 0)
 		return snprintf(buf, PAGE_SIZE, "%ld\n", time_diff);
 
+	if (timer->send_nl_msg)
+		return sprintf(buf, "0 %d\n",
+			jiffies_to_msecs(now - expires) / 1000);
+
 	return snprintf(buf, PAGE_SIZE, "0\n");
 
 	if (timer->send_nl_msg)
@@ -367,6 +371,42 @@ out_free_timer:
 	kfree(info->timer);
 out:
 	return ret;
+}
+
+static void reset_timer(const struct idletimer_tg_info *info,
+			struct sk_buff *skb)
+{
+	unsigned long now = jiffies;
+	struct idletimer_tg *timer = info->timer;
+	bool timer_prev;
+
+	spin_lock_bh(&timestamp_lock);
+	timer_prev = timer->active;
+	timer->active = true;
+	/* timer_prev is used to guard overflow problem in time_before*/
+	if (!timer_prev || time_before(timer->timer.expires, now)) {
+		pr_debug("Starting Checkentry timer (Expired, Jiffies): %lu, %lu\n",
+				timer->timer.expires, now);
+
+		/* Stores the uid resposible for waking up the radio */
+		if (skb && (skb->sk)) {
+			timer->uid = from_kuid_munged(current_user_ns(),
+					sock_i_uid(skb_to_full_sk(skb)));
+		}
+
+		/* checks if there is a pending inactive notification*/
+		if (timer->work_pending)
+			timer->delayed_timer_trigger = timer->last_modified_timer;
+		else {
+			timer->work_pending = true;
+			schedule_work(&timer->work);
+		}
+	}
+
+	timer->last_modified_timer = ktime_to_timespec64(ktime_get_boottime());
+	mod_timer(&timer->timer,
+			msecs_to_jiffies(info->timeout * 1000) + now);
+	spin_unlock_bh(&timestamp_lock);
 }
 
 static int idletimer_tg_create_v1(struct idletimer_tg_info_v1 *info)

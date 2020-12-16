@@ -341,7 +341,6 @@ struct vm_area_struct {
 	 * in the user process containing the name given to the vma, or NULL
 	 * if unnamed.
 	 */
-
 	union {
 		struct {
 			struct rb_node rb;

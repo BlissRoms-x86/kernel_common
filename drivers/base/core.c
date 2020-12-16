@@ -1409,7 +1409,7 @@ static void device_links_purge(struct device *dev)
 	device_links_write_unlock();
 }
 
-static u32 fw_devlink_flags = DL_FLAG_SYNC_STATE_ONLY;
+static u32 fw_devlink_flags = DL_FLAG_AUTOPROBE_CONSUMER;
 static int __init fw_devlink_setup(char *arg)
 {
 	if (!arg)

@@ -17,6 +17,7 @@
 #ifndef __ASSEMBLY__
 
 #include <linux/bug.h>
+#include <linux/cpumask.h>
 #include <linux/jump_label.h>
 #include <linux/kernel.h>
 
@@ -394,6 +395,8 @@ static __always_inline bool is_hyp_code(void)
 	return is_vhe_hyp_code() || is_nvhe_hyp_code();
 }
 
+extern cpumask_t aarch32_el0_mask;
+
 extern DECLARE_BITMAP(cpu_hwcaps, ARM64_NCAPS);
 extern struct static_key_false cpu_hwcap_keys[ARM64_NCAPS];
 extern struct static_key_false arm64_const_caps_ready;
@@ -609,6 +612,15 @@ static inline bool cpu_supports_mixed_endian_el0(void)
 static inline bool system_supports_32bit_el0(void)
 {
 	return cpus_have_const_cap(ARM64_HAS_32BIT_EL0);
+}
+
+static inline bool kvm_system_supports_32bit_el0(void)
+{
+#ifndef CONFIG_ASYMMETRIC_AARCH32
+	return system_supports_32bit_el0();
+#else
+	return cpumask_equal(&aarch32_el0_mask, cpu_possible_mask);
+#endif
 }
 
 static inline bool system_supports_4kb_granule(void)
