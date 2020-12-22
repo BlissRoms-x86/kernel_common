@@ -107,7 +107,11 @@ const struct linux_logo * __ref fb_find_logo(int depth)
 #ifdef CONFIG_LOGO_TERI_CLUT224
 		/* Theresa logo */
 		logo = &logo_teri_clut224;
-#endif  
+#endif
+#ifdef CONFIG_LOGO_TERI_SUPREMEGAMERS_CLUT224
+		/* Theresa + SG logo */
+		logo = &logo_teri_supremegamers_clut224;		
+#endif
 	}
 	return logo;
 }

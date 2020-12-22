@@ -17,7 +17,11 @@ config LOGO_SUPREMEGAMERS_CLUT224
 
 config LOGO_TERI_CLUT224
 	bool "224-color Theresa Apocalypse logo"
-	default n
+	default y
+
+config LOGO_TERI_SUPREMEGAMERS_CLUT224
+	bool "224-color SupremeGamers + Theresa Apocalypse logo made by Gyoo, visit the forum : https://supreme-gamers.com/"
+	default y
 	
 config FB_LOGO_EXTRA
 	bool
