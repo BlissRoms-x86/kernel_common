@@ -990,8 +990,6 @@ static void btusb_sco_disconnect(struct usb_interface *intf)
 	part needs to be checked.
 	kfree(data);
 	data = NULL; */
-
-	snd_card_free_when_closed(data->card);
 }
 
 static int btusb_sco_suspend(struct usb_interface *intf, pm_message_t message)
