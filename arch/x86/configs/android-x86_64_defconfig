@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86_64 5.10.0 Kernel Configuration
+# Linux/x86 5.10.15 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="real-x86_64-linux-android-gcc (GCC) 4.9.x 20150123 (prerelease)"
 CONFIG_CC_IS_GCC=y
@@ -6393,14 +6393,18 @@ CONFIG_USB_GADGET_STORAGE_NUM_BUFFERS=2
 # CONFIG_USB_MV_U3D is not set
 # CONFIG_USB_SNP_UDC_PLAT is not set
 # CONFIG_USB_M66592 is not set
-# CONFIG_USB_BDC_UDC is not set
-# CONFIG_USB_AMD5536UDC is not set
-# CONFIG_USB_NET2272 is not set
-# CONFIG_USB_NET2280 is not set
-# CONFIG_USB_GOKU is not set
-# CONFIG_USB_EG20T is not set
-# CONFIG_USB_GADGET_XILINX is not set
-# CONFIG_USB_MAX3420_UDC is not set
+CONFIG_USB_BDC_UDC=m
+
+#
+# Platform Support
+#
+CONFIG_USB_AMD5536UDC=m
+CONFIG_USB_NET2272=m
+CONFIG_USB_NET2272_DMA=y
+CONFIG_USB_NET2280=m
+CONFIG_USB_GOKU=m
+CONFIG_USB_EG20T=m
+CONFIG_USB_MAX3420_UDC=m
 # CONFIG_USB_DUMMY_HCD is not set
 # end of USB Peripheral Controller
 
