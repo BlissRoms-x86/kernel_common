@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 5
 PATCHLEVEL = 10
-SUBLEVEL = 18
+SUBLEVEL = 20
 EXTRAVERSION = -GoogleLTS
-NAME = Kleptomaniac Octopus
+NAME = Dare mighty things
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
