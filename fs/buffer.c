@@ -524,7 +524,7 @@ repeat:
 
 void emergency_thaw_bdev(struct super_block *sb)
 {
-	while (sb->s_bdev && !thaw_bdev(sb->s_bdev, sb))
+	while (sb->s_bdev && !thaw_bdev(sb->s_bdev))
 		printk(KERN_WARNING "Emergency Thaw on %pg\n", sb->s_bdev);
 }
 
@@ -1450,8 +1450,6 @@ static void __evict_bhs_lru(void *arg)
 				break;
 			}
 		}
-
-		bh = bh->b_this_page;
 	}
 
 	put_cpu_var(bh_lrus);
@@ -1469,8 +1467,6 @@ static bool page_has_bhs_in_lru(int cpu, void *arg)
 			if (b->bhs[i] == bh)
 				return true;
 		}
-
-		bh = bh->b_this_page;
 	}
 
 	return false;
@@ -3274,6 +3270,8 @@ drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
 		do {
 			if (buffer_busy(bh))
 				goto out;
+
+			bh = bh->b_this_page;
 		} while (bh != head);
 	}
 

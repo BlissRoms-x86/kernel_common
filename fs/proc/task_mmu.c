@@ -1274,8 +1274,11 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			for (vma = mm->mmap; vma; vma = vma->vm_next) {
 				if (!(vma->vm_flags & VM_SOFTDIRTY))
 					continue;
-				vma->vm_flags &= ~VM_SOFTDIRTY;
+				vm_write_begin(vma);
+				WRITE_ONCE(vma->vm_flags,
+					vma->vm_flags & ~VM_SOFTDIRTY);
 				vma_set_page_prot(vma);
+				vm_write_end(vma);
 			}
 
 			inc_tlb_flush_pending(mm);

@@ -5,3 +5,4 @@ obj-y					+= ion/
 
 obj-$(CONFIG_ASHMEM)			+= ashmem_linux.o
 ashmem_linux-y				+= ashmem.o
+obj-$(CONFIG_DEBUG_KINFO)	+= debug_kinfo.o
