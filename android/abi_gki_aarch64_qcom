@@ -144,6 +144,7 @@
   cfg80211_unlink_bss
   cfg80211_update_owe_info_event
   cfg80211_vendor_cmd_reply
+  __cfi_slowpath
   cgroup_path_ns
   cgroup_taskset_first
   cgroup_taskset_next
@@ -2351,8 +2352,10 @@
   __tracepoint_android_vh_show_max_freq
   __tracepoint_android_vh_show_resume_epoch_val
   __tracepoint_android_vh_show_suspend_epoch_val
+  __tracepoint_android_vh_timer_calc_index
   __tracepoint_binder_transaction_received
   __tracepoint_cpu_frequency
+  __tracepoint_cpu_frequency_limits
   __tracepoint_cpu_idle
   __tracepoint_ipi_entry
   __tracepoint_ipi_raise

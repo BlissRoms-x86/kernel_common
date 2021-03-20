@@ -38,6 +38,8 @@
 #include <trace/hooks/iommu.h>
 #include <trace/hooks/thermal.h>
 #include <trace/hooks/ufshcd.h>
+#include <trace/hooks/cgroup.h>
+#include <trace/hooks/sys.h>
 
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
@@ -172,3 +174,8 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_do_wake_up_sync);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_set_wake_flags);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_uclamp_eff_value);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_cpufreq_transition);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cgroup_set_task);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_syscall_prctl_finished);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_alter_mutex_list_add);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_mutex_unlock_slowpath);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_rwsem_wake_finish);
