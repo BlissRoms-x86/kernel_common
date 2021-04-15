@@ -885,6 +885,13 @@ static inline int acpi_device_modalias(struct device *dev,
 	return -ENODEV;
 }
 
+static inline struct platform_device *
+acpi_create_platform_device(struct acpi_device *adev,
+			    struct property_entry *properties)
+{
+	return NULL;
+}
+
 static inline bool acpi_dma_supported(struct acpi_device *adev)
 {
 	return false;
@@ -1065,18 +1072,24 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
 #if defined(CONFIG_ACPI) && defined(CONFIG_GPIOLIB)
 bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
 				struct acpi_resource_gpio **agpio);
-int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index);
+int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
 #else
 static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
 					      struct acpi_resource_gpio **agpio)
 {
 	return false;
 }
-static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
+static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
+					   const char *name, int index)
 {
 	return -ENXIO;
 }
 #endif
+
+static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
+{
+	return acpi_dev_gpio_irq_get_by(adev, NULL, index);
+}
 
 /* Device properties */
 

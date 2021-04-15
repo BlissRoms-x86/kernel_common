@@ -382,6 +382,9 @@ static const struct usb_audio_device_name usb_audio_names[] = {
 	/* ASUS ROG Strix */
 	PROFILE_NAME(0x0b05, 0x1917,
 		     "Realtek", "ALC1220-VB-DT", "Realtek-ALC1220-VB-Desktop"),
+	/* ASUS PRIME TRX40 PRO-S */
+	PROFILE_NAME(0x0b05, 0x1918,
+		     "Realtek", "ALC1220-VB-DT", "Realtek-ALC1220-VB-Desktop"),
 
 	/* Dell WD15 Dock */
 	PROFILE_NAME(0x0bda, 0x4014, "Dell", "WD15 Dock", "Dell-WD15-Dock"),
@@ -827,6 +830,9 @@ static int usb_audio_probe(struct usb_interface *intf,
 		snd_media_device_create(chip, intf);
 	}
 
+	if (quirk)
+		chip->quirk_type = quirk->type;
+
 	usb_chip[chip->index] = chip;
 	chip->intf[chip->num_interfaces] = intf;
 	chip->num_interfaces++;
@@ -900,6 +906,9 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 			snd_usb_mixer_disconnect(mixer);
 		}
 	}
+
+	if (chip->quirk_type & QUIRK_SETUP_DISABLE_AUTOSUSPEND)
+		usb_enable_autosuspend(interface_to_usbdev(intf));
 
 	chip->num_interfaces--;
 	if (chip->num_interfaces <= 0) {

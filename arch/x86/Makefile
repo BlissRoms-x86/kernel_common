@@ -61,6 +61,9 @@ KBUILD_CFLAGS += $(call cc-option,-mno-avx,)
 # with nonstandard options
 KBUILD_CFLAGS += -fno-pic
 
+# Intel CET isn't enabled in the kernel
+KBUILD_CFLAGS += $(call cc-option,-fcf-protection=none)
+
 ifeq ($(CONFIG_X86_32),y)
         BITS := 32
         UTS_MACHINE := i386

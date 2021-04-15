@@ -2198,37 +2198,6 @@ int ath11k_wmi_send_scan_start_cmd(struct ath11k *ar,
 		}
 	}
 
-	len = params->num_hint_s_ssid * sizeof(struct hint_short_ssid);
-	tlv = ptr;
-	tlv->header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_ARRAY_FIXED_STRUCT) |
-		      FIELD_PREP(WMI_TLV_LEN, len);
-	ptr += TLV_HDR_SIZE;
-	if (params->num_hint_s_ssid) {
-		s_ssid = ptr;
-		for (i = 0; i < params->num_hint_s_ssid; ++i) {
-			s_ssid->freq_flags = params->hint_s_ssid[i].freq_flags;
-			s_ssid->short_ssid = params->hint_s_ssid[i].short_ssid;
-			s_ssid++;
-		}
-	}
-	ptr += len;
-
-	len = params->num_hint_bssid * sizeof(struct hint_bssid);
-	tlv = ptr;
-	tlv->header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_ARRAY_FIXED_STRUCT) |
-		      FIELD_PREP(WMI_TLV_LEN, len);
-	ptr += TLV_HDR_SIZE;
-	if (params->num_hint_bssid) {
-		hint_bssid = ptr;
-		for (i = 0; i < params->num_hint_bssid; ++i) {
-			hint_bssid->freq_flags =
-				params->hint_bssid[i].freq_flags;
-			ether_addr_copy(&params->hint_bssid[i].bssid.addr[0],
-					&hint_bssid->bssid.addr[0]);
-			hint_bssid++;
-		}
-	}
-
 	ret = ath11k_wmi_cmd_send(wmi, skb,
 				  WMI_START_SCAN_CMDID);
 	if (ret) {
@@ -5563,15 +5532,26 @@ static int ath11k_ready_event(struct ath11k_base *ab, struct sk_buff *skb)
 static void ath11k_peer_delete_resp_event(struct ath11k_base *ab, struct sk_buff *skb)
 {
 	struct wmi_peer_delete_resp_event peer_del_resp;
+	struct ath11k *ar;
 
 	if (ath11k_pull_peer_del_resp_ev(ab, skb, &peer_del_resp) != 0) {
 		ath11k_warn(ab, "failed to extract peer delete resp");
 		return;
 	}
 
-	/* TODO: Do we need to validate whether ath11k_peer_find() return NULL
-	 *	 Why this is needed when there is HTT event for peer delete
-	 */
+	rcu_read_lock();
+	ar = ath11k_mac_get_ar_by_vdev_id(ab, peer_del_resp.vdev_id);
+	if (!ar) {
+		ath11k_warn(ab, "invalid vdev id in peer delete resp ev %d",
+			    peer_del_resp.vdev_id);
+		rcu_read_unlock();
+		return;
+	}
+
+	complete(&ar->peer_delete_done);
+	rcu_read_unlock();
+	ath11k_dbg(ab, ATH11K_DBG_WMI, "peer delete resp for vdev id %d addr %pM\n",
+		   peer_del_resp.vdev_id, peer_del_resp.peer_macaddr.addr);
 }
 
 static inline const char *ath11k_wmi_vdev_resp_print(u32 vdev_resp_status)
