@@ -13,13 +13,23 @@
 struct tcpci;
 struct tcpci_data;
 
+#ifndef TYPEC_TIMER
+#define TYPEC_TIMER
+enum typec_timer {
+	SINK_WAIT_CAP,
+	SOURCE_OFF,
+	CC_DEBOUNCE,
+	SINK_DISCOVERY_BC12,
+};
+#endif
+
 DECLARE_HOOK(android_vh_typec_tcpci_override_toggling,
 	TP_PROTO(struct tcpci *tcpci, struct tcpci_data *data, int *override_toggling),
 	TP_ARGS(tcpci, data, override_toggling));
 
-DECLARE_HOOK(android_vh_typec_tcpci_check_contaminant,
+DECLARE_RESTRICTED_HOOK(android_rvh_typec_tcpci_chk_contaminant,
 	TP_PROTO(struct tcpci *tcpci, struct tcpci_data *data, int *ret),
-	TP_ARGS(tcpci, data, ret));
+	TP_ARGS(tcpci, data, ret), 1);
 
 /*
  * This hook is for addressing hardware anomalies where TCPC_POWER_STATUS_VBUS_PRES bit can return 0
@@ -28,9 +38,13 @@ DECLARE_HOOK(android_vh_typec_tcpci_check_contaminant,
  * function.
  * Handler can set vbus or clear vbus to indicate vbus present or absent
  */
-DECLARE_HOOK(android_vh_typec_tcpci_get_vbus,
+DECLARE_RESTRICTED_HOOK(android_rvh_typec_tcpci_get_vbus,
 	TP_PROTO(struct tcpci *tcpci, struct tcpci_data *data, int *vbus, int *bypass),
-	TP_ARGS(tcpci, data, vbus, bypass));
+	TP_ARGS(tcpci, data, vbus, bypass), 1);
+
+DECLARE_HOOK(android_vh_typec_tcpm_get_timer,
+	TP_PROTO(const char *state, enum typec_timer timer, unsigned int *msecs),
+	TP_ARGS(state, timer, msecs));
 
 #endif /* _TRACE_HOOK_UFSHCD_H */
 /* This part must be outside protection */
