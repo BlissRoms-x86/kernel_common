@@ -62,7 +62,7 @@ static ssize_t rpm_lvl_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%d\n", hba->rpm_lvl);
+	return sysfs_emit(buf, "%d\n", hba->rpm_lvl);
 }
 
 static ssize_t rpm_lvl_store(struct device *dev,
@@ -76,7 +76,7 @@ static ssize_t rpm_target_dev_state_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%s\n", ufschd_ufs_dev_pwr_mode_to_string(
+	return sysfs_emit(buf, "%s\n", ufschd_ufs_dev_pwr_mode_to_string(
 			ufs_pm_lvl_states[hba->rpm_lvl].dev_state));
 }
 
@@ -85,7 +85,7 @@ static ssize_t rpm_target_link_state_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%s\n", ufschd_uic_link_state_to_string(
+	return sysfs_emit(buf, "%s\n", ufschd_uic_link_state_to_string(
 			ufs_pm_lvl_states[hba->rpm_lvl].link_state));
 }
 
@@ -94,7 +94,7 @@ static ssize_t spm_lvl_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%d\n", hba->spm_lvl);
+	return sysfs_emit(buf, "%d\n", hba->spm_lvl);
 }
 
 static ssize_t spm_lvl_store(struct device *dev,
@@ -108,7 +108,7 @@ static ssize_t spm_target_dev_state_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%s\n", ufschd_ufs_dev_pwr_mode_to_string(
+	return sysfs_emit(buf, "%s\n", ufschd_ufs_dev_pwr_mode_to_string(
 				ufs_pm_lvl_states[hba->spm_lvl].dev_state));
 }
 
@@ -117,7 +117,7 @@ static ssize_t spm_target_link_state_show(struct device *dev,
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%s\n", ufschd_uic_link_state_to_string(
+	return sysfs_emit(buf, "%s\n", ufschd_uic_link_state_to_string(
 				ufs_pm_lvl_states[hba->spm_lvl].link_state));
 }
 
@@ -160,7 +160,7 @@ static ssize_t auto_hibern8_show(struct device *dev,
 	ufshcd_release(hba);
 	pm_runtime_put_sync(hba->dev);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", ufshcd_ahit_to_us(ahit));
+	return sysfs_emit(buf, "%d\n", ufshcd_ahit_to_us(ahit));
 }
 
 static ssize_t auto_hibern8_store(struct device *dev,
@@ -207,6 +207,242 @@ static const struct attribute_group ufs_sysfs_default_group = {
 	.attrs = ufs_sysfs_ufshcd_attrs,
 };
 
+static ssize_t monitor_enable_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%d\n", hba->monitor.enabled);
+}
+
+static ssize_t monitor_enable_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	unsigned long value, flags;
+
+	if (kstrtoul(buf, 0, &value))
+		return -EINVAL;
+
+	value = !!value;
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	if (value == hba->monitor.enabled)
+		goto out_unlock;
+
+	if (!value) {
+		memset(&hba->monitor, 0, sizeof(hba->monitor));
+	} else {
+		hba->monitor.enabled = true;
+		hba->monitor.enabled_ts = ktime_get();
+	}
+
+out_unlock:
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	return count;
+}
+
+static ssize_t monitor_chunk_size_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%lu\n", hba->monitor.chunk_size);
+}
+
+static ssize_t monitor_chunk_size_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	unsigned long value, flags;
+
+	if (kstrtoul(buf, 0, &value))
+		return -EINVAL;
+
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	/* Only allow chunk size change when monitor is disabled */
+	if (!hba->monitor.enabled)
+		hba->monitor.chunk_size = value;
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	return count;
+}
+
+static ssize_t read_total_sectors_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%lu\n", hba->monitor.nr_sec_rw[READ]);
+}
+
+static ssize_t read_total_busy_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.total_busy[READ]));
+}
+
+static ssize_t read_nr_requests_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%lu\n", hba->monitor.nr_req[READ]);
+}
+
+static ssize_t read_req_latency_avg_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_hba_monitor *m = &hba->monitor;
+
+	return sysfs_emit(buf, "%llu\n", div_u64(ktime_to_us(m->lat_sum[READ]),
+						 m->nr_req[READ]));
+}
+
+static ssize_t read_req_latency_max_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_max[READ]));
+}
+
+static ssize_t read_req_latency_min_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_min[READ]));
+}
+
+static ssize_t read_req_latency_sum_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_sum[READ]));
+}
+
+static ssize_t write_total_sectors_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%lu\n", hba->monitor.nr_sec_rw[WRITE]);
+}
+
+static ssize_t write_total_busy_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.total_busy[WRITE]));
+}
+
+static ssize_t write_nr_requests_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%lu\n", hba->monitor.nr_req[WRITE]);
+}
+
+static ssize_t write_req_latency_avg_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_hba_monitor *m = &hba->monitor;
+
+	return sysfs_emit(buf, "%llu\n", div_u64(ktime_to_us(m->lat_sum[WRITE]),
+						 m->nr_req[WRITE]));
+}
+
+static ssize_t write_req_latency_max_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_max[WRITE]));
+}
+
+static ssize_t write_req_latency_min_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_min[WRITE]));
+}
+
+static ssize_t write_req_latency_sum_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%llu\n",
+			  ktime_to_us(hba->monitor.lat_sum[WRITE]));
+}
+
+static DEVICE_ATTR_RW(monitor_enable);
+static DEVICE_ATTR_RW(monitor_chunk_size);
+static DEVICE_ATTR_RO(read_total_sectors);
+static DEVICE_ATTR_RO(read_total_busy);
+static DEVICE_ATTR_RO(read_nr_requests);
+static DEVICE_ATTR_RO(read_req_latency_avg);
+static DEVICE_ATTR_RO(read_req_latency_max);
+static DEVICE_ATTR_RO(read_req_latency_min);
+static DEVICE_ATTR_RO(read_req_latency_sum);
+static DEVICE_ATTR_RO(write_total_sectors);
+static DEVICE_ATTR_RO(write_total_busy);
+static DEVICE_ATTR_RO(write_nr_requests);
+static DEVICE_ATTR_RO(write_req_latency_avg);
+static DEVICE_ATTR_RO(write_req_latency_max);
+static DEVICE_ATTR_RO(write_req_latency_min);
+static DEVICE_ATTR_RO(write_req_latency_sum);
+
+static struct attribute *ufs_sysfs_monitor_attrs[] = {
+	&dev_attr_monitor_enable.attr,
+	&dev_attr_monitor_chunk_size.attr,
+	&dev_attr_read_total_sectors.attr,
+	&dev_attr_read_total_busy.attr,
+	&dev_attr_read_nr_requests.attr,
+	&dev_attr_read_req_latency_avg.attr,
+	&dev_attr_read_req_latency_max.attr,
+	&dev_attr_read_req_latency_min.attr,
+	&dev_attr_read_req_latency_sum.attr,
+	&dev_attr_write_total_sectors.attr,
+	&dev_attr_write_total_busy.attr,
+	&dev_attr_write_nr_requests.attr,
+	&dev_attr_write_req_latency_avg.attr,
+	&dev_attr_write_req_latency_max.attr,
+	&dev_attr_write_req_latency_min.attr,
+	&dev_attr_write_req_latency_sum.attr,
+	NULL
+};
+
+static const struct attribute_group ufs_sysfs_monitor_group = {
+	.name = "monitor",
+	.attrs = ufs_sysfs_monitor_attrs,
+};
+
 static ssize_t ufs_sysfs_read_desc_param(struct ufs_hba *hba,
 				  enum desc_idn desc_id,
 				  u8 desc_index,
@@ -228,18 +464,18 @@ static ssize_t ufs_sysfs_read_desc_param(struct ufs_hba *hba,
 		return -EINVAL;
 	switch (param_size) {
 	case 1:
-		ret = sprintf(sysfs_buf, "0x%02X\n", *desc_buf);
+		ret = sysfs_emit(sysfs_buf, "0x%02X\n", *desc_buf);
 		break;
 	case 2:
-		ret = sprintf(sysfs_buf, "0x%04X\n",
+		ret = sysfs_emit(sysfs_buf, "0x%04X\n",
 			get_unaligned_be16(desc_buf));
 		break;
 	case 4:
-		ret = sprintf(sysfs_buf, "0x%08X\n",
+		ret = sysfs_emit(sysfs_buf, "0x%08X\n",
 			get_unaligned_be32(desc_buf));
 		break;
 	case 8:
-		ret = sprintf(sysfs_buf, "0x%016llX\n",
+		ret = sysfs_emit(sysfs_buf, "0x%016llX\n",
 			get_unaligned_be64(desc_buf));
 		break;
 	}
@@ -604,7 +840,7 @@ static ssize_t _name##_show(struct device *dev,				\
 				      SD_ASCII_STD);			\
 	if (ret < 0)							\
 		goto out;						\
-	ret = snprintf(buf, PAGE_SIZE, "%s\n", desc_buf);		\
+	ret = sysfs_emit(buf, "%s\n", desc_buf);		\
 out:									\
 	pm_runtime_put_sync(hba->dev);					\
 	kfree(desc_buf);						\
@@ -654,7 +890,7 @@ static ssize_t _name##_show(struct device *dev,				\
 	pm_runtime_put_sync(hba->dev);					\
 	if (ret)							\
 		return -EINVAL;						\
-	return sprintf(buf, "%s\n", flag ? "true" : "false"); \
+	return sysfs_emit(buf, "%s\n", flag ? "true" : "false");	\
 }									\
 static DEVICE_ATTR_RO(_name)
 
@@ -712,7 +948,7 @@ static ssize_t _name##_show(struct device *dev,				\
 	pm_runtime_put_sync(hba->dev);					\
 	if (ret)							\
 		return -EINVAL;						\
-	return sprintf(buf, "0x%08X\n", value);				\
+	return sysfs_emit(buf, "0x%08X\n", value);			\
 }									\
 static DEVICE_ATTR_RO(_name)
 
@@ -769,6 +1005,7 @@ static const struct attribute_group ufs_sysfs_attributes_group = {
 
 static const struct attribute_group *ufs_sysfs_groups[] = {
 	&ufs_sysfs_default_group,
+	&ufs_sysfs_monitor_group,
 	&ufs_sysfs_device_descriptor_group,
 	&ufs_sysfs_interconnect_descriptor_group,
 	&ufs_sysfs_geometry_descriptor_group,
@@ -852,7 +1089,7 @@ static ssize_t dyn_cap_needed_attribute_show(struct device *dev,
 	pm_runtime_put_sync(hba->dev);
 	if (ret)
 		return -EINVAL;
-	return sprintf(buf, "0x%08X\n", value);
+	return sysfs_emit(buf, "0x%08X\n", value);
 }
 static DEVICE_ATTR_RO(dyn_cap_needed_attribute);
 

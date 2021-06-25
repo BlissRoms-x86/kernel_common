@@ -2728,12 +2728,19 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	struct inode *inode = mapping->host;
 	pgoff_t offset = vmf->pgoff;
 	pgoff_t max_off;
-	struct page *page;
+	struct page *page = NULL;
 	vm_fault_t ret = 0;
+	bool retry = false;
 
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(offset >= max_off))
 		return VM_FAULT_SIGBUS;
+
+	trace_android_vh_filemap_fault_get_page(vmf, &page, &retry);
+	if (unlikely(retry))
+		goto out_retry;
+	if (unlikely(page))
+		goto page_ok;
 
 	/*
 	 * Do we have something in the page cache already?
@@ -2790,6 +2797,7 @@ retry_find:
 		goto out_retry;
 	}
 
+page_ok:
 	/*
 	 * Found the page and have a reference on it.
 	 * We must recheck i_size under page lock.
@@ -2835,8 +2843,10 @@ out_retry:
 	 * re-find the vma and come back and find our hopefully still populated
 	 * page.
 	 */
-	if (page)
+	if (page) {
+		trace_android_vh_filemap_fault_cache_page(vmf, page);
 		put_page(page);
+	}
 	if (fpin)
 		fput(fpin);
 	return ret | VM_FAULT_RETRY;
@@ -2864,6 +2874,11 @@ static bool filemap_map_pmd(struct vm_fault *vmf, struct page *page)
 	}
 
 	if (pmd_none(*vmf->pmd)) {
+		if (vmf->flags & FAULT_FLAG_SPECULATIVE) {
+			unlock_page(page);
+			put_page(page);
+			return true;
+		}
 		vmf->ptl = pmd_lock(mm, vmf->pmd);
 		if (likely(pmd_none(*vmf->pmd))) {
 			mm_inc_nr_ptes(mm);
@@ -2942,6 +2957,14 @@ static inline struct page *next_map_page(struct address_space *mapping,
 				  mapping, xas, end_pgoff);
 }
 
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+bool filemap_allow_speculation(void)
+{
+	return true;
+}
+EXPORT_SYMBOL_GPL(filemap_allow_speculation);
+#endif
+
 vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 			     pgoff_t start_pgoff, pgoff_t end_pgoff)
 {
@@ -2961,12 +2984,22 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 		goto out;
 
 	if (filemap_map_pmd(vmf, head)) {
+		if (pmd_none(*vmf->pmd) &&
+				vmf->flags & FAULT_FLAG_SPECULATIVE) {
+			ret = VM_FAULT_RETRY;
+			goto out;
+		}
+
 		ret = VM_FAULT_NOPAGE;
 		goto out;
 	}
 
 	addr = vma->vm_start + ((start_pgoff - vma->vm_pgoff) << PAGE_SHIFT);
-	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, addr, &vmf->ptl);
+	if (!pte_map_lock_addr(vmf, addr)) {
+		ret = VM_FAULT_RETRY;
+		goto out;
+	}
+
 	do {
 		page = find_subpage(head, xas.xa_index);
 		if (PageHWPoison(page))
@@ -3033,6 +3066,9 @@ const struct vm_operations_struct generic_file_vm_ops = {
 	.fault		= filemap_fault,
 	.map_pages	= filemap_map_pages,
 	.page_mkwrite	= filemap_page_mkwrite,
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+	.allow_speculation = filemap_allow_speculation,
+#endif
 };
 
 /* This is used for a general mmap of a disk file */
