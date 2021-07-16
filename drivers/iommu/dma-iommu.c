@@ -217,9 +217,11 @@ resv_iova:
 			lo = iova_pfn(iovad, start);
 			hi = iova_pfn(iovad, end);
 			reserve_iova(iovad, lo, hi);
-		} else {
+		} else if (end < start) {
 			/* dma_ranges list should be sorted */
-			dev_err(&dev->dev, "Failed to reserve IOVA\n");
+			dev_err(&dev->dev,
+				"Failed to reserve IOVA [%pa-%pa]\n",
+				&start, &end);
 			return -EINVAL;
 		}
 
@@ -434,9 +436,9 @@ static int dma_info_to_prot(enum dma_data_direction dir, bool coherent,
 	if (attrs & DMA_ATTR_PRIVILEGED)
 		prot |= IOMMU_PRIV;
 	if (attrs & DMA_ATTR_SYS_CACHE_ONLY)
-		prot |= IOMMU_SYS_CACHE_ONLY;
+		prot |= IOMMU_SYS_CACHE;
 	if (attrs & DMA_ATTR_SYS_CACHE_ONLY_NWA)
-		prot |= IOMMU_SYS_CACHE_ONLY_NWA;
+		prot |= IOMMU_SYS_CACHE_NWA;
 
 	switch (dir) {
 	case DMA_BIDIRECTIONAL:
@@ -487,7 +489,7 @@ static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 		iova = alloc_iova_fast(iovad, iova_len, dma_limit >> shift,
 				       true);
 
-	trace_android_vh_iommu_alloc_iova(dev, iova, size);
+	trace_android_vh_iommu_alloc_iova(dev, (dma_addr_t)iova << shift, size);
 
 	return (dma_addr_t)iova << shift;
 }

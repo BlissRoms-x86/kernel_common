@@ -90,6 +90,8 @@
 #include <linux/seq_file.h>
 #include <linux/export.h>
 
+#include <trace/hooks/ipv6.h>
+
 #define	INFINITY_LIFE_TIME	0xFFFFFFFF
 
 #define IPV6_MAX_STRLEN \
@@ -3344,6 +3346,7 @@ static void addrconf_addr_gen(struct inet6_dev *idev, bool prefix_route)
 static void addrconf_dev_config(struct net_device *dev)
 {
 	struct inet6_dev *idev;
+	bool ret = false;
 
 	ASSERT_RTNL();
 
@@ -3369,6 +3372,10 @@ static void addrconf_dev_config(struct net_device *dev)
 
 	idev = addrconf_add_dev(dev);
 	if (IS_ERR(idev))
+		return;
+
+	trace_android_vh_ipv6_gen_linklocal_addr(dev, &ret);
+	if (ret)
 		return;
 
 	/* this device type has no EUI support */
@@ -5821,7 +5828,7 @@ static int inet6_set_link_af(struct net_device *dev, const struct nlattr *nla)
 		return -EAFNOSUPPORT;
 
 	if (nla_parse_nested_deprecated(tb, IFLA_INET6_MAX, nla, NULL, NULL) < 0)
-		BUG();
+		return -EINVAL;
 
 	if (tb[IFLA_INET6_TOKEN]) {
 		err = inet6_set_iftoken(idev, nla_data(tb[IFLA_INET6_TOKEN]));
