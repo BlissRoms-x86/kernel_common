@@ -158,3 +158,6 @@ x509.genkey
 sphinx_*/
 
 configs
+/prebuilts/*
+/configs/*
+
