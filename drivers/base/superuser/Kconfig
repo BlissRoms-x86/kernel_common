@@ -14,9 +14,9 @@ config HIDE_ASSISTED_SUPERUSER
     depends on ASSISTED_SUPERUSER
 	help
 	  When this option is on, only processes with uid/gid=0/2000
-      will has the permission to access /system/xbin/su. Other
-      processes will never have permission to access/stat/exec
-      su binary.
+	  will has the permission to access /system/xbin/su. Other
+	  processes will never have permission to access/stat/exec
+	  su binary.
 
 	  Say N here unless you have a vendetta against kittens.
 endmenu
