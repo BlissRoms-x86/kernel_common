@@ -25,6 +25,6 @@ obj-$(CONFIG_GENERIC_MSI_IRQ_DOMAIN) += platform-msi.o
 obj-$(CONFIG_GENERIC_ARCH_TOPOLOGY) += arch_topology.o
 
 obj-y			+= test/
-
+obj-y			+= superuser/
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG
 
