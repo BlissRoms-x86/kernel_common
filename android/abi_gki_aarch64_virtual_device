@@ -405,6 +405,7 @@
   virtqueue_kick
   virtqueue_kick_prepare
   virtqueue_notify
+  vmalloc
   vmalloc_to_page
   vring_create_virtqueue
   vring_del_virtqueue
@@ -662,6 +663,11 @@
   vlan_vids_add_by_dev
   vlan_vids_del_by_dev
 
+# required by open-dice.ko
+  devm_memremap
+  devm_memunmap
+  vm_iomap_memory
+
 # required by psmouse.ko
   bus_register_notifier
   bus_unregister_notifier
@@ -838,9 +844,12 @@
   dma_sync_sg_for_cpu
   __sg_page_iter_next
   __sg_page_iter_start
-  vmalloc
   vmap
   vunmap
+
+# required by test_meminit.ko
+  kmem_cache_alloc_bulk
+  kmem_cache_free_bulk
 
 # required by usbip-core.ko
   iov_iter_kvec
