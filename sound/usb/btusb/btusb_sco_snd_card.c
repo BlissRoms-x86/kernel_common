@@ -101,6 +101,7 @@ static const struct usb_device_id btusb_sco_table[] = {
 	{ USB_DEVICE(0x8087, 0x0a2b), .driver_info = BTUSB_INTEL_NEW },
 	{ USB_DEVICE(0x8087, 0x0aaa), .driver_info = BTUSB_INTEL_NEW },
 	{ USB_DEVICE(0x8087, 0x0aa7), .driver_info = BTUSB_INTEL_NEW },
+	{ USB_DEVICE(0x8087, 0x0033), .driver_info = BTUSB_INTEL_NEW },
 	{ }	/* Terminating entry */
 };
 
