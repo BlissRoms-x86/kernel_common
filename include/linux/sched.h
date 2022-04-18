@@ -1356,9 +1356,7 @@ struct task_struct {
 #endif
 #endif
 
-#if IS_ENABLED(CONFIG_KUNIT)
 	struct kunit			*kunit_test;
-#endif
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	/* Index of current stored address in ret_stack: */
