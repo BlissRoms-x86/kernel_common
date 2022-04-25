@@ -5062,7 +5062,6 @@ vm_fault_t do_handle_mm_fault(struct vm_area_struct *vma,
 		unsigned long seq, struct pt_regs *regs)
 {
 	vm_fault_t ret;
-	bool nonseq_fault = !(vma->vm_flags & VM_SEQ_READ);
 
 	VM_BUG_ON((flags & FAULT_FLAG_SPECULATIVE) &&
 		  !vma_can_speculate(vma, flags));
@@ -5087,18 +5086,12 @@ vm_fault_t do_handle_mm_fault(struct vm_area_struct *vma,
 	if (flags & FAULT_FLAG_USER)
 		mem_cgroup_enter_user_fault();
 
-	if (nonseq_fault)
-		task_enter_nonseq_fault();
-
 	if (unlikely(is_vm_hugetlb_page(vma))) {
 		VM_BUG_ON(flags & FAULT_FLAG_SPECULATIVE);
 		ret = hugetlb_fault(vma->vm_mm, vma, address, flags);
 	} else {
 		ret = __handle_mm_fault(vma, address, flags, seq);
 	}
-
-	if (nonseq_fault)
-		task_exit_nonseq_fault();
 
 	if (flags & FAULT_FLAG_USER) {
 		mem_cgroup_exit_user_fault();
