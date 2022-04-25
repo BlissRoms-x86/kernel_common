@@ -297,7 +297,6 @@ enum lruvec_flags {
 };
 
 struct lruvec;
-struct page_vma_mapped_walk;
 
 #define LRU_GEN_MASK		((BIT(LRU_GEN_WIDTH) - 1) << LRU_GEN_PGOFF)
 #define LRU_REFS_MASK		((BIT(LRU_REFS_WIDTH) - 1) << LRU_REFS_PGOFF)
@@ -396,7 +395,6 @@ struct mm_walk_args {
 
 void lru_gen_init_state(struct mem_cgroup *memcg, struct lruvec *lruvec);
 void lru_gen_change_state(bool enable, bool main, bool swap);
-void lru_gen_look_around(struct page_vma_mapped_walk *pvmw);
 
 #ifdef CONFIG_MEMCG
 void lru_gen_init_memcg(struct mem_cgroup *memcg);
@@ -410,10 +408,6 @@ static inline void lru_gen_init_state(struct mem_cgroup *memcg, struct lruvec *l
 }
 
 static inline void lru_gen_change_state(bool enable, bool main, bool swap)
-{
-}
-
-static inline void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 {
 }
 
@@ -1037,9 +1031,6 @@ typedef struct pglist_data {
 
 	unsigned long		flags;
 
-#ifdef CONFIG_LRU_GEN
-	struct mm_walk_args	mm_walk_args;
-#endif
 	ZONE_PADDING(_pad2_)
 
 	/* Per-node vmstats */
