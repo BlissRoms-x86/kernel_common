@@ -24,6 +24,8 @@ config DEBUG_KINFO
 	   - Page directory pointer
 	   - UTS_RELEASE
 	   - BUILD_INFO(ro.build.fingerprint)
+		 
+source "drivers/staging/android/ion/Kconfig"
 
 endif # if ANDROID
 
