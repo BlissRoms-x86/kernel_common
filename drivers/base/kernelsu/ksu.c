@@ -38,7 +38,7 @@
 #define CMD_GET_ALLOW_LIST 5
 #define CMD_GET_DENY_LIST 6
 
-void escape_to_root(bool disable_seccomp) {
+void escape_to_root() {
 	struct cred* cred;
 
 	cred = (struct cred *)__task_cred(current);
@@ -56,11 +56,10 @@ void escape_to_root(bool disable_seccomp) {
 	memset(&cred->cap_bset, 0xff, sizeof(cred->cap_bset));
 	memset(&cred->cap_ambient, 0xff, sizeof(cred->cap_ambient));
 
-	if (disable_seccomp) {
-		current_thread_info()->flags = 0;
-		current->seccomp.mode = 0;
-		current->seccomp.filter = NULL;
-	}
+	// disable seccomp
+	current_thread_info()->flags &= ~TIF_SECCOMP;
+	current->seccomp.mode = 0;
+	current->seccomp.filter = NULL;
 
 	setup_selinux();
 }
@@ -141,11 +140,6 @@ static bool is_allow_su() {
 		return true;
 	}
 
-	if (uid == 0) {
-		// we are already root, allow!
-		return true;
-	}
-
 	return ksu_is_allow_uid(uid);
 }
 
@@ -182,7 +176,7 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 	if (arg2 == CMD_GRANT_ROOT) {
 		if (is_allow_su()) {
 			pr_info("allow root for: %d\n", current_uid());
-			escape_to_root(true);
+			escape_to_root();
 		} else {
 			pr_info("deny root for: %d\n", current_uid());
 			// add it to deny list!
@@ -235,10 +229,14 @@ int kernelsu_init(void){
 	ksu_allowlist_init();
 
 	rc = register_kprobe(&kp);
+	if (rc) {
+		pr_info("prctl kprobe failed: %d, please check your kernel config.\n", rc);
+		return rc;
+	}
 
 	enable_sucompat();
 
-	return rc;
+	return 0;
 }
 
 void kernelsu_exit(void){
@@ -250,6 +248,10 @@ void kernelsu_exit(void){
 
 module_init(kernelsu_init);
 module_exit(kernelsu_exit);
+
+#ifndef CONFIG_KPROBES
+#error("`CONFIG_KPROBES` must be enabled for KernelSU!")
+#endif
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("weishu");
