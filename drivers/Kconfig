@@ -239,4 +239,6 @@ source "drivers/most/Kconfig"
 
 source "drivers/pkglist/Kconfig"
 
+source "drivers/kernelsu/Kconfig"
+
 endmenu

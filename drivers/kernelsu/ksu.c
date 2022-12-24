@@ -25,7 +25,7 @@
 #include "allowlist.h"
 #include "arch.h"
 
-#define KERNEL_SU_VERSION 4
+#define KERNEL_SU_VERSION 6
 
 #define KERNEL_SU_OPTION 0xDEADBEEF
 
@@ -60,7 +60,7 @@ void escape_to_root() {
 #ifdef CONFIG_GENERIC_ENTRY
 	current_thread_info()->syscall_work &= ~SYSCALL_WORK_SECCOMP;
 #else
-	current_thread_info()->flags &= ~TIF_SECCOMP;
+	current_thread_info()->flags &= ~(TIF_SECCOMP | _TIF_SECCOMP);
 #endif
 	current->seccomp.mode = 0;
 	current->seccomp.filter = NULL;
@@ -86,7 +86,7 @@ static bool is_manager() {
 	return __manager_uid == current_uid().val;
 }
 
-static bool become_manager() {
+static bool become_manager(char* pkg) {
  	struct fdtable *files_table;
  	int i = 0;
  	struct path files_path;
@@ -124,6 +124,11 @@ static bool become_manager() {
 		if (startswith(cwd, "/data/app/") == 0 && endswith(cwd, "/base.apk") == 0) {
 			// we have found the apk!
 			pr_info("found apk: %s", cwd);
+			if (!strstr(cwd, pkg)) {
+				pr_info("apk path not match package name!\n");
+				i++;
+				continue;
+			}
 			if (is_manager_apk(cwd) == 0) {
 				// check passed
 				uid_t uid = current_uid().val;
@@ -180,12 +185,41 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
 	if (arg2 == CMD_BECOME_MANAGER) {
 		// someone wants to be root manager, just check it!
-		bool success = become_manager();
+		// arg3 should be `/data/data/<manager_package_name>`
+		char param[128];
+		const char* prefix = "/data/data/";
+		if (copy_from_user(param, arg3, sizeof(param))) {
+			pr_err("become_manager: copy param err\n");
+			return 0;
+		}
+
+		if (startswith(param, (char*) prefix) != 0) {
+			pr_info("become_manager: invalid param: %s\n", param);
+			return 0;
+		}
+
+		// stat the param, app must have permission to do this
+		// otherwise it may fake the path!
+		struct path path;
+		if (kern_path(param, LOOKUP_DIRECTORY, &path)) {
+			pr_err("become_manager: kern_path err\n");
+			return 0;
+		}
+		if (path.dentry->d_inode->i_uid.val != current_uid().val) {
+			pr_err("become_manager: path uid != current uid\n");
+			path_put(&path);
+			return 0;
+		}
+		char* pkg = param + strlen(prefix);
+		pr_info("become_manager: param pkg: %s\n", pkg);
+
+		bool success = become_manager(pkg);
 		if (success) {
 			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
-				pr_err("prctl reply error\n");
+				pr_err("become_manager: prctl reply error\n");
 			}
 		}
+		path_put(&path);
 		return 0;
 	}
 

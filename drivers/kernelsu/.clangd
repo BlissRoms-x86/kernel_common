@@ -1,0 +1,4 @@
+Diagnostics:
+  ClangTidy:
+    Remove: bugprone-sizeof-expression
+
