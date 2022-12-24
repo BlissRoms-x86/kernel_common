@@ -220,6 +220,3 @@ config GENERIC_ARCH_NUMA
 	  and ARM64 use it.
 
 endmenu
-
-source "drivers/base/kernelsu/Kconfig"
-
