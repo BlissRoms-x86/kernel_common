@@ -1,4 +1,11 @@
 
+#include <linux/gfp.h>
+#include <linux/workqueue.h>
+#include <asm/current.h>
+#include <linux/cred.h>
+#include <linux/dcache.h>
+#include <linux/err.h>
+#include <linux/limits.h>
 #include <linux/cpu.h>
 #include <linux/memory.h>
 #include <linux/uaccess.h>
@@ -101,17 +108,28 @@ static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
 
 	static const char app_process[] = "/system/bin/app_process";
 	static bool first_app_process = true;
+	static const char system_bin_init[] = "/system/bin/init";
+	static int init_count = 0;
 
 	filename = PT_REGS_PARM2(regs);
 	if (IS_ERR(filename)) {
 		return 0;
 	}
 
+	if (!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1)) {
+		// /system/bin/init executed
+		if (++init_count == 2) {
+			// 1: /system/bin/init selinux_setup
+			// 2: /system/bin/init second_stage
+			pr_info("/system/bin/init second_stage executed\n");
+			apply_kernelsu_rules();
+		}
+	}
+
 	if (first_app_process &&
 	    !memcmp(filename->name, app_process, sizeof(app_process) - 1)) {
 		first_app_process = false;
 		pr_info("exec app_process, /data prepared!\n");
-		apply_kernelsu_rules();
 		ksu_load_allow_list();
 	}
 
@@ -125,6 +143,111 @@ static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
 
 		escape_to_root();
 	}
+
+	return 0;
+}
+
+#define RC_SERVICE_NAME_LENGTH 8
+static const char KERNEL_SU_RC[] = 
+"\n"
+
+"service %s /data/adb/ksud post-fs-data\n"
+"    user root\n"
+"    seclabel u:r:su:s0\n"
+"    oneshot\n"
+"\n"
+
+"\n"
+"on post-fs-data\n"
+"    start %s\n"
+"\n"
+"\n"
+;
+
+static void unregister_vfs_read_kp();
+static struct work_struct unregister_vfs_read_work;
+
+static void fill_random_name(char* rc) {
+	int i = 0;
+	char name[RC_SERVICE_NAME_LENGTH];
+	get_random_bytes(name, RC_SERVICE_NAME_LENGTH);
+	for (i = 0; i < RC_SERVICE_NAME_LENGTH; i++) {
+		u32 remainder = (name[i] & 0xFF) % 26; // 'a' - 'z' 26 character
+		name[i] = 'a' + remainder;
+	}
+	sprintf(rc, KERNEL_SU_RC, name, name);
+}
+
+static int read_handler_pre(struct kprobe *p, struct pt_regs *regs)
+{
+	struct file *file;
+	char __user *buf;
+	size_t count;
+
+	if (strcmp(current->comm, "init")) {
+		// we are only interest in `init` process
+		return 0;
+	}
+
+	file = PT_REGS_PARM1(regs);
+	if (IS_ERR(file)) {
+		return 0;
+	}
+
+	if (!d_is_reg(file->f_path.dentry)) {
+		return 0;
+	}
+
+	const char *short_name = file->f_path.dentry->d_name.name;
+	if (strcmp(short_name, "vold.rc")) {
+		// we are only interest `vold.rc` file name file
+		return 0;
+	}
+	char path[PATH_MAX];
+	char* dpath = d_path(&file->f_path, path, PATH_MAX);
+	if (IS_ERR(dpath)) {
+		return 0;
+	}
+
+	if (strcmp(dpath, "/system/etc/init/vold.rc")) {
+		return 0;
+	}
+
+	// we only process the first read
+	static bool rc_inserted = false;
+	if (rc_inserted) {
+		// we don't need this kprobe, unregister it!
+		unregister_vfs_read_kp();
+		return 0;
+	}
+	rc_inserted = true;
+
+	// now we can sure that the init process is reading `/system/etc/init/vold.rc`
+	buf = PT_REGS_PARM2(regs);
+	count = PT_REGS_PARM3(regs);
+
+	// generate a random service name and fill it to rc bytes
+	char rc[sizeof(KERNEL_SU_RC) + RC_SERVICE_NAME_LENGTH * 2];
+	fill_random_name(rc);
+	pr_info("random rc: %s\n", rc);
+
+	size_t rc_count = strlen(rc);
+
+	pr_info("vfs_read: %s, comm: %s, count: %d, rc_count: %d\n", dpath, current->comm, count, rc_count);
+
+	if (count < rc_count) {
+		pr_err("count: %d < rc_count: %d", count, rc_count);
+		return 0;
+	}
+
+	size_t ret = copy_to_user(buf, rc, rc_count);
+	if (ret) {
+		pr_err("copy ksud.rc failed: %d\n", ret);
+		return 0;
+	}
+
+	PT_REGS_PARM2(regs) = buf + rc_count;
+	PT_REGS_PARM3(regs) = count - rc_count;
 
 	return 0;
 }
@@ -144,6 +267,20 @@ static struct kprobe execve_kp = {
 	.pre_handler = execve_handler_pre,
 };
 
+static struct kprobe vfs_read_kp = {
+	.symbol_name = "vfs_read",
+	.pre_handler = read_handler_pre,
+};
+
+static void do_unregister_vfs_read_kp(struct work_struct *work) {
+	unregister_kprobe(&vfs_read_kp);
+}
+
+static void unregister_vfs_read_kp() {
+	bool ret = schedule_work(&unregister_vfs_read_work);
+	pr_info("unregister vfs_read kprobe: %d!\n", ret);
+}
+
 // sucompat: permited process can execute 'su' to gain root access.
 void enable_sucompat()
 {
@@ -155,4 +292,9 @@ void enable_sucompat()
 	pr_info("newfstatat_kp: %d\n", ret);
 	ret = register_kprobe(&faccessat_kp);
 	pr_info("faccessat_kp: %d\n", ret);
+
+	ret = register_kprobe(&vfs_read_kp);
+	pr_info("vfs_read_kp: %d\n", ret);
+
+	INIT_WORK(&unregister_vfs_read_work, do_unregister_vfs_read_kp);
 }
