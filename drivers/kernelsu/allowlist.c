@@ -137,7 +137,7 @@ void do_persistent_allow_list(struct work_struct *work)
 	}
 
 	if (kernel_write(fp, &version, sizeof(version), &off) !=
-	    sizeof(version)) {
+		sizeof(version)) {
 		pr_err("save_allow_list write version failed.\n");
 		goto exit;
 	}
@@ -181,19 +181,28 @@ void do_load_allow_list(struct work_struct *work)
 	fp = filp_open(KERNEL_SU_ALLOWLIST, O_RDONLY, 0);
 
 	if (IS_ERR(fp)) {
+#ifdef CONFIG_KSU_DEBUG
+		int errno = PTR_ERR(fp);
+		if (errno == -ENOENT) {
+			ksu_allow_uid(2000, true); // allow adb shell by default
+		} else {
+			pr_err("load_allow_list open file failed: %d\n", PTR_ERR(fp));
+		}
+#else
 		pr_err("load_allow_list open file failed: %d\n", PTR_ERR(fp));
+#endif
 		return;
 	}
 
 	// verify magic
 	if (kernel_read(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
-	    magic != FILE_MAGIC) {
+		magic != FILE_MAGIC) {
 		pr_err("allowlist file invalid: %d!\n", magic);
 		goto exit;
 	}
 
 	if (kernel_read(fp, &version, sizeof(version), &off) !=
-	    sizeof(version)) {
+		sizeof(version)) {
 		pr_err("allowlist read version: %d failed\n", version);
 		goto exit;
 	}

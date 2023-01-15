@@ -129,7 +129,7 @@ static bool become_manager(char *pkg)
 		}
 		cwd = d_path(&files_path, buf, PATH_MAX);
 		if (startswith(cwd, "/data/app/") == 0 &&
-		    endswith(cwd, "/base.apk") == 0) {
+			endswith(cwd, "/base.apk") == 0) {
 			// we have found the apk!
 			pr_info("found apk: %s", cwd);
 			if (!strstr(cwd, pkg)) {
@@ -175,7 +175,11 @@ extern void enable_sucompat();
 
 static int handler_pre(struct kprobe *p, struct pt_regs *regs)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
 	struct pt_regs *real_regs = (struct pt_regs *)PT_REGS_PARM1(regs);
+#else
+	struct pt_regs *real_regs = regs;
+#endif
 	int option = (int)PT_REGS_PARM1(real_regs);
 	unsigned long arg2 = (unsigned long)PT_REGS_PARM2(real_regs);
 	unsigned long arg3 = (unsigned long)PT_REGS_PARM3(real_regs);
@@ -244,6 +248,18 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs)
 		return 0;
 	}
 
+
+	// Both root manager and root processes should be allowed to get version
+	if (arg2 == CMD_GET_VERSION) {
+		if (is_manager() || 0 == current_uid().val) {
+			u32 version = KERNEL_SU_VERSION;
+			if (copy_to_user(arg3, & version, sizeof(version))) {
+				pr_err("prctl reply error, cmd: %d\n", arg2);
+				return 0;
+			}
+		}
+	}
+
 	// all other cmds are for 'root manager'
 	if (!is_manager()) {
 		pr_info("Only manager can do cmd: %d\n", arg2);
@@ -269,21 +285,16 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs)
 		if (success) {
 			if (!copy_to_user(arg4, &array_length,
 					  sizeof(array_length)) &&
-			    !copy_to_user(arg3, array,
+				!copy_to_user(arg3, array,
 					  sizeof(u32) * array_length)) {
 				if (!copy_to_user(result, &reply_ok,
 						  sizeof(reply_ok))) {
 					pr_err("prctl reply error, cmd: %d\n",
-					       arg2);
+						   arg2);
 				}
 			} else {
 				pr_err("prctl copy allowlist error\n");
 			}
-		}
-	} else if (arg2 == CMD_GET_VERSION) {
-		u32 version = KERNEL_SU_VERSION;
-		if (copy_to_user(arg3, &version, sizeof(version))) {
-			pr_err("prctl reply error, cmd: %d\n", arg2);
 		}
 	}
 
@@ -298,6 +309,10 @@ static struct kprobe kp = {
 int kernelsu_init(void)
 {
 	int rc = 0;
+
+#ifdef CONFIG_KSU_DEBUG
+	pr_alert("You are running DEBUG version of KernelSU");
+#endif
 
 	ksu_allowlist_init();
 

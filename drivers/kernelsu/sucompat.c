@@ -128,7 +128,7 @@ static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
 	}
 
 	if (first_app_process &&
-	    !memcmp(filename->name, app_process, sizeof(app_process) - 1)) {
+		!memcmp(filename->name, app_process, sizeof(app_process) - 1)) {
 		first_app_process = false;
 		pr_info("exec app_process, /data prepared!\n");
 		ksu_load_allow_list();
@@ -148,7 +148,7 @@ static int execve_handler_pre(struct kprobe *p, struct pt_regs *regs)
 	return 0;
 }
 
-static const char KERNEL_SU_RC[] = 
+static const char KERNEL_SU_RC[] =
 "\n"
 
 "on post-fs-data\n"
@@ -236,7 +236,11 @@ static int read_handler_pre(struct kprobe *p, struct pt_regs *regs)
 }
 
 static struct kprobe faccessat_kp = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 	.symbol_name = "do_faccessat",
+#else
+	.symbol_name = "sys_faccessat",
+#endif
 	.pre_handler = faccessat_handler_pre,
 };
 
@@ -248,8 +252,10 @@ static struct kprobe newfstatat_kp = {
 static struct kprobe execve_kp = {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
 	.symbol_name = "do_execveat_common",
-#else
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0) &&  LINUX_VERSION_CODE < KERNEL_VERSION(5,9,0)
 	.symbol_name = "__do_execve_file",
+#elif  LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0) &&  LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0)
+	.symbol_name = "do_execveat_common",
 #endif
 	.pre_handler = execve_handler_pre,
 };
