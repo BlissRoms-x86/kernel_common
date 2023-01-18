@@ -1,3 +1,4 @@
+#include <linux/list.h>
 #include <linux/cpu.h>
 #include <linux/errno.h>
 #include <linux/init.h>
@@ -25,6 +26,8 @@
 #define FILE_MAGIC 0x7f4b5355 // ' KSU', u32
 #define FILE_FORMAT_VERSION 1 // u32
 
+static DEFINE_MUTEX(allowlist_mutex);
+
 struct perm_data {
 	struct list_head list;
 	uid_t uid;
@@ -35,7 +38,6 @@ static struct list_head allow_list;
 
 #define KERNEL_SU_ALLOWLIST "/data/adb/.ksu_allowlist"
 
-static struct workqueue_struct *ksu_workqueue;
 static struct work_struct ksu_save_work;
 static struct work_struct ksu_load_work;
 
@@ -137,7 +139,7 @@ void do_persistent_allow_list(struct work_struct *work)
 	}
 
 	if (kernel_write(fp, &version, sizeof(version), &off) !=
-		sizeof(version)) {
+	    sizeof(version)) {
 		pr_err("save_allow_list write version failed.\n");
 		goto exit;
 	}
@@ -168,7 +170,7 @@ void do_load_allow_list(struct work_struct *work)
 		pr_err("load_allow_list open '/data/adb': %d\n", PTR_ERR(fp));
 		if (errno == -ENOENT) {
 			msleep(2000);
-			queue_work(ksu_workqueue, &ksu_load_work);
+			ksu_queue_work(&ksu_load_work);
 			return;
 		} else {
 			pr_info("load_allow list dir exist now!");
@@ -186,7 +188,8 @@ void do_load_allow_list(struct work_struct *work)
 		if (errno == -ENOENT) {
 			ksu_allow_uid(2000, true); // allow adb shell by default
 		} else {
-			pr_err("load_allow_list open file failed: %d\n", PTR_ERR(fp));
+			pr_err("load_allow_list open file failed: %d\n",
+			       PTR_ERR(fp));
 		}
 #else
 		pr_err("load_allow_list open file failed: %d\n", PTR_ERR(fp));
@@ -196,13 +199,13 @@ void do_load_allow_list(struct work_struct *work)
 
 	// verify magic
 	if (kernel_read(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
-		magic != FILE_MAGIC) {
+	    magic != FILE_MAGIC) {
 		pr_err("allowlist file invalid: %d!\n", magic);
 		goto exit;
 	}
 
 	if (kernel_read(fp, &version, sizeof(version), &off) !=
-		sizeof(version)) {
+	    sizeof(version)) {
 		pr_err("allowlist read version: %d failed\n", version);
 		goto exit;
 	}
@@ -229,9 +232,32 @@ exit:
 	filp_close(fp, 0);
 }
 
+void ksu_prune_allowlist(bool (*is_uid_exist)(uid_t, void *), void *data)
+{
+	struct perm_data *np = NULL;
+	struct perm_data *n = NULL;
+
+	bool modified = false;
+	// TODO: use RCU!
+	mutex_lock(&allowlist_mutex);
+	list_for_each_entry_safe (np, n, &allow_list, list) {
+		uid_t uid = np->uid;
+		if (!is_uid_exist(uid, data)) {
+			modified = true;
+			pr_info("prune uid: %d\n", uid);
+			list_del(&np->list);
+			kfree(np);
+		}
+	}
+	mutex_unlock(&allowlist_mutex);
+
+	if (modified) {
+		persistent_allow_list();
+	}
+}
+
 static int init_work(void)
 {
-	ksu_workqueue = alloc_workqueue("kernelsu_work_queue", 0, 0);
 	INIT_WORK(&ksu_save_work, do_persistent_allow_list);
 	INIT_WORK(&ksu_load_work, do_load_allow_list);
 	return 0;
@@ -240,13 +266,13 @@ static int init_work(void)
 // make sure allow list works cross boot
 bool persistent_allow_list(void)
 {
-	queue_work(ksu_workqueue, &ksu_save_work);
+	ksu_queue_work(&ksu_save_work);
 	return true;
 }
 
 bool ksu_load_allow_list(void)
 {
-	queue_work(ksu_workqueue, &ksu_load_work);
+	ksu_queue_work(&ksu_load_work);
 	return true;
 }
 
@@ -264,7 +290,5 @@ bool ksu_allowlist_init(void)
 
 bool ksu_allowlist_exit(void)
 {
-	destroy_workqueue(ksu_workqueue);
-
 	return true;
 }
