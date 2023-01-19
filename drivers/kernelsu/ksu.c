@@ -31,8 +31,6 @@
 #include "selinux/selinux.h"
 #include "uid_observer.h"
 
-static struct group_info root_groups = { .usage = ATOMIC_INIT(2) };
-
 static struct workqueue_struct *ksu_workqueue;
 
 uid_t ksu_manager_uid = INVALID_UID;
