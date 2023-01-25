@@ -5,7 +5,7 @@
 #include <linux/uidgid.h>
 #include <linux/workqueue.h>
 
-#define KERNEL_SU_VERSION 9
+#define KERNEL_SU_VERSION 10
 
 #define KERNEL_SU_OPTION 0xDEADBEEF
 
@@ -24,7 +24,11 @@ extern uid_t ksu_manager_uid;
 
 static inline bool ksu_is_manager_uid_valid()
 {
+#ifndef CONFIG_KSU_DEBUG
 	return ksu_manager_uid != INVALID_UID;
+#else
+	return false; // always allow in debug mode
+#endif
 }
 
 static inline uid_t ksu_get_manager_uid()
