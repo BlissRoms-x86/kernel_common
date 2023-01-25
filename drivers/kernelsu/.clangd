@@ -1,4 +1,5 @@
 Diagnostics:
+  UnusedIncludes: Strict
   ClangTidy:
     Remove: bugprone-sizeof-expression
 
