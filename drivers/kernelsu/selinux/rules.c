@@ -1,9 +1,9 @@
 #include "linux/version.h"
 
+#include "../klog.h" // IWYU pragma: keep
 #include "selinux.h"
 #include "sepolicy.h"
 #include "ss/services.h"
-#include "../klog.h" // IWYU pragma: keep
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #define SELINUX_POLICY_INSTEAD_SELINUX_SS
@@ -11,6 +11,7 @@
 
 #define KERNEL_SU_DOMAIN "su"
 #define KERNEL_SU_FILE "ksu_file"
+#define KERNEL_EXEC_TYPE "ksu_exec"
 #define ALL NULL
 
 void apply_kernelsu_rules()

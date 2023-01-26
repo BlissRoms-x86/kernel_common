@@ -4,6 +4,7 @@
 #include "linux/kernel.h"
 #include "linux/kprobes.h"
 #include "linux/lsm_hooks.h"
+#include "linux/printk.h"
 #include "linux/uaccess.h"
 #include "linux/uidgid.h"
 #include "linux/version.h"
@@ -15,11 +16,12 @@
 #include "allowlist.h"
 #include "arch.h"
 #include "core_hook.h"
+#include "klog.h" // IWYU pragma: keep
 #include "ksu.h"
+#include "ksud.h"
 #include "manager.h"
 #include "selinux/selinux.h"
 #include "uid_observer.h"
-#include "klog.h" // IWYU pragma: keep
 
 static inline bool is_allow_su()
 {
@@ -100,7 +102,7 @@ int ksu_handle_rename(struct dentry *old_dentry, struct dentry *new_dentry)
 	if (strcmp(buf, "/system/packages.list")) {
 		return 0;
 	}
-	pr_info("renameat: %s -> %s\n, new path: %s", old_dentry->d_iname,
+	pr_info("renameat: %s -> %s, new path: %s", old_dentry->d_iname,
 		new_dentry->d_iname, buf);
 
 	update_uid();
@@ -184,7 +186,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		} else {
 			pr_info("deny root for: %d\n", current_uid());
 			// add it to deny list!
-			ksu_allow_uid(current_uid().val, false);
+			ksu_allow_uid(current_uid().val, false, true);
 		}
 		return 0;
 	}
@@ -200,6 +202,34 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		}
 	}
 
+	if (arg2 == CMD_REPORT_EVENT) {
+		if (0 != current_uid().val) {
+			return 0;
+		}
+		switch (arg3) {
+		case EVENT_POST_FS_DATA: {
+			static bool post_fs_data_lock = false;
+			if (!post_fs_data_lock) {
+				post_fs_data_lock = true;
+				pr_info("post-fs-data triggered");
+				on_post_fs_data();
+			}
+			break;
+		}
+		case EVENT_BOOT_COMPLETED: {
+			static bool boot_complete_lock = false;
+			if (!boot_complete_lock) {
+				boot_complete_lock = true;
+				pr_info("boot_complete triggered");
+			}
+			break;
+		}
+		default:
+			break;
+		}
+		return 0;
+	}
+
 	// all other cmds are for 'root manager'
 	if (!is_manager()) {
 		pr_info("Only manager can do cmd: %d\n", arg2);
@@ -211,12 +241,13 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		bool allow = arg2 == CMD_ALLOW_SU;
 		bool success = false;
 		uid_t uid = (uid_t)arg3;
-		success = ksu_allow_uid(uid, allow);
+		success = ksu_allow_uid(uid, allow, true);
 		if (success) {
 			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
 				pr_err("prctl reply error, cmd: %d\n", arg2);
 			}
 		}
+		ksu_show_allow_list();
 	} else if (arg2 == CMD_GET_ALLOW_LIST || arg2 == CMD_GET_DENY_LIST) {
 		u32 array[128];
 		u32 array_length;
@@ -227,7 +258,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 					  sizeof(array_length)) &&
 			    !copy_to_user(arg3, array,
 					  sizeof(u32) * array_length)) {
-				if (!copy_to_user(result, &reply_ok,
+				if (copy_to_user(result, &reply_ok,
 						  sizeof(reply_ok))) {
 					pr_err("prctl reply error, cmd: %d\n",
 					       arg2);
