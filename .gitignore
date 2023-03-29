@@ -162,3 +162,8 @@ x509.genkey
 
 # Documentation toolchain
 sphinx_*/
+
+# Android-x86 
+configs/
+prebuilts/
+tests/
