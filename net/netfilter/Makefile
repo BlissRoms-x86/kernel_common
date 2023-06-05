@@ -162,6 +162,7 @@ obj-$(CONFIG_NETFILTER_XT_TARGET_CLASSIFY) += xt_CLASSIFY.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_CONNSECMARK) += xt_CONNSECMARK.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_CT) += xt_CT.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_DSCP) += xt_DSCP.o
+obj-$(CONFIG_NETFILTER_XT_TARGET_FLOWOFFLOAD) += xt_FLOWOFFLOAD.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_HL) += xt_HL.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_HMARK) += xt_HMARK.o
 obj-$(CONFIG_NETFILTER_XT_TARGET_LED) += xt_LED.o
@@ -236,3 +237,8 @@ obj-$(CONFIG_IP_VS) += ipvs/
 
 # lwtunnel
 obj-$(CONFIG_LWTUNNEL) += nf_hooks_lwtunnel.o
+
+# Nftables/netfilter fullcone expression support
+obj-$(CONFIG_NFT_FULLCONE) += \
+	nf_nat_fullcone.o \
+	nft_ext_fullcone.o

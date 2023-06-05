@@ -2067,24 +2067,23 @@ static void binder_deferred_fd_close(int fd)
 static void binder_transaction_buffer_release(struct binder_proc *proc,
 					      struct binder_thread *thread,
 					      struct binder_buffer *buffer,
-					      binder_size_t failed_at,
+					      binder_size_t off_end_offset,
 					      bool is_failure)
 {
 	int debug_id = buffer->debug_id;
-	binder_size_t off_start_offset, buffer_offset, off_end_offset;
+	binder_size_t off_start_offset, buffer_offset;
 
 	binder_debug(BINDER_DEBUG_TRANSACTION,
 		     "%d buffer release %d, size %zd-%zd, failed at %llx\n",
 		     proc->pid, buffer->debug_id,
 		     buffer->data_size, buffer->offsets_size,
-		     (unsigned long long)failed_at);
+		     (unsigned long long)off_end_offset);
 
 	if (buffer->target_node)
 		binder_dec_node(buffer->target_node, 1, 0);
 
 	off_start_offset = ALIGN(buffer->data_size, sizeof(void *));
-	off_end_offset = is_failure && failed_at ? failed_at :
-				off_start_offset + buffer->offsets_size;
+
 	for (buffer_offset = off_start_offset; buffer_offset < off_end_offset;
 	     buffer_offset += sizeof(binder_size_t)) {
 		struct binder_object_header *hdr;
@@ -2242,6 +2241,21 @@ static void binder_transaction_buffer_release(struct binder_proc *proc,
 			break;
 		}
 	}
+}
+
+/* Clean up all the objects in the buffer */
+static inline void binder_release_entire_buffer(struct binder_proc *proc,
+						struct binder_thread *thread,
+						struct binder_buffer *buffer,
+						bool is_failure)
+{
+	binder_size_t off_end_offset;
+
+	off_end_offset = ALIGN(buffer->data_size, sizeof(void *));
+	off_end_offset += buffer->offsets_size;
+
+	binder_transaction_buffer_release(proc, thread, buffer,
+					  off_end_offset, is_failure);
 }
 
 static int binder_translate_binder(struct flat_binder_object *fp,
@@ -2983,7 +2997,7 @@ retry_after_prio_restore:
 		t_outdated->buffer = NULL;
 		buffer->transaction = NULL;
 		trace_binder_transaction_update_buffer_release(buffer);
-		binder_transaction_buffer_release(proc, NULL, buffer, 0, 0);
+		binder_release_entire_buffer(proc, NULL, buffer, false);
 		binder_alloc_free_buf(&proc->alloc, buffer);
 		kfree(t_outdated);
 		binder_stats_deleted(BINDER_STAT_TRANSACTION);
@@ -3962,7 +3976,7 @@ binder_free_buf(struct binder_proc *proc,
 		binder_node_inner_unlock(buf_node);
 	}
 	trace_binder_transaction_buffer_release(buffer);
-	binder_transaction_buffer_release(proc, thread, buffer, 0, is_failure);
+	binder_release_entire_buffer(proc, thread, buffer, is_failure);
 	binder_alloc_free_buf(&proc->alloc, buffer);
 }
 
@@ -6797,9 +6811,20 @@ err_alloc_device_names_failed:
 	return ret;
 }
 
-device_initcall(binder_init);
+module_init(binder_init);
+/*
+ * binder will have no exit function since binderfs instances can be mounted
+ * multiple times and also in user namespaces finding and destroying them all
+ * is not feasible without introducing insane locking. Just ignoring existing
+ * instances on module unload also wouldn't work since we would loose track of
+ * what major numer was dynamically allocated and also what minor numbers are
+ * already given out. So this would get us into all kinds of issues with device
+ * number reuse. So simply don't allow unloading unless we are forced to do so.
+ */
+
+MODULE_AUTHOR("Google, Inc.");
+MODULE_DESCRIPTION("Driver for Android binder device");
+MODULE_LICENSE("GPL v2");
 
 #define CREATE_TRACE_POINTS
 #include "binder_trace.h"
-
-MODULE_LICENSE("GPL v2");

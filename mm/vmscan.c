@@ -186,7 +186,7 @@ struct scan_control {
 /*
  * From 0 .. 200.  Higher means more swappy.
  */
-int vm_swappiness = 60;
+int vm_swappiness = 30;
 
 static void set_task_reclaim_state(struct task_struct *task,
 				   struct reclaim_state *rs)
@@ -1910,6 +1910,16 @@ retry:
 				goto activate_locked;
 			}
 		}
+
+		/*
+		 * Folio is unmapped now so it cannot be newly pinned anymore.
+		 * No point in trying to reclaim folio if it is pinned.
+		 * Furthermore we don't want to reclaim underlying fs metadata
+		 * if the folio is pinned and thus potentially modified by the
+		 * pinning process as that may upset the filesystem.
+		 */
+		if (folio_maybe_dma_pinned(folio))
+			goto activate_locked;
 
 		mapping = folio_mapping(folio);
 		if (folio_test_dirty(folio)) {

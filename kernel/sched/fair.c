@@ -19,6 +19,9 @@
  *
  *  Adaptive scheduling granularity, math enhancements by Peter Zijlstra
  *  Copyright (C) 2007 Red Hat, Inc., Peter Zijlstra
+ *
+ *  Remove energy efficiency functions by Alexandre Frade
+ *  (C) 2021 Alexandre Frade <kernel@xanmod.org>
  */
 #include <linux/energy_model.h>
 #include <linux/mmap_lock.h>
@@ -83,7 +86,7 @@ static unsigned int normalized_sysctl_sched_latency	= 6000000ULL;
  *
  * (default SCHED_TUNABLESCALING_LOG = *(1+ilog(ncpus))
  */
-unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
+unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
 
 /*
  * Minimal preemption granularity for CPU-bound tasks:
@@ -121,8 +124,8 @@ unsigned int sysctl_sched_child_runs_first __read_mostly;
  *
  * (default: 1 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_wakeup_granularity			= 1000000UL;
-static unsigned int normalized_sysctl_sched_wakeup_granularity	= 1000000UL;
+unsigned int sysctl_sched_wakeup_granularity			= 3000000UL;
+static unsigned int normalized_sysctl_sched_wakeup_granularity	= 3000000UL;
 
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
 
@@ -1064,6 +1067,23 @@ update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * Scheduling class queueing methods:
  */
 
+static inline bool is_core_idle(int cpu)
+{
+#ifdef CONFIG_SCHED_SMT
+	int sibling;
+
+	for_each_cpu(sibling, cpu_smt_mask(cpu)) {
+		if (cpu == sibling)
+			continue;
+
+		if (!idle_cpu(sibling))
+			return false;
+	}
+#endif
+
+	return true;
+}
+
 #ifdef CONFIG_NUMA
 #define NUMA_IMBALANCE_MIN 2
 
@@ -1699,23 +1719,6 @@ struct numa_stats {
 	enum numa_type node_type;
 	int idle_cpu;
 };
-
-static inline bool is_core_idle(int cpu)
-{
-#ifdef CONFIG_SCHED_SMT
-	int sibling;
-
-	for_each_cpu(sibling, cpu_smt_mask(cpu)) {
-		if (cpu == sibling)
-			continue;
-
-		if (!idle_cpu(sibling))
-			return false;
-	}
-#endif
-
-	return true;
-}
 
 struct task_numa_env {
 	struct task_struct *p;
@@ -6315,6 +6318,18 @@ enqueue_throttle:
 
 static void set_next_buddy(struct sched_entity *se);
 
+static inline void dur_avg_update(struct task_struct *p, bool task_sleep)
+{
+	u64 dur;
+
+	if (!task_sleep)
+		return;
+
+	dur = p->se.sum_exec_runtime - p->se.prev_sleep_sum_runtime;
+	p->se.prev_sleep_sum_runtime = p->se.sum_exec_runtime;
+	update_avg(&p->se.dur_avg, dur);
+}
+
 /*
  * The dequeue_task method is called before nr_running is
  * decreased. We remove the task from the rbtree and
@@ -6387,6 +6402,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 dequeue_throttle:
 	util_est_update(&rq->cfs, p, task_sleep);
+	dur_avg_update(p, task_sleep);
 	hrtick_update(rq);
 }
 
@@ -6521,6 +6537,46 @@ static int wake_wide(struct task_struct *p)
 }
 
 /*
+ * Wake up the task on current CPU, if the following conditions are met:
+ *
+ * 1. waker A is the only running task on this_cpu
+ * 2. A is a short duration task (waker will fall asleep soon)
+ * 3. wakee B is a short duration task (impact of B on A is minor)
+ * 4. A and B wake up each other alternately
+ */
+static bool
+wake_on_current(int this_cpu, struct task_struct *p)
+{
+	if (!sched_feat(SIS_CURRENT))
+		return false;
+
+	if (cpu_rq(this_cpu)->nr_running > 1)
+		return false;
+
+	/*
+	 * If a task switches in and then voluntarily relinquishes the
+	 * CPU quickly, it is regarded as a short duration task. In that
+	 * way, the short waker is likely to relinquish the CPU soon, which
+	 * provides room for the wakee. Meanwhile, a short wakee would bring
+	 * minor impact to the current rq. Put the short waker and wakee together
+	 * bring benefit to cache-share task pairs and avoid migration overhead.
+	 */
+	if (!current->se.dur_avg || current->se.dur_avg >= sysctl_sched_migration_cost)
+		return false;
+
+	if (!p->se.dur_avg || p->se.dur_avg >= sysctl_sched_migration_cost)
+		return false;
+
+	if (current->wakee_flips || p->wakee_flips)
+		return false;
+
+	if (current->last_wakee != p || p->last_wakee != current)
+		return false;
+
+	return true;
+}
+
+/*
  * The purpose of wake_affine() is to quickly determine on which CPU we can run
  * soonest. For the purpose of speed we only consider the waking and previous
  * CPU.
@@ -6613,8 +6669,11 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p,
 	if (sched_feat(WA_WEIGHT) && target == nr_cpumask_bits)
 		target = wake_affine_weight(sd, p, this_cpu, prev_cpu, sync);
 
+	if (target == nr_cpumask_bits && wake_on_current(this_cpu, p))
+		target = this_cpu;
+
 	schedstat_inc(p->stats.nr_wakeups_affine_attempts);
-	if (target == nr_cpumask_bits)
+	if (target != this_cpu)
 		return prev_cpu;
 
 	schedstat_inc(sd->ttwu_move_affine);
@@ -7134,6 +7193,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 		}
 	}
 
+	if (smp_processor_id() == target && wake_on_current(target, p))
+		return target;
+
 	i = select_idle_cpu(p, sd, has_idle_core, target);
 	if ((unsigned)i < nr_cpumask_bits)
 		return i;
@@ -7332,252 +7394,6 @@ eenv_pd_max_util(struct energy_env *eenv, struct cpumask *pd_cpus,
 }
 
 /*
- * compute_energy(): Use the Energy Model to estimate the energy that @pd would
- * consume for a given utilization landscape @eenv. When @dst_cpu < 0, the task
- * contribution is ignored.
- */
-static inline unsigned long
-compute_energy(struct energy_env *eenv, struct perf_domain *pd,
-	       struct cpumask *pd_cpus, struct task_struct *p, int dst_cpu)
-{
-	unsigned long max_util = eenv_pd_max_util(eenv, pd_cpus, p, dst_cpu);
-	unsigned long busy_time = eenv->pd_busy_time;
-
-	if (dst_cpu >= 0)
-		busy_time = min(eenv->pd_cap, busy_time + eenv->task_busy_time);
-
-	return em_cpu_energy(pd->em_pd, max_util, busy_time, eenv->cpu_cap);
-}
-
-/*
- * find_energy_efficient_cpu(): Find most energy-efficient target CPU for the
- * waking task. find_energy_efficient_cpu() looks for the CPU with maximum
- * spare capacity in each performance domain and uses it as a potential
- * candidate to execute the task. Then, it uses the Energy Model to figure
- * out which of the CPU candidates is the most energy-efficient.
- *
- * The rationale for this heuristic is as follows. In a performance domain,
- * all the most energy efficient CPU candidates (according to the Energy
- * Model) are those for which we'll request a low frequency. When there are
- * several CPUs for which the frequency request will be the same, we don't
- * have enough data to break the tie between them, because the Energy Model
- * only includes active power costs. With this model, if we assume that
- * frequency requests follow utilization (e.g. using schedutil), the CPU with
- * the maximum spare capacity in a performance domain is guaranteed to be among
- * the best candidates of the performance domain.
- *
- * In practice, it could be preferable from an energy standpoint to pack
- * small tasks on a CPU in order to let other CPUs go in deeper idle states,
- * but that could also hurt our chances to go cluster idle, and we have no
- * ways to tell with the current Energy Model if this is actually a good
- * idea or not. So, find_energy_efficient_cpu() basically favors
- * cluster-packing, and spreading inside a cluster. That should at least be
- * a good thing for latency, and this is consistent with the idea that most
- * of the energy savings of EAS come from the asymmetry of the system, and
- * not so much from breaking the tie between identical CPUs. That's also the
- * reason why EAS is enabled in the topology code only for systems where
- * SD_ASYM_CPUCAPACITY is set.
- *
- * NOTE: Forkees are not accepted in the energy-aware wake-up path because
- * they don't have any useful utilization data yet and it's not possible to
- * forecast their impact on energy consumption. Consequently, they will be
- * placed by find_idlest_cpu() on the least loaded CPU, which might turn out
- * to be energy-inefficient in some use-cases. The alternative would be to
- * bias new tasks towards specific types of CPUs first, or to try to infer
- * their util_avg from the parent task, but those heuristics could hurt
- * other use-cases too. So, until someone finds a better way to solve this,
- * let's keep things simple by re-using the existing slow path.
- */
-static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
-{
-	struct cpumask *cpus = this_cpu_cpumask_var_ptr(select_rq_mask);
-	unsigned long prev_delta = ULONG_MAX, best_delta = ULONG_MAX;
-	unsigned long p_util_min = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MIN) : 0;
-	unsigned long p_util_max = uclamp_is_used() ? uclamp_eff_value(p, UCLAMP_MAX) : 1024;
-	struct root_domain *rd = this_rq()->rd;
-	int cpu, best_energy_cpu, target = -1;
-	int prev_fits = -1, best_fits = -1;
-	unsigned long best_thermal_cap = 0;
-	unsigned long prev_thermal_cap = 0;
-	struct sched_domain *sd;
-	struct perf_domain *pd;
-	struct energy_env eenv;
-
-	rcu_read_lock();
-	pd = rcu_dereference(rd->pd);
-	if (!pd || READ_ONCE(rd->overutilized))
-		goto unlock;
-
-	/*
-	 * Energy-aware wake-up happens on the lowest sched_domain starting
-	 * from sd_asym_cpucapacity spanning over this_cpu and prev_cpu.
-	 */
-	sd = rcu_dereference(*this_cpu_ptr(&sd_asym_cpucapacity));
-	while (sd && !cpumask_test_cpu(prev_cpu, sched_domain_span(sd)))
-		sd = sd->parent;
-	if (!sd)
-		goto unlock;
-
-	target = prev_cpu;
-
-	sync_entity_load_avg(&p->se);
-	if (!uclamp_task_util(p, p_util_min, p_util_max))
-		goto unlock;
-
-	eenv_task_busy_time(&eenv, p, prev_cpu);
-
-	for (; pd; pd = pd->next) {
-		unsigned long util_min = p_util_min, util_max = p_util_max;
-		unsigned long cpu_cap, cpu_thermal_cap, util;
-		unsigned long cur_delta, max_spare_cap = 0;
-		unsigned long rq_util_min, rq_util_max;
-		unsigned long prev_spare_cap = 0;
-		int max_spare_cap_cpu = -1;
-		unsigned long base_energy;
-		int fits, max_fits = -1;
-
-		cpumask_and(cpus, perf_domain_span(pd), cpu_online_mask);
-
-		if (cpumask_empty(cpus))
-			continue;
-
-		/* Account thermal pressure for the energy estimation */
-		cpu = cpumask_first(cpus);
-		cpu_thermal_cap = arch_scale_cpu_capacity(cpu);
-		cpu_thermal_cap -= arch_scale_thermal_pressure(cpu);
-
-		eenv.cpu_cap = cpu_thermal_cap;
-		eenv.pd_cap = 0;
-
-		for_each_cpu(cpu, cpus) {
-			struct rq *rq = cpu_rq(cpu);
-
-			eenv.pd_cap += cpu_thermal_cap;
-
-			if (!cpumask_test_cpu(cpu, sched_domain_span(sd)))
-				continue;
-
-			if (!cpumask_test_cpu(cpu, p->cpus_ptr))
-				continue;
-
-			util = cpu_util_next(cpu, p, cpu);
-			cpu_cap = capacity_of(cpu);
-
-			/*
-			 * Skip CPUs that cannot satisfy the capacity request.
-			 * IOW, placing the task there would make the CPU
-			 * overutilized. Take uclamp into account to see how
-			 * much capacity we can get out of the CPU; this is
-			 * aligned with sched_cpu_util().
-			 */
-			if (uclamp_is_used() && !uclamp_rq_is_idle(rq)) {
-				/*
-				 * Open code uclamp_rq_util_with() except for
-				 * the clamp() part. Ie: apply max aggregation
-				 * only. util_fits_cpu() logic requires to
-				 * operate on non clamped util but must use the
-				 * max-aggregated uclamp_{min, max}.
-				 */
-				rq_util_min = uclamp_rq_get(rq, UCLAMP_MIN);
-				rq_util_max = uclamp_rq_get(rq, UCLAMP_MAX);
-
-				util_min = max(rq_util_min, p_util_min);
-				util_max = max(rq_util_max, p_util_max);
-			}
-
-			fits = util_fits_cpu(util, util_min, util_max, cpu);
-			if (!fits)
-				continue;
-
-			lsub_positive(&cpu_cap, util);
-
-			if (cpu == prev_cpu) {
-				/* Always use prev_cpu as a candidate. */
-				prev_spare_cap = cpu_cap;
-				prev_fits = fits;
-			} else if ((fits > max_fits) ||
-				   ((fits == max_fits) && (cpu_cap > max_spare_cap))) {
-				/*
-				 * Find the CPU with the maximum spare capacity
-				 * among the remaining CPUs in the performance
-				 * domain.
-				 */
-				max_spare_cap = cpu_cap;
-				max_spare_cap_cpu = cpu;
-				max_fits = fits;
-			}
-		}
-
-		if (max_spare_cap_cpu < 0 && prev_spare_cap == 0)
-			continue;
-
-		eenv_pd_busy_time(&eenv, cpus, p);
-		/* Compute the 'base' energy of the pd, without @p */
-		base_energy = compute_energy(&eenv, pd, cpus, p, -1);
-
-		/* Evaluate the energy impact of using prev_cpu. */
-		if (prev_spare_cap > 0) {
-			prev_delta = compute_energy(&eenv, pd, cpus, p,
-						    prev_cpu);
-			/* CPU utilization has changed */
-			if (prev_delta < base_energy)
-				goto unlock;
-			prev_delta -= base_energy;
-			prev_thermal_cap = cpu_thermal_cap;
-			best_delta = min(best_delta, prev_delta);
-		}
-
-		/* Evaluate the energy impact of using max_spare_cap_cpu. */
-		if (max_spare_cap_cpu >= 0 && max_spare_cap > prev_spare_cap) {
-			/* Current best energy cpu fits better */
-			if (max_fits < best_fits)
-				continue;
-
-			/*
-			 * Both don't fit performance hint (i.e. uclamp_min)
-			 * but best energy cpu has better capacity.
-			 */
-			if ((max_fits < 0) &&
-			    (cpu_thermal_cap <= best_thermal_cap))
-				continue;
-
-			cur_delta = compute_energy(&eenv, pd, cpus, p,
-						   max_spare_cap_cpu);
-			/* CPU utilization has changed */
-			if (cur_delta < base_energy)
-				goto unlock;
-			cur_delta -= base_energy;
-
-			/*
-			 * Both fit for the task but best energy cpu has lower
-			 * energy impact.
-			 */
-			if ((max_fits > 0) && (best_fits > 0) &&
-			    (cur_delta >= best_delta))
-				continue;
-
-			best_delta = cur_delta;
-			best_energy_cpu = max_spare_cap_cpu;
-			best_fits = max_fits;
-			best_thermal_cap = cpu_thermal_cap;
-		}
-	}
-	rcu_read_unlock();
-
-	if ((best_fits > prev_fits) ||
-	    ((best_fits > 0) && (best_delta < prev_delta)) ||
-	    ((best_fits < 0) && (best_thermal_cap > prev_thermal_cap)))
-		target = best_energy_cpu;
-
-	return target;
-
-unlock:
-	rcu_read_unlock();
-
-	return target;
-}
-
-/*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the relevant SD flag set. In practice, this is SD_BALANCE_WAKE,
  * SD_BALANCE_FORK, or SD_BALANCE_EXEC.
@@ -7604,14 +7420,6 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
 	lockdep_assert_held(&p->pi_lock);
 	if (wake_flags & WF_TTWU) {
 		record_wakee(p);
-
-		if (sched_energy_enabled()) {
-			new_cpu = find_energy_efficient_cpu(p, prev_cpu);
-			if (new_cpu >= 0)
-				return new_cpu;
-			new_cpu = prev_cpu;
-		}
-
 		want_affine = !wake_wide(p) && cpumask_test_cpu(cpu, p->cpus_ptr);
 	}
 
@@ -9270,96 +9078,65 @@ group_type group_classify(unsigned int imbalance_pct,
 }
 
 /**
- * asym_smt_can_pull_tasks - Check whether the load balancing CPU can pull tasks
- * @dst_cpu:	Destination CPU of the load balancing
- * @sds:	Load-balancing data with statistics of the local group
- * @sgs:	Load-balancing statistics of the candidate busiest group
- * @sg:		The candidate busiest group
+ * sched_use_asym_prio - Check whether asym_packing priority must be used
+ * @sd:		The scheduling domain of the load balancing
+ * @cpu:	A CPU
  *
- * Check the state of the SMT siblings of both @sds::local and @sg and decide
- * if @dst_cpu can pull tasks.
+ * Always use CPU priority when balancing load between SMT siblings. When
+ * balancing load between cores, it is not sufficient that @cpu is idle. Only
+ * use CPU priority if the whole core is idle.
  *
- * If @dst_cpu does not have SMT siblings, it can pull tasks if two or more of
- * the SMT siblings of @sg are busy. If only one CPU in @sg is busy, pull tasks
- * only if @dst_cpu has higher priority.
- *
- * If both @dst_cpu and @sg have SMT siblings, and @sg has exactly one more
- * busy CPU than @sds::local, let @dst_cpu pull tasks if it has higher priority.
- * Bigger imbalances in the number of busy CPUs will be dealt with in
- * update_sd_pick_busiest().
- *
- * If @sg does not have SMT siblings, only pull tasks if all of the SMT siblings
- * of @dst_cpu are idle and @sg has lower priority.
- *
- * Return: true if @dst_cpu can pull tasks, false otherwise.
+ * Returns: True if the priority of @cpu must be followed. False otherwise.
  */
-static bool asym_smt_can_pull_tasks(int dst_cpu, struct sd_lb_stats *sds,
-				    struct sg_lb_stats *sgs,
-				    struct sched_group *sg)
+static bool sched_use_asym_prio(struct sched_domain *sd, int cpu)
 {
 #ifdef CONFIG_SCHED_SMT
-	bool local_is_smt, sg_is_smt;
-	int sg_busy_cpus;
+	if (!sched_smt_active())
+		return true;
 
-	local_is_smt = sds->local->flags & SD_SHARE_CPUCAPACITY;
-	sg_is_smt = sg->flags & SD_SHARE_CPUCAPACITY;
-
-	sg_busy_cpus = sgs->group_weight - sgs->idle_cpus;
-
-	if (!local_is_smt) {
-		/*
-		 * If we are here, @dst_cpu is idle and does not have SMT
-		 * siblings. Pull tasks if candidate group has two or more
-		 * busy CPUs.
-		 */
-		if (sg_busy_cpus >= 2) /* implies sg_is_smt */
-			return true;
-
-		/*
-		 * @dst_cpu does not have SMT siblings. @sg may have SMT
-		 * siblings and only one is busy. In such case, @dst_cpu
-		 * can help if it has higher priority and is idle (i.e.,
-		 * it has no running tasks).
-		 */
-		return sched_asym_prefer(dst_cpu, sg->asym_prefer_cpu);
-	}
-
-	/* @dst_cpu has SMT siblings. */
-
-	if (sg_is_smt) {
-		int local_busy_cpus = sds->local->group_weight -
-				      sds->local_stat.idle_cpus;
-		int busy_cpus_delta = sg_busy_cpus - local_busy_cpus;
-
-		if (busy_cpus_delta == 1)
-			return sched_asym_prefer(dst_cpu, sg->asym_prefer_cpu);
-
-		return false;
-	}
-
-	/*
-	 * @sg does not have SMT siblings. Ensure that @sds::local does not end
-	 * up with more than one busy SMT sibling and only pull tasks if there
-	 * are not busy CPUs (i.e., no CPU has running tasks).
-	 */
-	if (!sds->local_stat.sum_nr_running)
-		return sched_asym_prefer(dst_cpu, sg->asym_prefer_cpu);
-
-	return false;
+	return sd->flags & SD_SHARE_CPUCAPACITY || is_core_idle(cpu);
 #else
-	/* Always return false so that callers deal with non-SMT cases. */
-	return false;
+	return true;
 #endif
 }
 
+/**
+ * sched_asym - Check if the destination CPU can do asym_packing load balance
+ * @env:	The load balancing environment
+ * @sds:	Load-balancing data with statistics of the local group
+ * @sgs:	Load-balancing statistics of the candidate busiest group
+ * @group:	The candidate busiest group
+ *
+ * @env::dst_cpu can do asym_packing if it has higher priority than the
+ * preferred CPU of @group.
+ *
+ * SMT is a special case. If we are balancing load between cores, @env::dst_cpu
+ * can do asym_packing balance only if all its SMT siblings are idle. Also, it
+ * can only do it if @group is an SMT group and has exactly on busy CPU. Larger
+ * imbalances in the number of CPUS are dealt with in find_busiest_group().
+ *
+ * If we are balancing load within an SMT core, or at DIE domain level, always
+ * proceed.
+ *
+ * Return: true if @env::dst_cpu can do with asym_packing load balance. False
+ * otherwise.
+ */
 static inline bool
 sched_asym(struct lb_env *env, struct sd_lb_stats *sds,  struct sg_lb_stats *sgs,
 	   struct sched_group *group)
 {
-	/* Only do SMT checks if either local or candidate have SMT siblings */
-	if ((sds->local->flags & SD_SHARE_CPUCAPACITY) ||
-	    (group->flags & SD_SHARE_CPUCAPACITY))
-		return asym_smt_can_pull_tasks(env->dst_cpu, sds, sgs, group);
+	/* Ensure that the whole local core is idle, if applicable. */
+	if (!sched_use_asym_prio(env->sd, env->dst_cpu))
+		return false;
+
+	/*
+	 * CPU priorities does not make sense for SMT cores with more than one
+	 * busy sibling.
+	 */
+	if (group->flags & SD_SHARE_CPUCAPACITY) {
+		if (sgs->group_weight - sgs->idle_cpus != 1)
+			return false;
+	}
 
 	return sched_asym_prefer(env->dst_cpu, group->asym_prefer_cpu);
 }
@@ -9549,10 +9326,22 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 		 * contention when accessing shared HW resources.
 		 *
 		 * XXX for now avg_load is not computed and always 0 so we
-		 * select the 1st one.
+		 * select the 1st one, except if @sg is composed of SMT
+		 * siblings.
 		 */
-		if (sgs->avg_load <= busiest->avg_load)
+
+		if (sgs->avg_load < busiest->avg_load)
 			return false;
+
+		if (sgs->avg_load == busiest->avg_load) {
+			/*
+			 * SMT sched groups need more help than non-SMT groups.
+			 * If @sg happens to also be SMT, either choice is good.
+			 */
+			if (sds->busiest->flags & SD_SHARE_CPUCAPACITY)
+				return false;
+		}
+
 		break;
 
 	case group_has_spare:
@@ -10027,7 +9816,6 @@ static void update_idle_cpu_scan(struct lb_env *env,
 
 static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sds)
 {
-	struct sched_domain *child = env->sd->child;
 	struct sched_group *sg = env->sd->groups;
 	struct sg_lb_stats *local = &sds->local_stat;
 	struct sg_lb_stats tmp_sgs;
@@ -10068,8 +9856,13 @@ next_group:
 		sg = sg->next;
 	} while (sg != env->sd->groups);
 
-	/* Tag domain that child domain prefers tasks go to siblings first */
-	sds->prefer_sibling = child && child->flags & SD_PREFER_SIBLING;
+	/*
+	 * Indicate that the child domain of the busiest group prefers tasks
+	 * go to a child's sibling domains first. NB the flags of a sched group
+	 * are those of the child domain.
+	 */
+	if (sds->busiest)
+		sds->prefer_sibling = !!(sds->busiest->flags & SD_PREFER_SIBLING);
 
 
 	if (env->sd->flags & SD_NUMA)
@@ -10379,7 +10172,10 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 			goto out_balanced;
 	}
 
-	/* Try to move all excess tasks to child's sibling domain */
+	/*
+	 * Try to move all excess tasks to a sibling domain of the busiest
+	 * group's child domain.
+	 */
 	if (sds.prefer_sibling && local->group_type == group_has_spare &&
 	    busiest->sum_nr_running > local->sum_nr_running + 1)
 		goto force_balance;
@@ -10481,8 +10277,15 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		    nr_running == 1)
 			continue;
 
-		/* Make sure we only pull tasks from a CPU of lower priority */
+		/*
+		 * Make sure we only pull tasks from a CPU of lower priority
+		 * when balancing between SMT siblings.
+		 *
+		 * If balancing between cores, let lower priority CPUs help
+		 * SMT cores with more than one busy sibling.
+		 */
 		if ((env->sd->flags & SD_ASYM_PACKING) &&
+		    sched_use_asym_prio(env->sd, i) &&
 		    sched_asym_prefer(i, env->dst_cpu) &&
 		    nr_running == 1)
 			continue;
@@ -10571,12 +10374,19 @@ static inline bool
 asym_active_balance(struct lb_env *env)
 {
 	/*
-	 * ASYM_PACKING needs to force migrate tasks from busy but
-	 * lower priority CPUs in order to pack all tasks in the
-	 * highest priority CPUs.
+	 * ASYM_PACKING needs to force migrate tasks from busy but lower
+	 * priority CPUs in order to pack all tasks in the highest priority
+	 * CPUs. When done between cores, do it only if the whole core if the
+	 * whole core is idle.
+	 *
+	 * If @env::src_cpu is an SMT core with busy siblings, let
+	 * the lower priority @env::dst_cpu help it. Do not follow
+	 * CPU priority.
 	 */
 	return env->idle != CPU_NOT_IDLE && (env->sd->flags & SD_ASYM_PACKING) &&
-	       sched_asym_prefer(env->dst_cpu, env->src_cpu);
+	       sched_use_asym_prio(env->sd, env->dst_cpu) &&
+	       (sched_asym_prefer(env->dst_cpu, env->src_cpu) ||
+		!sched_use_asym_prio(env->sd, env->src_cpu));
 }
 
 static inline bool
@@ -11310,9 +11120,13 @@ static void nohz_balancer_kick(struct rq *rq)
 		 * When ASYM_PACKING; see if there's a more preferred CPU
 		 * currently idle; in which case, kick the ILB to move tasks
 		 * around.
+		 *
+		 * When balancing betwen cores, all the SMT siblings of the
+		 * preferred CPU must be idle.
 		 */
 		for_each_cpu_and(i, sched_domain_span(sd), nohz.idle_cpus_mask) {
-			if (sched_asym_prefer(i, cpu)) {
+			if (sched_use_asym_prio(sd, i) &&
+			    sched_asym_prefer(i, cpu)) {
 				flags = NOHZ_STATS_KICK | NOHZ_BALANCE_KICK;
 				goto unlock;
 			}

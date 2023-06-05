@@ -749,6 +749,7 @@ rwsem_spin_on_owner(struct rw_semaphore *sem)
 	struct task_struct *new, *owner;
 	unsigned long flags, new_flags;
 	enum owner_state state;
+	int i = 0;
 
 	lockdep_assert_preemption_disabled();
 
@@ -785,7 +786,8 @@ rwsem_spin_on_owner(struct rw_semaphore *sem)
 			break;
 		}
 
-		cpu_relax();
+		if (i++ > 1000)
+			cpu_relax();
 	}
 
 	return state;
@@ -1240,7 +1242,7 @@ static struct rw_semaphore *rwsem_downgrade_wake(struct rw_semaphore *sem)
 /*
  * lock for reading
  */
-static inline int __down_read_common(struct rw_semaphore *sem, int state)
+static __always_inline int __down_read_common(struct rw_semaphore *sem, int state)
 {
 	int ret = 0;
 	long count;
@@ -1258,17 +1260,17 @@ out:
 	return ret;
 }
 
-static inline void __down_read(struct rw_semaphore *sem)
+static __always_inline void __down_read(struct rw_semaphore *sem)
 {
 	__down_read_common(sem, TASK_UNINTERRUPTIBLE);
 }
 
-static inline int __down_read_interruptible(struct rw_semaphore *sem)
+static __always_inline int __down_read_interruptible(struct rw_semaphore *sem)
 {
 	return __down_read_common(sem, TASK_INTERRUPTIBLE);
 }
 
-static inline int __down_read_killable(struct rw_semaphore *sem)
+static __always_inline int __down_read_killable(struct rw_semaphore *sem)
 {
 	return __down_read_common(sem, TASK_KILLABLE);
 }

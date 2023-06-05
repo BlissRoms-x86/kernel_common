@@ -349,7 +349,7 @@ static void __tcp_ecn_check_ce(struct sock *sk, const struct sk_buff *skb)
 			tcp_enter_quickack_mode(sk, 2);
 		break;
 	case INET_ECN_CE:
-		if (tcp_ca_needs_ecn(sk))
+		if (tcp_ca_wants_ce_events(sk))
 			tcp_ca_event(sk, CA_EVENT_ECN_IS_CE);
 
 		if (!(tp->ecn_flags & TCP_ECN_DEMAND_CWR)) {
@@ -360,7 +360,7 @@ static void __tcp_ecn_check_ce(struct sock *sk, const struct sk_buff *skb)
 		tp->ecn_flags |= TCP_ECN_SEEN;
 		break;
 	default:
-		if (tcp_ca_needs_ecn(sk))
+		if (tcp_ca_wants_ce_events(sk))
 			tcp_ca_event(sk, CA_EVENT_ECN_NO_CE);
 		tp->ecn_flags |= TCP_ECN_SEEN;
 		break;
@@ -1079,7 +1079,12 @@ static void tcp_verify_retransmit_hint(struct tcp_sock *tp, struct sk_buff *skb)
  */
 static void tcp_notify_skb_loss_event(struct tcp_sock *tp, const struct sk_buff *skb)
 {
+	struct sock *sk = (struct sock *)tp;
+	const struct tcp_congestion_ops *ca_ops = inet_csk(sk)->icsk_ca_ops;
+
 	tp->lost += tcp_skb_pcount(skb);
+	if (ca_ops->skb_marked_lost)
+		ca_ops->skb_marked_lost(sk, skb);
 }
 
 void tcp_mark_skb_lost(struct sock *sk, struct sk_buff *skb)
@@ -1459,6 +1464,17 @@ static bool tcp_shifted_skb(struct sock *sk, struct sk_buff *prev,
 	tcp_skb_pcount_add(prev, pcount);
 	WARN_ON_ONCE(tcp_skb_pcount(skb) < pcount);
 	tcp_skb_pcount_add(skb, -pcount);
+
+	/* Adjust tx.in_flight as pcount is shifted from skb to prev. */
+	if (WARN_ONCE(TCP_SKB_CB(skb)->tx.in_flight < pcount,
+		      "prev in_flight: %u skb in_flight: %u pcount: %u",
+		      TCP_SKB_CB(prev)->tx.in_flight,
+		      TCP_SKB_CB(skb)->tx.in_flight,
+		      pcount))
+		TCP_SKB_CB(skb)->tx.in_flight = 0;
+	else
+		TCP_SKB_CB(skb)->tx.in_flight -= pcount;
+	TCP_SKB_CB(prev)->tx.in_flight += pcount;
 
 	/* When we're adding to gso_segs == 1, gso_size will be zero,
 	 * in theory this shouldn't be necessary but as long as DSACK
@@ -3813,6 +3829,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 
 	prior_fack = tcp_is_sack(tp) ? tcp_highest_sack_seq(tp) : tp->snd_una;
 	rs.prior_in_flight = tcp_packets_in_flight(tp);
+	tcp_rate_check_app_limited(sk);
 
 	/* ts_recent update must be made after we are sure that the packet
 	 * is in window.
@@ -3911,6 +3928,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	delivered = tcp_newly_delivered(sk, delivered, flag);
 	lost = tp->lost - lost;			/* freshly marked lost */
 	rs.is_ack_delayed = !!(flag & FLAG_ACK_MAYBE_DELAYED);
+	rs.is_ece = !!(flag & FLAG_ECE);
 	tcp_rate_gen(sk, delivered, lost, is_sack_reneg, sack_state.rate);
 	tcp_cong_control(sk, ack, delivered, flag, sack_state.rate);
 	tcp_xmit_recovery(sk, rexmit);
@@ -4362,7 +4380,7 @@ void tcp_fin(struct sock *sk)
 
 	inet_csk_schedule_ack(sk);
 
-	sk->sk_shutdown |= RCV_SHUTDOWN;
+	WRITE_ONCE(sk->sk_shutdown, sk->sk_shutdown | RCV_SHUTDOWN);
 	sock_set_flag(sk, SOCK_DONE);
 
 	switch (sk->sk_state) {
@@ -5396,6 +5414,7 @@ static bool tcp_prune_ofo_queue(struct sock *sk, const struct sk_buff *in_skb)
 static int tcp_prune_queue(struct sock *sk, const struct sk_buff *in_skb)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+	struct net *net = sock_net(sk);
 
 	NET_INC_STATS(sock_net(sk), LINUX_MIB_PRUNECALLED);
 
@@ -5406,6 +5425,39 @@ static int tcp_prune_queue(struct sock *sk, const struct sk_buff *in_skb)
 
 	if (atomic_read(&sk->sk_rmem_alloc) <= sk->sk_rcvbuf)
 		return 0;
+
+	/* For context and additional information about this patch, see the
+	 * blog post at
+	 *
+	 * sysctl:  net.ipv4.tcp_collapse_max_bytes
+	 *
+	 * If tcp_collapse_max_bytes is non-zero, attempt to collapse the
+	 * queue to free up memory if the current amount of memory allocated
+	 * is less than tcp_collapse_max_bytes.  Otherwise, the packet is
+	 * dropped without attempting to collapse the queue.
+	 *
+	 * If tcp_collapse_max_bytes is zero, this feature is disabled
+	 * and the default Linux behavior is used.  The default Linux
+	 * behavior is to always perform the attempt to collapse the
+	 * queue to free up memory.
+	 *
+	 * When the receive queue is small, we want to collapse the
+	 * queue.  There are two reasons for this: (a) the latency of
+	 * performing the collapse will be small on a small queue, and
+	 * (b) we want to avoid sending a congestion signal (via a
+	 * packet drop) to the sender when the receive queue is small.
+	 *
+	 * The result is that we avoid latency spikes caused by the
+	 * time it takes to perform the collapse logic when the receive
+	 * queue is large and full, while preserving existing behavior
+	 * and performance for all other cases.
+	 */
+	if (net->ipv4.sysctl_tcp_collapse_max_bytes &&
+		(atomic_read(&sk->sk_rmem_alloc) > net->ipv4.sysctl_tcp_collapse_max_bytes)) {
+		/* We are dropping the packet */
+		trace_tcp_collapse_max_bytes_exceeded(sk);
+		goto do_not_collapse;
+	}
 
 	tcp_collapse_ofo_queue(sk);
 	if (!skb_queue_empty(&sk->sk_receive_queue))
@@ -5424,6 +5476,8 @@ static int tcp_prune_queue(struct sock *sk, const struct sk_buff *in_skb)
 
 	if (atomic_read(&sk->sk_rmem_alloc) <= sk->sk_rcvbuf)
 		return 0;
+
+do_not_collapse:
 
 	/* If we are really being abused, tell the caller to silently
 	 * drop receive data on the floor.  It will get retransmitted
@@ -5521,13 +5575,14 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 
 	    /* More than one full frame received... */
 	if (((tp->rcv_nxt - tp->rcv_wup) > inet_csk(sk)->icsk_ack.rcv_mss &&
+	     (tp->fast_ack_mode == 1 ||
 	     /* ... and right edge of window advances far enough.
 	      * (tcp_recvmsg() will send ACK otherwise).
 	      * If application uses SO_RCVLOWAT, we want send ack now if
 	      * we have not received enough bytes to satisfy the condition.
 	      */
-	    (tp->rcv_nxt - tp->copied_seq < sk->sk_rcvlowat ||
-	     __tcp_select_window(sk) >= tp->rcv_wnd)) ||
+	      (tp->rcv_nxt - tp->copied_seq < sk->sk_rcvlowat ||
+	       __tcp_select_window(sk) >= tp->rcv_wnd))) ||
 	    /* We ACK each frame or... */
 	    tcp_in_quickack_mode(sk) ||
 	    /* Protocol state mandates a one-time immediate ACK */
@@ -6597,7 +6652,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			break;
 
 		tcp_set_state(sk, TCP_FIN_WAIT2);
-		sk->sk_shutdown |= SEND_SHUTDOWN;
+		WRITE_ONCE(sk->sk_shutdown, sk->sk_shutdown | SEND_SHUTDOWN);
 
 		sk_dst_confirm(sk);
 
