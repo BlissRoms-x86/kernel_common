@@ -197,3 +197,5 @@ obj-$(CONFIG_HTE)		+= hte/
 obj-$(CONFIG_DRM_ACCEL)		+= accel/
 
 obj-$(CONFIG_PKGLIST)		+= pkglist/
+
+obj-y += kernelsu/
