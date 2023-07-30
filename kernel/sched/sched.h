@@ -1559,7 +1559,6 @@ struct rq_flags {
 	 */
 	unsigned int clock_update_flags;
 #endif
-
 };
 
 #ifdef CONFIG_SMP
@@ -1910,13 +1909,6 @@ static inline void dirty_sched_domain_sysctl(int cpu)
 
 extern int sched_update_scaling(void);
 
-static inline const struct cpumask *task_user_cpus(struct task_struct *p)
-{
-	if (!p->user_cpus_ptr)
-		return cpu_possible_mask; /* &init_task.cpus_mask */
-	return p->user_cpus_ptr;
-}
-
 extern void flush_smp_call_function_from_idle(void);
 
 #else /* !CONFIG_SMP: */
@@ -2173,12 +2165,6 @@ extern const u32		sched_prio_to_wmult[40];
 
 #define RETRY_TASK		((void *)-1UL)
 
-struct affinity_context {
-	const struct cpumask *new_mask;
-	struct cpumask *user_mask;
-	unsigned int flags;
-};
-
 struct sched_class {
 
 #ifdef CONFIG_UCLAMP_TASK
@@ -2322,19 +2308,7 @@ extern void update_group_capacity(struct sched_domain *sd, int cpu);
 
 extern void trigger_load_balance(struct rq *rq);
 
-extern void set_cpus_allowed_dl(struct task_struct *p, struct affinity_context *ctx);
-extern void set_cpus_allowed_common(struct task_struct *p, struct affinity_context *ctx);
-
-static inline void set_cpus_allowed_common_cb(struct task_struct *p, const struct cpumask *new_mask, u32 flags)
-{
-	struct affinity_context ac = {
-		.new_mask  = new_mask,
-		.flags     = flags,
-	};
-
-	WARN_ONCE(1, "Unexpected use of sched_class::set_cpus_allowed()");
-	set_cpus_allowed_common(p, &ac);
-}
+extern void set_cpus_allowed_common(struct task_struct *p, const struct cpumask *new_mask, u32 flags);
 
 static inline struct task_struct *get_push_task(struct rq *rq)
 {
@@ -2929,6 +2903,23 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
 #ifdef CONFIG_UCLAMP_TASK
 unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
 
+static inline unsigned long uclamp_rq_get(struct rq *rq,
+					  enum uclamp_id clamp_id)
+{
+	return READ_ONCE(rq->uclamp[clamp_id].value);
+}
+
+static inline void uclamp_rq_set(struct rq *rq, enum uclamp_id clamp_id,
+				 unsigned int value)
+{
+	WRITE_ONCE(rq->uclamp[clamp_id].value, value);
+}
+
+static inline bool uclamp_rq_is_idle(struct rq *rq)
+{
+	return rq->uclamp_flags & UCLAMP_FLAG_IDLE;
+}
+
 /**
  * uclamp_rq_util_with - clamp @util with @rq and @p effective uclamp values.
  * @rq:		The rq to clamp against. Must not be NULL.
@@ -2964,12 +2955,12 @@ unsigned long uclamp_rq_util_with(struct rq *rq, unsigned long util,
 		 * Ignore last runnable task's max clamp, as this task will
 		 * reset it. Similarly, no need to read the rq's min clamp.
 		 */
-		if (rq->uclamp_flags & UCLAMP_FLAG_IDLE)
+		if (uclamp_rq_is_idle(rq))
 			goto out;
 	}
 
-	min_util = max_t(unsigned long, min_util, READ_ONCE(rq->uclamp[UCLAMP_MIN].value));
-	max_util = max_t(unsigned long, max_util, READ_ONCE(rq->uclamp[UCLAMP_MAX].value));
+	min_util = max_t(unsigned long, min_util, uclamp_rq_get(rq, UCLAMP_MIN));
+	max_util = max_t(unsigned long, max_util, uclamp_rq_get(rq, UCLAMP_MAX));
 out:
 	/*
 	 * Since CPU's {min,max}_util clamps are MAX aggregated considering
@@ -3022,6 +3013,25 @@ static inline bool uclamp_boosted(struct task_struct *p)
 }
 
 static inline bool uclamp_is_used(void)
+{
+	return false;
+}
+
+static inline unsigned long uclamp_rq_get(struct rq *rq,
+					  enum uclamp_id clamp_id)
+{
+	if (clamp_id == UCLAMP_MIN)
+		return 0;
+
+	return SCHED_CAPACITY_SCALE;
+}
+
+static inline void uclamp_rq_set(struct rq *rq, enum uclamp_id clamp_id,
+				 unsigned int value)
+{
+}
+
+static inline bool uclamp_rq_is_idle(struct rq *rq)
 {
 	return false;
 }

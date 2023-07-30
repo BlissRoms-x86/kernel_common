@@ -486,8 +486,8 @@ static void do_bad_area(unsigned long far, unsigned int esr,
 	}
 }
 
-#define VM_FAULT_BADMAP		0x010000
-#define VM_FAULT_BADACCESS	0x020000
+#define VM_FAULT_BADMAP		((__force vm_fault_t)0x010000)
+#define VM_FAULT_BADACCESS	((__force vm_fault_t)0x020000)
 
 static vm_fault_t __do_page_fault(struct mm_struct *mm, unsigned long addr,
 				  unsigned int mm_flags, unsigned long vm_flags,
@@ -543,6 +543,7 @@ static int __kprobes do_page_fault(unsigned long far, unsigned int esr,
 	unsigned long addr = untagged_addr(far);
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 	struct vm_area_struct *vma;
+	struct vm_area_struct pvma;
 	unsigned long seq;
 #endif
 
@@ -626,17 +627,17 @@ static int __kprobes do_page_fault(unsigned long far, unsigned int esr,
 		count_vm_spf_event(SPF_ABORT_NO_SPECULATE);
 		goto spf_abort;
 	}
-
+	pvma = *vma;
 	if (!mmap_seq_read_check(mm, seq, SPF_ABORT_VMA_COPY)) {
 		put_vma(vma);
 		goto spf_abort;
 	}
-	if (!(vma->vm_flags & vm_flags)) {
+	if (!(pvma.vm_flags & vm_flags)) {
 		put_vma(vma);
 		count_vm_spf_event(SPF_ABORT_ACCESS_ERROR);
 		goto spf_abort;
 	}
-	fault = do_handle_mm_fault(vma, addr & PAGE_MASK,
+	fault = do_handle_mm_fault(&pvma, addr & PAGE_MASK,
 			mm_flags | FAULT_FLAG_SPECULATIVE, seq, regs);
 	put_vma(vma);
 
